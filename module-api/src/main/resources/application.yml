@@ -1,8 +1,9 @@
 spring:
+  profiles:
+    include: secret
+
   datasource:
     url: jdbc:mysql://localhost:3306/exchange_ledger?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul
-    username: root
-    password: root
     driver-class-name: com.mysql.cj.jdbc.Driver
 
   jpa:
@@ -19,13 +20,11 @@ spring:
     time-zone: Asia/Seoul
 
 jwt:
-  secret: exchange-rate-calculator-jwt-secret-key-must-be-at-least-256-bits-long
   expiration: 3600000  # 1 hour
 
 exchange:
   eximbank:
     api-url: https://oapi.koreaexim.go.kr/site/program/financial/exchangeJSON
-    auth-key: ${EXIMBANK_AUTH_KEY:your-auth-key-here}
 
 springdoc:
   swagger-ui:

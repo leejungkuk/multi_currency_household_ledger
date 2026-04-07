@@ -6,4 +6,5 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-validation'
 
     testImplementation 'org.wiremock:wiremock-standalone:3.10.0'
+    testRuntimeOnly 'com.mysql:mysql-connector-j'
 }
