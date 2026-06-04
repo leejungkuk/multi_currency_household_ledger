@@ -16,37 +16,36 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ErrorResponse> handleBusinessException(BusinessException e) {
         log.warn("Business exception: code={}, message={}", e.getCode(), e.getMessage());
-        return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
+        return ResponseEntity.status(e.getHttpStatus())
                 .body(ErrorResponse.of(e.getCode(), e.getMessage()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ErrorResponse> handleValidationException(MethodArgumentNotValidException e) {
-        String message = e.getBindingResult().getFieldErrors().stream()
-                .map(error -> error.getField() + ": " + error.getDefaultMessage())
-                .reduce((a, b) -> a + ", " + b)
-                .orElse("Validation failed");
+    public ResponseEntity<ErrorResponse> handleValidationException(
+            MethodArgumentNotValidException e) {
+        String message =
+                e.getBindingResult().getFieldErrors().stream()
+                        .map(error -> error.getField() + ": " + error.getDefaultMessage())
+                        .reduce((a, b) -> a + ", " + b)
+                        .orElse("Validation failed");
         log.warn("Validation exception: {}", message);
-        return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorResponse.of("VALIDATION_ERROR", message));
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
-    public ResponseEntity<ErrorResponse> handleTypeMismatchException(MethodArgumentTypeMismatchException e) {
+    public ResponseEntity<ErrorResponse> handleTypeMismatchException(
+            MethodArgumentTypeMismatchException e) {
         String message = String.format("'%s' 값이 올바르지 않습니다.", e.getValue());
         log.warn("Type mismatch exception: {}", message);
-        return ResponseEntity
-                .status(HttpStatus.BAD_REQUEST)
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorResponse.of("INVALID_PARAMETER", message));
     }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleException(Exception e) {
         log.error("Unexpected exception", e);
-        return ResponseEntity
-                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ErrorResponse.of("INTERNAL_ERROR", "서버 내부 오류가 발생했습니다."));
     }
 }
