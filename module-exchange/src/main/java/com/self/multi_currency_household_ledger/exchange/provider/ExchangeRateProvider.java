@@ -1,5 +1,6 @@
 package com.self.multi_currency_household_ledger.exchange.provider;
 
+import com.self.multi_currency_household_ledger.exchange.domain.FetchedRate;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -9,5 +10,5 @@ import java.util.List;
  */
 public interface ExchangeRateProvider {
 
-    List<ExchangeRateApiResponse> getExchangeRates(LocalDate date);
+    List<FetchedRate> getExchangeRates(LocalDate date);
 }

@@ -1,7 +1,10 @@
 package com.self.multi_currency_household_ledger.exchange.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.self.multi_currency_household_ledger.common.exception.BusinessException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import org.junit.jupiter.api.DisplayName;
@@ -60,6 +63,32 @@ class ExchangeRateTest {
             BigDecimal result = rate.convertToKrw(new BigDecimal("50.5"));
 
             assertThat(result).isEqualByComparingTo(new BigDecimal("73250.25"));
+        }
+    }
+
+    @Nested
+    @DisplayName("assertNotFuture()")
+    class AssertNotFuture {
+
+        @Test
+        @DisplayName("미래 날짜면 BusinessException을 던진다")
+        void throws_for_future_date() {
+            assertThatThrownBy(() -> ExchangeRate.assertNotFuture(LocalDate.now().plusDays(1)))
+                    .isInstanceOf(BusinessException.class);
+        }
+
+        @Test
+        @DisplayName("오늘 날짜는 통과한다")
+        void passes_for_today() {
+            assertThatCode(() -> ExchangeRate.assertNotFuture(LocalDate.now()))
+                    .doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("과거 날짜는 통과한다")
+        void passes_for_past_date() {
+            assertThatCode(() -> ExchangeRate.assertNotFuture(LocalDate.now().minusDays(1)))
+                    .doesNotThrowAnyException();
         }
     }
 

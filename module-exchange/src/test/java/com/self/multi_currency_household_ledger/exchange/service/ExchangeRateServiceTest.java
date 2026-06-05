@@ -1,9 +1,9 @@
 package com.self.multi_currency_household_ledger.exchange.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -12,7 +12,7 @@ import com.self.multi_currency_household_ledger.common.exception.BusinessExcepti
 import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
 import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRate;
 import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRateRepository;
-import com.self.multi_currency_household_ledger.exchange.provider.ExchangeRateApiResponse;
+import com.self.multi_currency_household_ledger.exchange.domain.FetchedRate;
 import com.self.multi_currency_household_ledger.exchange.provider.ExchangeRateProvider;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -25,6 +25,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 @ExtendWith(MockitoExtension.class)
 class ExchangeRateServiceTest {
@@ -47,28 +48,24 @@ class ExchangeRateServiceTest {
         @Test
         @DisplayName("Provider 응답을 DB에 저장한다")
         void saves_rates_from_provider() {
-            var response = new ExchangeRateApiResponse("USD", "미 달러", new BigDecimal("1300.00"));
-            given(exchangeRateProvider.getExchangeRates(DATE)).willReturn(List.of(response));
-            given(exchangeRateRepository.findByCurrencyCodeAndBaseDate(CurrencyCode.USD, DATE))
-                    .willReturn(Optional.empty());
+            given(exchangeRateProvider.getExchangeRates(DATE))
+                    .willReturn(List.of(new FetchedRate(CurrencyCode.USD, new BigDecimal("1300.00"))));
 
             exchangeRateService.fetchAndSaveRates(DATE);
 
-            verify(exchangeRateRepository).save(any(ExchangeRate.class));
+            verify(exchangeRateRepository).saveAndFlush(any(ExchangeRate.class));
         }
 
         @Test
-        @DisplayName("이미 존재하는 환율은 저장하지 않는다")
+        @DisplayName("이미 존재하는 환율은 예외 처리 후 건너뛴다")
         void skips_existing_rates() {
-            var response = new ExchangeRateApiResponse("USD", "미 달러", new BigDecimal("1300.00"));
-            var existing = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), DATE);
-            given(exchangeRateProvider.getExchangeRates(DATE)).willReturn(List.of(response));
-            given(exchangeRateRepository.findByCurrencyCodeAndBaseDate(CurrencyCode.USD, DATE))
-                    .willReturn(Optional.of(existing));
+            given(exchangeRateProvider.getExchangeRates(DATE))
+                    .willReturn(List.of(new FetchedRate(CurrencyCode.USD, new BigDecimal("1300.00"))));
+            given(exchangeRateRepository.saveAndFlush(any(ExchangeRate.class)))
+                    .willThrow(DataIntegrityViolationException.class);
 
-            exchangeRateService.fetchAndSaveRates(DATE);
-
-            verify(exchangeRateRepository, never()).save(any());
+            assertThatCode(() -> exchangeRateService.fetchAndSaveRates(DATE))
+                    .doesNotThrowAnyException();
         }
     }
 
@@ -100,6 +97,17 @@ class ExchangeRateServiceTest {
             ExchangeRate result = exchangeRateService.getRate(CurrencyCode.USD, DATE);
 
             assertThat(result.getBaseDate()).isEqualTo(DATE.minusDays(1));
+        }
+
+        @Test
+        @DisplayName("미래 날짜 조회 시 BusinessException을 던진다")
+        void throws_for_future_date() {
+            LocalDate future = LocalDate.now().plusDays(1);
+
+            assertThatThrownBy(() -> exchangeRateService.getRate(CurrencyCode.USD, future))
+                    .isInstanceOf(BusinessException.class);
+
+            verify(exchangeRateRepository, never()).findByCurrencyCodeAndBaseDate(any(), any());
         }
     }
 
@@ -148,6 +156,17 @@ class ExchangeRateServiceTest {
             List<ExchangeRate> result = exchangeRateService.getAllRatesByDate(DATE);
 
             assertThat(result).hasSize(2);
+        }
+
+        @Test
+        @DisplayName("미래 날짜 조회 시 BusinessException을 던진다")
+        void throws_for_future_date() {
+            LocalDate future = LocalDate.now().plusDays(1);
+
+            assertThatThrownBy(() -> exchangeRateService.getAllRatesByDate(future))
+                    .isInstanceOf(BusinessException.class);
+
+            verify(exchangeRateRepository, never()).findByBaseDate(any());
         }
     }
 }
