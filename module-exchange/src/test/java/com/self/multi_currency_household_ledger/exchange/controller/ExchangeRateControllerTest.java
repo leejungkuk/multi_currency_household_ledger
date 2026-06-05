@@ -11,6 +11,7 @@ import com.self.multi_currency_household_ledger.common.exception.BusinessExcepti
 import com.self.multi_currency_household_ledger.common.exception.GlobalExceptionHandler;
 import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
 import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRate;
+import com.self.multi_currency_household_ledger.exchange.exception.ExchangeErrorCode;
 import com.self.multi_currency_household_ledger.exchange.service.ExchangeRateService;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.data.jpa.mapping.JpaMetamodelMappingContext;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -30,6 +32,9 @@ class ExchangeRateControllerTest {
 
     @MockitoBean
     private ExchangeRateService exchangeRateService;
+
+    @MockitoBean
+    private JpaMetamodelMappingContext jpaMetamodelMappingContext;
 
     private static final LocalDate DATE = LocalDate.of(2026, 4, 3);
 
@@ -83,10 +88,10 @@ class ExchangeRateControllerTest {
     @DisplayName("환율 데이터가 없으면 400을 반환한다")
     void getLatestRate_returns_400_when_not_found() throws Exception {
         given(exchangeRateService.getLatestRate(CurrencyCode.GBP))
-                .willThrow(new BusinessException("EXCHANGE_RATE_NOT_FOUND", "GBP 환율 정보가 존재하지 않습니다."));
+                .willThrow(new BusinessException(ExchangeErrorCode.EXCHANGE_RATE_NOT_FOUND));
 
         mockMvc.perform(get("/api/exchange-rates/GBP"))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("EXCHANGE_RATE_NOT_FOUND"));
     }
 }

@@ -1,6 +1,8 @@
 package com.self.multi_currency_household_ledger.exchange.domain;
 
 import com.self.multi_currency_household_ledger.common.entity.BaseEntity;
+import com.self.multi_currency_household_ledger.common.exception.BusinessException;
+import com.self.multi_currency_household_ledger.exchange.exception.ExchangeErrorCode;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -48,6 +50,13 @@ public class ExchangeRate extends BaseEntity {
 
     public static ExchangeRate of(CurrencyCode currencyCode, BigDecimal dealBasRate, LocalDate baseDate) {
         return new ExchangeRate(currencyCode, dealBasRate, baseDate);
+    }
+
+    /** 미래 날짜에는 환율이 존재할 수 없으므로 조회 전 도메인 레벨에서 차단한다. */
+    public static void assertNotFuture(LocalDate date) {
+        if (date.isAfter(LocalDate.now())) {
+            throw new BusinessException(ExchangeErrorCode.INVALID_DATE);
+        }
     }
 
     /**

@@ -2,12 +2,15 @@ package com.self.multi_currency_household_ledger.exchange.provider;
 
 import com.self.multi_currency_household_ledger.common.exception.BusinessException;
 import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
+import com.self.multi_currency_household_ledger.exchange.domain.FetchedRate;
+import com.self.multi_currency_household_ledger.exchange.exception.ExchangeErrorCode;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
@@ -40,7 +43,7 @@ public class EximBankExchangeRateProvider implements ExchangeRateProvider {
     }
 
     @Override
-    public List<ExchangeRateApiResponse> getExchangeRates(LocalDate date) {
+    public List<FetchedRate> getExchangeRates(LocalDate date) {
         try {
             List<Map<String, Object>> response = restClient.get()
                     .uri(apiUrl + "?authkey={key}&searchdate={date}&data=AP01",
@@ -55,20 +58,35 @@ public class EximBankExchangeRateProvider implements ExchangeRateProvider {
 
             return response.stream()
                     .filter(item -> SUPPORTED_CODES.contains(item.get("cur_unit")))
-                    .map(this::mapToResponse)
+                    .map(this::mapToFetchedRate)
+                    .flatMap(Optional::stream)
                     .toList();
         } catch (Exception e) {
             log.error("수출입은행 환율 API 호출 실패. date={}", date, e);
-            throw new BusinessException("EXCHANGE_API_ERROR", "환율 정보를 가져오는데 실패했습니다: " + e.getMessage());
+            throw new BusinessException(ExchangeErrorCode.EXCHANGE_API_ERROR);
         }
     }
 
-    private ExchangeRateApiResponse mapToResponse(Map<String, Object> item) {
-        String dealBasR = ((String) item.get("deal_bas_r")).replace(",", "");
-        return new ExchangeRateApiResponse(
-                (String) item.get("cur_unit"),
-                (String) item.get("cur_nm"),
-                new BigDecimal(dealBasR)
-        );
+    private Optional<FetchedRate> mapToFetchedRate(Map<String, Object> item) {
+        String curUnit = (String) item.get("cur_unit");
+        Object rawRate = item.get("deal_bas_r");
+
+        if (rawRate == null) {
+            log.warn("deal_bas_r is null. cur_unit={}", curUnit);
+            return Optional.empty();
+        }
+
+        try {
+            BigDecimal rate = new BigDecimal(rawRate.toString().replace(",", ""));
+            if (rate.signum() <= 0) {
+                log.warn("deal_bas_r is zero or negative. cur_unit={}, value={}", curUnit, rate);
+                return Optional.empty();
+            }
+            CurrencyCode currencyCode = CurrencyCode.fromCode(curUnit);
+            return Optional.of(new FetchedRate(currencyCode, rate));
+        } catch (NumberFormatException e) {
+            log.warn("deal_bas_r is non-numeric. cur_unit={}, value={}", curUnit, rawRate);
+            return Optional.empty();
+        }
     }
 }

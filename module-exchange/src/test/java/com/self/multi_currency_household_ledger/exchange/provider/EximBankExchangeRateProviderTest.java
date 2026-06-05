@@ -9,6 +9,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.github.tomakehurst.wiremock.WireMockServer;
 import com.github.tomakehurst.wiremock.core.WireMockConfiguration;
 import com.self.multi_currency_household_ledger.common.exception.BusinessException;
+import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
+import com.self.multi_currency_household_ledger.exchange.domain.FetchedRate;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -41,7 +43,7 @@ class EximBankExchangeRateProviderTest {
     }
 
     @Test
-    @DisplayName("정상 응답 시 지원 통화만 필터링하여 반환한다")
+    @DisplayName("정상 응답 시 지원 통화만 필터링하여 FetchedRate로 반환한다")
     void returns_supported_currencies_only() {
         wireMock.stubFor(get(urlPathEqualTo("/exchangeJSON"))
                 .willReturn(aResponse()
@@ -54,12 +56,12 @@ class EximBankExchangeRateProviderTest {
                                 ]
                                 """)));
 
-        List<ExchangeRateApiResponse> result = provider.getExchangeRates(LocalDate.of(2026, 4, 3));
+        List<FetchedRate> result = provider.getExchangeRates(LocalDate.of(2026, 4, 3));
 
         assertThat(result).hasSize(2);
-        assertThat(result.get(0).curUnit()).isEqualTo("USD");
-        assertThat(result.get(0).dealBasR()).isEqualByComparingTo(new BigDecimal("1300.50"));
-        assertThat(result.get(1).curUnit()).isEqualTo("EUR");
+        assertThat(result.get(0).currencyCode()).isEqualTo(CurrencyCode.USD);
+        assertThat(result.get(0).dealBasRate()).isEqualByComparingTo(new BigDecimal("1300.50"));
+        assertThat(result.get(1).currencyCode()).isEqualTo(CurrencyCode.EUR);
     }
 
     @Test
@@ -70,7 +72,7 @@ class EximBankExchangeRateProviderTest {
                         .withHeader("Content-Type", "application/json")
                         .withBody("[]")));
 
-        List<ExchangeRateApiResponse> result = provider.getExchangeRates(LocalDate.of(2026, 4, 3));
+        List<FetchedRate> result = provider.getExchangeRates(LocalDate.of(2026, 4, 3));
 
         assertThat(result).isEmpty();
     }
@@ -96,10 +98,67 @@ class EximBankExchangeRateProviderTest {
                                 [{"cur_unit":"JPY(100)","cur_nm":"일본 엔","deal_bas_r":"900.00"}]
                                 """)));
 
-        List<ExchangeRateApiResponse> result = provider.getExchangeRates(LocalDate.of(2026, 4, 3));
+        List<FetchedRate> result = provider.getExchangeRates(LocalDate.of(2026, 4, 3));
 
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).curUnit()).isEqualTo("JPY(100)");
-        assertThat(result.get(0).dealBasR()).isEqualByComparingTo(new BigDecimal("900.00"));
+        assertThat(result.get(0).currencyCode()).isEqualTo(CurrencyCode.JPY);
+        assertThat(result.get(0).dealBasRate()).isEqualByComparingTo(new BigDecimal("900.00"));
+    }
+
+    @Test
+    @DisplayName("deal_bas_r가 null인 통화는 건너뛰고 정상 통화만 반환한다")
+    void skips_null_deal_bas_r() {
+        wireMock.stubFor(get(urlPathEqualTo("/exchangeJSON"))
+                .willReturn(aResponse()
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                                [
+                                    {"cur_unit":"USD","cur_nm":"미 달러","deal_bas_r":null},
+                                    {"cur_unit":"EUR","cur_nm":"유로","deal_bas_r":"1,450.00"}
+                                ]
+                                """)));
+
+        List<FetchedRate> result = provider.getExchangeRates(LocalDate.of(2026, 4, 3));
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).currencyCode()).isEqualTo(CurrencyCode.EUR);
+    }
+
+    @Test
+    @DisplayName("deal_bas_r가 0이하인 통화는 건너뛴다")
+    void skips_zero_or_negative_deal_bas_r() {
+        wireMock.stubFor(get(urlPathEqualTo("/exchangeJSON"))
+                .willReturn(aResponse()
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                                [
+                                    {"cur_unit":"USD","cur_nm":"미 달러","deal_bas_r":"0"},
+                                    {"cur_unit":"EUR","cur_nm":"유로","deal_bas_r":"1,450.00"}
+                                ]
+                                """)));
+
+        List<FetchedRate> result = provider.getExchangeRates(LocalDate.of(2026, 4, 3));
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).currencyCode()).isEqualTo(CurrencyCode.EUR);
+    }
+
+    @Test
+    @DisplayName("deal_bas_r가 숫자가 아닌 통화는 건너뛴다")
+    void skips_non_numeric_deal_bas_r() {
+        wireMock.stubFor(get(urlPathEqualTo("/exchangeJSON"))
+                .willReturn(aResponse()
+                        .withHeader("Content-Type", "application/json")
+                        .withBody("""
+                                [
+                                    {"cur_unit":"USD","cur_nm":"미 달러","deal_bas_r":"N/A"},
+                                    {"cur_unit":"EUR","cur_nm":"유로","deal_bas_r":"1,450.00"}
+                                ]
+                                """)));
+
+        List<FetchedRate> result = provider.getExchangeRates(LocalDate.of(2026, 4, 3));
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).currencyCode()).isEqualTo(CurrencyCode.EUR);
     }
 }
