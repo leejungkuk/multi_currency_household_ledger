@@ -16,30 +16,25 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ErrorResponse> handleBusinessException(BusinessException e) {
         log.warn("Business exception: code={}, message={}", e.getCode(), e.getMessage());
-        return ResponseEntity.status(e.getHttpStatus())
-                .body(ErrorResponse.of(e.getCode(), e.getMessage()));
+        return ResponseEntity.status(e.getHttpStatus()).body(ErrorResponse.of(e.getCode(), e.getMessage()));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ErrorResponse> handleValidationException(
-            MethodArgumentNotValidException e) {
-        String message =
-                e.getBindingResult().getFieldErrors().stream()
-                        .map(error -> error.getField() + ": " + error.getDefaultMessage())
-                        .reduce((a, b) -> a + ", " + b)
-                        .orElse("Validation failed");
+    public ResponseEntity<ErrorResponse> handleValidationException(MethodArgumentNotValidException e) {
+        String message = e.getBindingResult().getFieldErrors().stream()
+                .map(error -> error.getField() + ": " + error.getDefaultMessage())
+                .reduce((a, b) -> a + ", " + b)
+                .orElse("Validation failed");
         log.warn("Validation exception: {}", message);
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of("VALIDATION_ERROR", message));
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse.of("VALIDATION_ERROR", message));
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
-    public ResponseEntity<ErrorResponse> handleTypeMismatchException(
-            MethodArgumentTypeMismatchException e) {
-        String message = String.format("'%s' 값이 올바르지 않습니다.", e.getValue());
+    public ResponseEntity<ErrorResponse> handleTypeMismatchException(MethodArgumentTypeMismatchException e) {
+        String value = e.getValue() != null ? e.getValue().toString() : "null";
+        String message = String.format("파라미터 '%s'의 값 '%s'이 올바르지 않습니다.", e.getName(), value);
         log.warn("Type mismatch exception: {}", message);
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of("INVALID_PARAMETER", message));
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse.of("INVALID_PARAMETER", message));
     }
 
     @ExceptionHandler(Exception.class)

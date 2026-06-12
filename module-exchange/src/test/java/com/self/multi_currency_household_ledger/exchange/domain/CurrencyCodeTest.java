@@ -3,6 +3,7 @@ package com.self.multi_currency_household_ledger.exchange.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.self.multi_currency_household_ledger.common.exception.BusinessException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -16,10 +17,10 @@ class CurrencyCodeTest {
     }
 
     @Test
-    @DisplayName("지원하지 않는 코드면 IllegalArgumentException을 던진다")
+    @DisplayName("지원하지 않는 코드면 BusinessException을 던진다")
     void fromCode_throws_for_unsupported_code() {
         assertThatThrownBy(() -> CurrencyCode.fromCode("AED"))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("AED");
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("지원하지 않는 통화");
     }
 }

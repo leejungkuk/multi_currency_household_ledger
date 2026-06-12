@@ -15,15 +15,13 @@ import jakarta.persistence.UniqueConstraint;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 @Entity
-@Table(
-        name = "exchange_rate",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"currency_code", "base_date"})
-)
+@Table(name = "exchange_rate", uniqueConstraints = @UniqueConstraint(columnNames = {"currency_code", "base_date"}))
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ExchangeRate extends BaseEntity {
@@ -52,9 +50,9 @@ public class ExchangeRate extends BaseEntity {
         return new ExchangeRate(currencyCode, dealBasRate, baseDate);
     }
 
-    /** 미래 날짜에는 환율이 존재할 수 없으므로 조회 전 도메인 레벨에서 차단한다. */
+    /** 미래 날짜에는 환율이 존재할 수 없으므로 조회 전 도메인 레벨에서 차단한다. "오늘"은 서버 TZ 와 무관하게 KST 기준. */
     public static void assertNotFuture(LocalDate date) {
-        if (date.isAfter(LocalDate.now())) {
+        if (date.isAfter(LocalDate.now(ZoneId.of("Asia/Seoul")))) {
             throw new BusinessException(ExchangeErrorCode.INVALID_DATE);
         }
     }

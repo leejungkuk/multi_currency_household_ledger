@@ -31,10 +31,7 @@ class EximBankExchangeRateProviderTest {
         wireMock.start();
 
         provider = new EximBankExchangeRateProvider(
-                RestClient.builder(),
-                wireMock.baseUrl() + "/exchangeJSON",
-                "test-api-key"
-        );
+                RestClient.builder(), wireMock.baseUrl() + "/exchangeJSON", "test-api-key");
     }
 
     @AfterEach
@@ -45,10 +42,13 @@ class EximBankExchangeRateProviderTest {
     @Test
     @DisplayName("정상 응답 시 지원 통화만 필터링하여 FetchedRate로 반환한다")
     void returns_supported_currencies_only() {
-        wireMock.stubFor(get(urlPathEqualTo("/exchangeJSON"))
-                .willReturn(aResponse()
-                        .withHeader("Content-Type", "application/json")
-                        .withBody("""
+        wireMock.stubFor(
+                get(urlPathEqualTo("/exchangeJSON"))
+                        .willReturn(
+                                aResponse()
+                                        .withHeader("Content-Type", "application/json")
+                                        .withBody(
+                                                """
                                 [
                                     {"cur_unit":"USD","cur_nm":"미 달러","deal_bas_r":"1,300.50"},
                                     {"cur_unit":"EUR","cur_nm":"유로","deal_bas_r":"1,450.00"},
@@ -80,8 +80,8 @@ class EximBankExchangeRateProviderTest {
     @Test
     @DisplayName("API 서버 에러 시 BusinessException을 던진다")
     void throws_exception_on_server_error() {
-        wireMock.stubFor(get(urlPathEqualTo("/exchangeJSON"))
-                .willReturn(aResponse().withStatus(500)));
+        wireMock.stubFor(
+                get(urlPathEqualTo("/exchangeJSON")).willReturn(aResponse().withStatus(500)));
 
         assertThatThrownBy(() -> provider.getExchangeRates(LocalDate.of(2026, 4, 3)))
                 .isInstanceOf(BusinessException.class)
@@ -91,10 +91,13 @@ class EximBankExchangeRateProviderTest {
     @Test
     @DisplayName("JPY(100) 단위 통화도 올바르게 파싱한다")
     void parses_jpy_with_unit() {
-        wireMock.stubFor(get(urlPathEqualTo("/exchangeJSON"))
-                .willReturn(aResponse()
-                        .withHeader("Content-Type", "application/json")
-                        .withBody("""
+        wireMock.stubFor(
+                get(urlPathEqualTo("/exchangeJSON"))
+                        .willReturn(
+                                aResponse()
+                                        .withHeader("Content-Type", "application/json")
+                                        .withBody(
+                                                """
                                 [{"cur_unit":"JPY(100)","cur_nm":"일본 엔","deal_bas_r":"900.00"}]
                                 """)));
 
@@ -108,10 +111,13 @@ class EximBankExchangeRateProviderTest {
     @Test
     @DisplayName("deal_bas_r가 null인 통화는 건너뛰고 정상 통화만 반환한다")
     void skips_null_deal_bas_r() {
-        wireMock.stubFor(get(urlPathEqualTo("/exchangeJSON"))
-                .willReturn(aResponse()
-                        .withHeader("Content-Type", "application/json")
-                        .withBody("""
+        wireMock.stubFor(
+                get(urlPathEqualTo("/exchangeJSON"))
+                        .willReturn(
+                                aResponse()
+                                        .withHeader("Content-Type", "application/json")
+                                        .withBody(
+                                                """
                                 [
                                     {"cur_unit":"USD","cur_nm":"미 달러","deal_bas_r":null},
                                     {"cur_unit":"EUR","cur_nm":"유로","deal_bas_r":"1,450.00"}
@@ -127,10 +133,13 @@ class EximBankExchangeRateProviderTest {
     @Test
     @DisplayName("deal_bas_r가 0이하인 통화는 건너뛴다")
     void skips_zero_or_negative_deal_bas_r() {
-        wireMock.stubFor(get(urlPathEqualTo("/exchangeJSON"))
-                .willReturn(aResponse()
-                        .withHeader("Content-Type", "application/json")
-                        .withBody("""
+        wireMock.stubFor(
+                get(urlPathEqualTo("/exchangeJSON"))
+                        .willReturn(
+                                aResponse()
+                                        .withHeader("Content-Type", "application/json")
+                                        .withBody(
+                                                """
                                 [
                                     {"cur_unit":"USD","cur_nm":"미 달러","deal_bas_r":"0"},
                                     {"cur_unit":"EUR","cur_nm":"유로","deal_bas_r":"1,450.00"}
@@ -146,10 +155,13 @@ class EximBankExchangeRateProviderTest {
     @Test
     @DisplayName("deal_bas_r가 숫자가 아닌 통화는 건너뛴다")
     void skips_non_numeric_deal_bas_r() {
-        wireMock.stubFor(get(urlPathEqualTo("/exchangeJSON"))
-                .willReturn(aResponse()
-                        .withHeader("Content-Type", "application/json")
-                        .withBody("""
+        wireMock.stubFor(
+                get(urlPathEqualTo("/exchangeJSON"))
+                        .willReturn(
+                                aResponse()
+                                        .withHeader("Content-Type", "application/json")
+                                        .withBody(
+                                                """
                                 [
                                     {"cur_unit":"USD","cur_nm":"미 달러","deal_bas_r":"N/A"},
                                     {"cur_unit":"EUR","cur_nm":"유로","deal_bas_r":"1,450.00"}
