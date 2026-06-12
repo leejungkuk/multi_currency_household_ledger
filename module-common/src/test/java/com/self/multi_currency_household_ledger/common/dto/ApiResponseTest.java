@@ -12,7 +12,10 @@ class ApiResponseTest {
     void success_with_data() {
         ApiResponse<String> response = ApiResponse.success("hello");
 
+        assertThat(response.success()).isTrue();
+        assertThat(response.code()).isNull();
         assertThat(response.data()).isEqualTo("hello");
+        assertThat(response.message()).isNull();
         assertThat(response.timestamp()).isNotNull();
     }
 }

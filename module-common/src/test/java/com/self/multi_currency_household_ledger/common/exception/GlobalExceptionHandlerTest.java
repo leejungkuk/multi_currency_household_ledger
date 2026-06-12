@@ -16,8 +16,7 @@ class GlobalExceptionHandlerTest {
     @DisplayName("BusinessException(문자열)은 기본 400 + ErrorResponse 봉투로 변환된다")
     void handleBusinessException_string_constructor_returns_400() {
         ResponseEntity<ErrorResponse> response =
-                handler.handleBusinessException(
-                        new BusinessException("INVALID_DATE", "미래 날짜는 조회할 수 없습니다."));
+                handler.handleBusinessException(new BusinessException("INVALID_DATE", "미래 날짜는 조회할 수 없습니다."));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
         ErrorResponse body = response.getBody();
@@ -29,23 +28,24 @@ class GlobalExceptionHandlerTest {
     @Test
     @DisplayName("BusinessException(ErrorCode)은 ErrorCode의 httpStatus를 그대로 사용한다")
     void handleBusinessException_errorcode_constructor_uses_declared_status() {
-        ErrorCode notFound =
-                new ErrorCode() {
-                    public String getCode() {
-                        return "NOT_FOUND";
-                    }
+        ErrorCode notFound = new ErrorCode() {
+            @Override
+            public String getCode() {
+                return "NOT_FOUND";
+            }
 
-                    public String getMessage() {
-                        return "리소스 없음";
-                    }
+            @Override
+            public String getMessage() {
+                return "리소스 없음";
+            }
 
-                    public HttpStatus getHttpStatus() {
-                        return HttpStatus.NOT_FOUND;
-                    }
-                };
+            @Override
+            public HttpStatus getHttpStatus() {
+                return HttpStatus.NOT_FOUND;
+            }
+        };
 
-        ResponseEntity<ErrorResponse> response =
-                handler.handleBusinessException(new BusinessException(notFound));
+        ResponseEntity<ErrorResponse> response = handler.handleBusinessException(new BusinessException(notFound));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(response.getBody()).isNotNull();
@@ -55,8 +55,7 @@ class GlobalExceptionHandlerTest {
     @Test
     @DisplayName("예상치 못한 예외는 HTTP 500 + INTERNAL_ERROR 봉투로 변환된다")
     void handleException_returns_500_envelope() {
-        ResponseEntity<ErrorResponse> response =
-                handler.handleException(new RuntimeException("boom"));
+        ResponseEntity<ErrorResponse> response = handler.handleException(new RuntimeException("boom"));
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
         ErrorResponse body = response.getBody();

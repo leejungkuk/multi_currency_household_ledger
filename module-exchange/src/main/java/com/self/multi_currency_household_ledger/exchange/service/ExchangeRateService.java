@@ -44,13 +44,23 @@ public class ExchangeRateService {
     @Transactional(readOnly = true)
     public ExchangeRate getRate(CurrencyCode currencyCode, LocalDate date) {
         ExchangeRate.assertNotFuture(date);
-        return exchangeRateRepository.findByCurrencyCodeAndBaseDate(currencyCode, date)
+        return exchangeRateRepository
+                .findByCurrencyCodeAndBaseDate(currencyCode, date)
                 .orElseGet(() -> getLatestRate(currencyCode));
     }
 
     @Transactional(readOnly = true)
     public ExchangeRate getLatestRate(CurrencyCode currencyCode) {
-        return exchangeRateRepository.findTopByCurrencyCodeOrderByBaseDateDesc(currencyCode)
+        return exchangeRateRepository
+                .findTopByCurrencyCodeOrderByBaseDateDesc(currencyCode)
+                .orElseThrow(() -> new BusinessException(ExchangeErrorCode.EXCHANGE_RATE_NOT_FOUND));
+    }
+
+    @Transactional(readOnly = true)
+    public ExchangeRate getRateOnOrBefore(CurrencyCode currencyCode, LocalDate date) {
+        ExchangeRate.assertNotFuture(date);
+        return exchangeRateRepository
+                .findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(currencyCode, date)
                 .orElseThrow(() -> new BusinessException(ExchangeErrorCode.EXCHANGE_RATE_NOT_FOUND));
     }
 

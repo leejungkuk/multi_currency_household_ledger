@@ -24,7 +24,9 @@ import org.springframework.web.client.RestClient;
 public class EximBankExchangeRateProvider implements ExchangeRateProvider {
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
+    // 기준 통화(KRW)는 수출입은행 API 응답에 포함되지 않으므로 제외
     private static final Set<String> SUPPORTED_CODES = Arrays.stream(CurrencyCode.values())
+            .filter(c -> !c.isBase())
             .map(CurrencyCode::getApiCode)
             .collect(Collectors.toSet());
 
@@ -35,8 +37,7 @@ public class EximBankExchangeRateProvider implements ExchangeRateProvider {
     public EximBankExchangeRateProvider(
             RestClient.Builder restClientBuilder,
             @Value("${exchange.eximbank.api-url}") String apiUrl,
-            @Value("${exchange.eximbank.api-key}") String apiKey
-    ) {
+            @Value("${exchange.eximbank.api-key}") String apiKey) {
         this.restClient = restClientBuilder.build();
         this.apiUrl = apiUrl;
         this.apiKey = apiKey;
@@ -45,9 +46,9 @@ public class EximBankExchangeRateProvider implements ExchangeRateProvider {
     @Override
     public List<FetchedRate> getExchangeRates(LocalDate date) {
         try {
-            List<Map<String, Object>> response = restClient.get()
-                    .uri(apiUrl + "?authkey={key}&searchdate={date}&data=AP01",
-                            apiKey, date.format(DATE_FORMATTER))
+            List<Map<String, Object>> response = restClient
+                    .get()
+                    .uri(apiUrl + "?authkey={key}&searchdate={date}&data=AP01", apiKey, date.format(DATE_FORMATTER))
                     .retrieve()
                     .body(new ParameterizedTypeReference<>() {});
 

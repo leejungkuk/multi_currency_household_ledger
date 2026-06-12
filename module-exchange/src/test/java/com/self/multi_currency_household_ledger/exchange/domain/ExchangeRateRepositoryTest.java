@@ -102,7 +102,8 @@ class ExchangeRateRepositoryTest {
 
             List<ExchangeRate> result = exchangeRateRepository.findByBaseDate(DATE);
 
-            assertThat(result).hasSize(2)
+            assertThat(result)
+                    .hasSize(2)
                     .extracting(ExchangeRate::getCurrencyCode)
                     .containsExactlyInAnyOrder(CurrencyCode.USD, CurrencyCode.EUR);
         }
@@ -123,8 +124,8 @@ class ExchangeRateRepositoryTest {
         @Test
         @DisplayName("저장 시 createdAt/updatedAt이 채워진다")
         void auditing_fields_are_populated() {
-            ExchangeRate saved = exchangeRateRepository.save(
-                    ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), DATE));
+            ExchangeRate saved =
+                    exchangeRateRepository.save(ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), DATE));
             em.flush();
 
             assertThat(saved.getId()).isNotNull();

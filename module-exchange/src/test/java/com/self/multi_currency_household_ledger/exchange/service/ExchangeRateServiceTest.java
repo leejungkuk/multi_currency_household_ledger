@@ -16,6 +16,7 @@ import com.self.multi_currency_household_ledger.exchange.domain.FetchedRate;
 import com.self.multi_currency_household_ledger.exchange.provider.ExchangeRateProvider;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.DisplayName;
@@ -64,8 +65,7 @@ class ExchangeRateServiceTest {
             given(exchangeRateRepository.saveAndFlush(any(ExchangeRate.class)))
                     .willThrow(DataIntegrityViolationException.class);
 
-            assertThatCode(() -> exchangeRateService.fetchAndSaveRates(DATE))
-                    .doesNotThrowAnyException();
+            assertThatCode(() -> exchangeRateService.fetchAndSaveRates(DATE)).doesNotThrowAnyException();
         }
     }
 
@@ -102,7 +102,7 @@ class ExchangeRateServiceTest {
         @Test
         @DisplayName("미래 날짜 조회 시 BusinessException을 던진다")
         void throws_for_future_date() {
-            LocalDate future = LocalDate.now().plusDays(1);
+            LocalDate future = LocalDate.now(ZoneId.of("Asia/Seoul")).plusDays(1);
 
             assertThatThrownBy(() -> exchangeRateService.getRate(CurrencyCode.USD, future))
                     .isInstanceOf(BusinessException.class);
@@ -135,8 +135,8 @@ class ExchangeRateServiceTest {
 
             assertThatThrownBy(() -> exchangeRateService.getLatestRate(CurrencyCode.GBP))
                     .isInstanceOf(BusinessException.class)
-                    .satisfies(ex -> assertThat(((BusinessException) ex).getCode())
-                            .isEqualTo("EXCHANGE_RATE_NOT_FOUND"));
+                    .satisfies(
+                            ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("EXCHANGE_RATE_NOT_FOUND"));
         }
     }
 
@@ -149,8 +149,7 @@ class ExchangeRateServiceTest {
         void returns_all_rates_for_date() {
             var rates = List.of(
                     ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), DATE),
-                    ExchangeRate.of(CurrencyCode.EUR, new BigDecimal("1450.00"), DATE)
-            );
+                    ExchangeRate.of(CurrencyCode.EUR, new BigDecimal("1450.00"), DATE));
             given(exchangeRateRepository.findByBaseDate(DATE)).willReturn(rates);
 
             List<ExchangeRate> result = exchangeRateService.getAllRatesByDate(DATE);
@@ -161,7 +160,7 @@ class ExchangeRateServiceTest {
         @Test
         @DisplayName("미래 날짜 조회 시 BusinessException을 던진다")
         void throws_for_future_date() {
-            LocalDate future = LocalDate.now().plusDays(1);
+            LocalDate future = LocalDate.now(ZoneId.of("Asia/Seoul")).plusDays(1);
 
             assertThatThrownBy(() -> exchangeRateService.getAllRatesByDate(future))
                     .isInstanceOf(BusinessException.class);
