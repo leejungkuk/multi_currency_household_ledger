@@ -1,0 +1,3 @@
+[submodule ".ai-context"]
+	path = .ai-context
+	url = https://github.com/leejungkuk/woniApp_ai_settings.git
