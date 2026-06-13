@@ -1,0 +1,50 @@
+name: build
+
+# 로컬 Claude 훅(pre-commit-build 등)은 --no-verify 로 우회 가능하고 다른 기기에선
+# 강제되지 않는다. 이 워크플로가 서버측 강제 게이트다 — main 으로의 PR과 feature 푸시에서
+# ./gradlew build(Spotless 린트 + 컴파일 + 전 모듈 테스트)를 돌린다.
+# main 브랜치 보호(PR 필수 + 이 체크 통과 필수)는 GitHub 저장소 설정에서 별도로 켠다.
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches-ignore: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    # 테스트는 인메모리 DB를 쓰지 않는다. @DataJpaTest(replace=NONE)가 실제 MySQL에 붙으므로
+    # 로컬과 동일한 접속 정보(localhost:3306 / exchange_ledger / root:root)로 서비스 컨테이너를 띄운다.
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: exchange_ledger
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -uroot -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # 시크릿(exchange.eximbank.api-key 등)은 불필요하다: 전 컨텍스트를 띄우는 @SpringBootTest가
+      # 없고, 테스트는 module-exchange/src/test/resources/application.yml의 test 값만 쓴다.
+      - name: Build (Spotless + compile + test)
+        run: ./gradlew build --no-daemon

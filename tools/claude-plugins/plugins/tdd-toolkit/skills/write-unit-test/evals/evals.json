@@ -1,0 +1,26 @@
+{
+  "skill_name": "write-unit-test",
+  "evals": [
+    {
+      "id": 1,
+      "name": "domain-vo-pure-unit",
+      "prompt": "ledger 도메인에 Money 값 객체를 새로 만들었어. add, subtract, convertToKrw, isGreaterThan 메서드 테스트 작성해줘.",
+      "expected_output": "Spring 컨텍스트/목 없는 순수 JUnit5 테스트. @Nested로 메서드별 그룹화, 한글 @DisplayName, 메서드명 영어 snake_case. 금액 비교는 isEqualByComparingTo. convertToKrw 반올림과 통화 불일치 예외(IllegalArgumentException) 케이스 포함. happy path 우선 + 의미있는 엣지 최대 3개.",
+      "files": ["files/eval1-domain/Money.java"]
+    },
+    {
+      "id": 2,
+      "name": "service-mockito",
+      "prompt": "MemberService에 회원가입(register) 로직 추가했어. 테스트 작성해줘. 이메일 중복이면 예외 나고, 정상이면 비밀번호 인코딩해서 저장돼.",
+      "expected_output": "@ExtendWith(MockitoExtension.class) + @InjectMocks MemberService + @Mock MemberRepository/PasswordEncoder. BDDMockito given/willReturn 사용. happy path(인코딩된 비번으로 save 호출), 중복 이메일 시 BusinessException(code=DUPLICATE_EMAIL) 검증. 한글 @DisplayName, snake_case 메서드명.",
+      "files": ["files/eval2-service/MemberService.java", "files/eval2-service/MemberRepository.java", "files/eval2-service/Member.java"]
+    },
+    {
+      "id": 3,
+      "name": "repository-datajpatest",
+      "prompt": "ledger 모듈에 LedgerEntryRepository 만들었어. 커스텀 쿼리 메서드들 테스트 작성해줘.",
+      "expected_output": "@DataJpaTest + @AutoConfigureTestDatabase(replace = Replace.NONE)(실 MySQL, H2 치환 금지) + JPA Auditing용 TestJpaConfig/@Import 패턴. TestEntityManager로 persist+flush 후 조회. 기간/통화 필터, 정렬, 다른 회원 데이터 제외 같은 경계 검증. 한글 @DisplayName, snake_case 메서드명.",
+      "files": ["files/eval3-repository/LedgerEntry.java", "files/eval3-repository/LedgerEntryRepository.java"]
+    }
+  ]
+}

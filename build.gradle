@@ -2,6 +2,8 @@ plugins {
     id 'java'
     id 'org.springframework.boot' version '3.4.1' apply false
     id 'io.spring.dependency-management' version '1.1.7' apply false
+    id 'net.ltgt.errorprone' version '4.3.0' apply false
+    id 'com.diffplug.spotless' version '7.2.1' apply false
 }
 
 group = 'com.self'
@@ -11,6 +13,8 @@ description = 'multi_currency_household_ledger'
 subprojects {
     apply plugin: 'java'
     apply plugin: 'io.spring.dependency-management'
+    apply plugin: 'net.ltgt.errorprone'
+    apply plugin: 'com.diffplug.spotless'
 
     group = 'com.self'
     version = '0.0.1-SNAPSHOT'
@@ -38,6 +42,33 @@ subprojects {
         testAnnotationProcessor 'org.projectlombok:lombok'
         testImplementation 'org.springframework.boot:spring-boot-starter-test'
         testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+        errorprone 'com.google.errorprone:error_prone_core:2.36.0'
+    }
+
+    // 컴파일 타임 정적 분석 — 테스트가 못 잡는 버그(NPE·자기대입·잘못된 equals 등)를 ERROR 로 차단
+    // -Werror: 경고 0 기준선(2026-06-11 정리 완료)을 빌드 게이트로 고정 — 새 경고는 곧 빌드 실패
+    tasks.withType(JavaCompile).configureEach {
+        options.compilerArgs << '-Werror'
+        options.errorprone {
+            disableWarningsInGeneratedCode = true
+            excludedPaths = '.*/build/generated/.*'
+            // 테스트는 한글 메서드명이 컨벤션 — UnicodeInCode 만 테스트에서 허용
+            if (name.toLowerCase().contains('test')) {
+                disable('UnicodeInCode')
+            }
+        }
+    }
+
+    // 포맷 게이트 — spotlessCheck 가 check→build 에 자동 편입된다.
+    // palantirJavaFormat: 4-space·120col, 기존 Spring 스타일과 가장 근접한 포맷터.
+    spotless {
+        java {
+            target 'src/*/java/**/*.java'
+            removeUnusedImports()
+            palantirJavaFormat()
+            trimTrailingWhitespace()
+            endWithNewline()
+        }
     }
 
     tasks.named('test') {
