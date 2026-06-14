@@ -313,7 +313,7 @@
     },
     "openapi": "3.0.1",
     "paths": {
-        "/api/assets": {
+        "/api/v1/assets": {
             "get": {
                 "operationId": "getAssets",
                 "responses": {
@@ -333,7 +333,7 @@
                 ]
             }
         },
-        "/api/categories": {
+        "/api/v1/categories": {
             "get": {
                 "operationId": "getCategories",
                 "parameters": [
@@ -367,7 +367,7 @@
                 ]
             }
         },
-        "/api/exchange-rates": {
+        "/api/v1/exchange-rates": {
             "get": {
                 "operationId": "getRatesByDate",
                 "parameters": [
@@ -398,7 +398,7 @@
                 ]
             }
         },
-        "/api/exchange-rates/fetch": {
+        "/api/v1/exchange-rates/fetch": {
             "post": {
                 "operationId": "fetchRates",
                 "parameters": [
@@ -429,7 +429,7 @@
                 ]
             }
         },
-        "/api/exchange-rates/{currencyCode}": {
+        "/api/v1/exchange-rates/{currencyCode}": {
             "get": {
                 "operationId": "getRate",
                 "parameters": [
@@ -476,7 +476,7 @@
                 ]
             }
         },
-        "/api/ledgers": {
+        "/api/v1/ledgers": {
             "post": {
                 "operationId": "createLedgerEntry",
                 "requestBody": {

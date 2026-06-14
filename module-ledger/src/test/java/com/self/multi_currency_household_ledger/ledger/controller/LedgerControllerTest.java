@@ -62,7 +62,7 @@ class LedgerControllerTest {
 
         given(ledgerService.create(any(CreateLedgerEntryRequest.class), eq(1L))).willReturn(response);
 
-        mockMvc.perform(post("/api/ledgers")
+        mockMvc.perform(post("/api/v1/ledgers")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
@@ -76,7 +76,7 @@ class LedgerControllerTest {
     void create_ledger_entry_fails_when_invalid_request() throws Exception {
         CreateLedgerEntryRequest request = new CreateLedgerEntryRequest(null, null, null, null, null, null);
 
-        mockMvc.perform(post("/api/ledgers")
+        mockMvc.perform(post("/api/v1/ledgers")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isBadRequest())

@@ -33,7 +33,7 @@ class CatalogControllerTest {
         given(catalogService.getCategories(any(), any()))
                 .willReturn(List.of(new CategoryResponse(1L, "FOOD", "식비", "icon-food", 1)));
 
-        mockMvc.perform(get("/api/categories")
+        mockMvc.perform(get("/api/v1/categories")
                         .param("transactionType", "EXPENSE")
                         .contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
@@ -47,7 +47,7 @@ class CatalogControllerTest {
     void get_assets_success() throws Exception {
         given(catalogService.getAssets(any())).willReturn(List.of(new AssetResponse(1L, "CASH", "현금", "icon-cash", 1)));
 
-        mockMvc.perform(get("/api/assets").contentType(MediaType.APPLICATION_JSON))
+        mockMvc.perform(get("/api/v1/assets").contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data[0].code").value("CASH"))
