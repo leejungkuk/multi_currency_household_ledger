@@ -6,7 +6,7 @@
 # 띄우지 않고 이 파일을 읽는다.
 #
 # 동작: 서버가 떠 있으면 바로 수집, 아니면 :module-api:bootRun 기동 → 수집 → 종료.
-# 전제: 기동 경로는 MySQL(localhost:3306) + application-secret.yml 필요.
+# 전제: 기동 경로는 Postgres datasource 설정(application-secret.yml 또는 환경변수)이 필요.
 
 set -u
 
