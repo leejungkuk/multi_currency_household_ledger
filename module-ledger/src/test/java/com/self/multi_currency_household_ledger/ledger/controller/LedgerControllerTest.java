@@ -18,6 +18,7 @@ import com.self.multi_currency_household_ledger.ledger.service.LedgerService;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,6 +29,8 @@ import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(controllers = LedgerController.class)
 class LedgerControllerTest {
+
+    private static final UUID TEMP_MEMBER_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
 
     @Autowired
     private MockMvc mockMvc;
@@ -60,7 +63,8 @@ class LedgerControllerTest {
                 LocalDate.now(ZoneId.of("Asia/Seoul")),
                 "커피");
 
-        given(ledgerService.create(any(CreateLedgerEntryRequest.class), eq(1L))).willReturn(response);
+        given(ledgerService.create(any(CreateLedgerEntryRequest.class), eq(TEMP_MEMBER_ID)))
+                .willReturn(response);
 
         mockMvc.perform(post("/api/v1/ledgers")
                         .contentType(MediaType.APPLICATION_JSON)

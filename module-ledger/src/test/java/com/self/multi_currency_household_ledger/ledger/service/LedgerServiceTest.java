@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 
 import com.self.multi_currency_household_ledger.common.exception.BusinessException;
 import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
@@ -23,16 +24,20 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 @ExtendWith(MockitoExtension.class)
 class LedgerServiceTest {
+
+    private static final UUID MEMBER_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
 
     @InjectMocks
     private LedgerService ledgerService;
@@ -69,11 +74,14 @@ class LedgerServiceTest {
         given(assetRepository.findByIdAndOwnerMemberIdIn(any(), any())).willReturn(Optional.of(asset));
         given(ledgerEntryRepository.save(any(LedgerEntry.class))).willAnswer(invocation -> invocation.getArgument(0));
 
-        LedgerEntryResponse response = ledgerService.create(request, 1L);
+        LedgerEntryResponse response = ledgerService.create(request, MEMBER_ID);
 
         assertThat(response.originalAmount()).isEqualByComparingTo(BigDecimal.valueOf(5000));
         assertThat(response.krwAmount()).isEqualByComparingTo(BigDecimal.valueOf(5000));
         assertThat(response.appliedRate()).isEqualByComparingTo(BigDecimal.ONE);
+        ArgumentCaptor<LedgerEntry> entryCaptor = ArgumentCaptor.forClass(LedgerEntry.class);
+        then(ledgerEntryRepository).should().save(entryCaptor.capture());
+        assertThat(entryCaptor.getValue().getMemberId()).isEqualTo(MEMBER_ID);
     }
 
     // 외화 거래 시 환율을 적용하여 원화 금액을 계산하는지 확인한다.
@@ -91,7 +99,7 @@ class LedgerServiceTest {
         given(exchangeRateService.getRateOnOrBefore(any(), any())).willReturn(exchangeRate);
         given(ledgerEntryRepository.save(any(LedgerEntry.class))).willAnswer(invocation -> invocation.getArgument(0));
 
-        LedgerEntryResponse response = ledgerService.create(request, 1L);
+        LedgerEntryResponse response = ledgerService.create(request, MEMBER_ID);
 
         assertThat(response.originalAmount()).isEqualByComparingTo(BigDecimal.valueOf(100));
         assertThat(response.krwAmount()).isEqualByComparingTo(BigDecimal.valueOf(130000));
@@ -116,7 +124,7 @@ class LedgerServiceTest {
                 .willReturn(ExchangeRate.of(
                         CurrencyCode.USD, BigDecimal.valueOf(1300), LocalDate.now(ZoneId.of("Asia/Seoul"))));
 
-        assertThatThrownBy(() -> ledgerService.create(request, 1L))
+        assertThatThrownBy(() -> ledgerService.create(request, MEMBER_ID))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getCode())
                 .isEqualTo(LedgerErrorCode.INVALID_FUTURE_DATE.getCode());
