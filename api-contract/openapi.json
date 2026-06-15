@@ -510,7 +510,7 @@
     "servers": [
         {
             "description": "Generated server url",
-            "url": "http://localhost:8080"
+            "url": "http://localhost"
         }
     ]
 }

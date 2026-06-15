@@ -72,6 +72,10 @@ subprojects {
     }
 
     tasks.named('test') {
-        useJUnitPlatform()
+        // 계약 스냅샷 생성기(@Tag("snapshot"))는 전체 컨텍스트를 부팅하므로 일반 test 에서 제외.
+        // :module-api:generateApiSnapshot 로만 실행된다.
+        useJUnitPlatform {
+            excludeTags 'snapshot'
+        }
     }
 }

@@ -5,8 +5,10 @@
 # 스냅샷을 갱신해 같은 커밋에 포함한다. diff 가 곧 "API 계약 변경"이며, 프론트는 서버를
 # 띄우지 않고 이 파일을 읽는다.
 #
-# 동작: 서버가 떠 있으면 바로 수집, 아니면 :module-api:bootRun 기동 → 수집 → 종료.
-# 전제: 기동 경로는 Postgres datasource 설정(application-secret.yml 또는 환경변수)이 필요.
+# 동작: 전체 컨텍스트를 Testcontainers 위에 부팅하는 생성기 테스트(:module-api:generateApiSnapshot)
+# 로 raw 스펙(module-api/build/openapi-raw.json)을 만들고, json.tool --sort-keys 로 정규화한다.
+# 전제: Docker 데몬(Testcontainers). 실 DB·Supabase 자격증명·네트워크는 필요 없다.
+# (보안이 deny-by-default 라 생성기는 mock JWT 로 /v3/api-docs 에 접근한다.)
 
 set -u
 
@@ -14,53 +16,24 @@ ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || ROOT=$(cd "$(dirname "$0")/
 cd "$ROOT" || exit 1
 
 OUT="api-contract/openapi.json"
-URL="http://localhost:8080/v3/api-docs"
-BOOT_LOG="/tmp/api-snapshot-bootrun.log"
+RAW="module-api/build/openapi-raw.json"
 
-fetch() { curl -sf --max-time 5 "$URL"; }
-
-SPEC=$(fetch || true)
-STARTED=no
-GRADLE_PID=""
-
-if [ -z "$SPEC" ]; then
-  echo "▶ 서버 미기동 — :module-api:bootRun 시작 (로그: $BOOT_LOG)"
-  ./gradlew :module-api:bootRun >"$BOOT_LOG" 2>&1 &
-  GRADLE_PID=$!
-  STARTED=yes
-  for _ in $(seq 1 60); do
-    sleep 2
-    SPEC=$(fetch || true)
-    [ -n "$SPEC" ] && break
-    if ! kill -0 "$GRADLE_PID" 2>/dev/null; then
-      echo "❌ bootRun 이 비정상 종료되었습니다 — $BOOT_LOG 마지막 부분:"
-      tail -5 "$BOOT_LOG"
-      exit 1
-    fi
-  done
+echo "▶ 계약 스냅샷 생성 (:module-api:generateApiSnapshot — Testcontainers)"
+if ! ./gradlew --console=plain :module-api:generateApiSnapshot; then
+  echo "❌ generateApiSnapshot 실패 (Docker 데몬이 떠 있는지 확인)"
+  exit 1
 fi
 
-stop_server() {
-  [ "$STARTED" = yes ] || return 0
-  kill "$GRADLE_PID" 2>/dev/null
-  # gradle 이 fork 한 boot JVM 까지 종료
-  pkill -f 'multi_currency_household_ledger.ApiApplication' 2>/dev/null
-  wait "$GRADLE_PID" 2>/dev/null
-}
-
-if [ -z "$SPEC" ]; then
-  echo "❌ ${URL} 수집 실패 (타임아웃)"
-  stop_server
+if [ ! -s "$RAW" ]; then
+  echo "❌ raw 스펙이 생성되지 않았습니다: $RAW"
   exit 1
 fi
 
 mkdir -p api-contract
-if ! printf '%s' "$SPEC" | python3 -m json.tool --sort-keys > "$OUT"; then
+if ! python3 -m json.tool --sort-keys "$RAW" > "$OUT"; then
   echo "❌ 응답이 유효한 JSON 이 아닙니다"
-  stop_server
   exit 1
 fi
-stop_server
 
 echo "✅ ${OUT} 갱신 완료 ($(wc -c < "$OUT" | tr -d ' ')B)"
 if git diff --quiet -- "$OUT" 2>/dev/null && git ls-files --error-unmatch "$OUT" >/dev/null 2>&1; then
