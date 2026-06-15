@@ -9,11 +9,14 @@ import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRate;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 class LedgerEntryTest {
+
+    private static final UUID MEMBER_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
 
     private Category category;
     private Asset asset;
@@ -31,7 +34,7 @@ class LedgerEntryTest {
         ExchangeRate exchangeRate =
                 ExchangeRate.of(CurrencyCode.USD, BigDecimal.valueOf(1300), LocalDate.now(ZoneId.of("Asia/Seoul")));
         LedgerEntry entry = LedgerEntry.of(
-                1L,
+                MEMBER_ID,
                 category,
                 asset,
                 BigDecimal.valueOf(100),
@@ -41,6 +44,7 @@ class LedgerEntryTest {
                 exchangeRate);
 
         assertThat(entry.getOriginalAmount()).isEqualByComparingTo(BigDecimal.valueOf(100));
+        assertThat(entry.getMemberId()).isEqualTo(MEMBER_ID);
         assertThat(entry.getKrwAmount()).isEqualByComparingTo(BigDecimal.valueOf(130000));
         assertThat(entry.getTransactionType()).isEqualTo(TransactionType.EXPENSE);
     }
@@ -52,7 +56,7 @@ class LedgerEntryTest {
         ExchangeRate exchangeRate =
                 ExchangeRate.of(CurrencyCode.USD, BigDecimal.valueOf(1300), LocalDate.now(ZoneId.of("Asia/Seoul")));
         assertThatThrownBy(() -> LedgerEntry.of(
-                        1L,
+                        MEMBER_ID,
                         category,
                         asset,
                         BigDecimal.ZERO,
@@ -70,7 +74,7 @@ class LedgerEntryTest {
         ExchangeRate exchangeRate =
                 ExchangeRate.of(CurrencyCode.USD, BigDecimal.valueOf(1300), LocalDate.now(ZoneId.of("Asia/Seoul")));
         assertThatThrownBy(() -> LedgerEntry.of(
-                        1L,
+                        MEMBER_ID,
                         category,
                         asset,
                         BigDecimal.valueOf(100),

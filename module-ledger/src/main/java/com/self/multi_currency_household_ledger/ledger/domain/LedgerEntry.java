@@ -20,6 +20,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Objects;
+import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -35,7 +36,7 @@ public class LedgerEntry extends BaseEntity {
     private Long id;
 
     @Column(nullable = false)
-    private Long memberId;
+    private UUID memberId;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 10)
@@ -72,7 +73,7 @@ public class LedgerEntry extends BaseEntity {
     private String memo;
 
     private LedgerEntry(
-            Long memberId,
+            UUID memberId,
             Category category,
             Asset asset,
             BigDecimal originalAmount,
@@ -96,7 +97,7 @@ public class LedgerEntry extends BaseEntity {
     }
 
     public static LedgerEntry of(
-            Long memberId,
+            UUID memberId,
             Category category,
             Asset asset,
             BigDecimal originalAmount,

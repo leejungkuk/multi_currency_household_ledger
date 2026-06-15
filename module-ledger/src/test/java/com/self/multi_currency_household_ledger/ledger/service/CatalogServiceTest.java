@@ -1,7 +1,7 @@
 package com.self.multi_currency_household_ledger.ledger.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 
 import com.self.multi_currency_household_ledger.ledger.domain.Asset;
@@ -35,11 +35,13 @@ class CatalogServiceTest {
     @Test
     @DisplayName("거래 유형별 카테고리 목록을 조회해 응답 DTO로 반환한다")
     void get_categories() {
-        Category category = new Category(TransactionType.EXPENSE, "FOOD", "식비", "icon-food", 1, 1L);
-        given(categoryRepository.findByTransactionTypeAndOwnerMemberIdInAndIsActiveTrueOrderBySortOrder(any(), any()))
+        Category category =
+                new Category(TransactionType.EXPENSE, "FOOD", "식비", "icon-food", 1, Category.SYSTEM_OWNER_ID);
+        given(categoryRepository.findByTransactionTypeAndOwnerMemberIdAndIsActiveTrueOrderBySortOrder(
+                        eq(TransactionType.EXPENSE), eq(Category.SYSTEM_OWNER_ID)))
                 .willReturn(List.of(category));
 
-        List<CategoryResponse> responses = catalogService.getCategories(TransactionType.EXPENSE, 1L);
+        List<CategoryResponse> responses = catalogService.getCategories(TransactionType.EXPENSE);
 
         assertThat(responses).hasSize(1);
         assertThat(responses.get(0).code()).isEqualTo("FOOD");
@@ -50,11 +52,11 @@ class CatalogServiceTest {
     @Test
     @DisplayName("자산 목록을 조회해 응답 DTO로 반환한다")
     void get_assets() {
-        Asset asset = new Asset("CASH", "현금", "icon-cash", 1, 1L);
-        given(assetRepository.findByOwnerMemberIdInAndIsActiveTrueOrderBySortOrder(any()))
+        Asset asset = new Asset("CASH", "현금", "icon-cash", 1, Asset.SYSTEM_OWNER_ID);
+        given(assetRepository.findByOwnerMemberIdAndIsActiveTrueOrderBySortOrder(eq(Asset.SYSTEM_OWNER_ID)))
                 .willReturn(List.of(asset));
 
-        List<AssetResponse> responses = catalogService.getAssets(1L);
+        List<AssetResponse> responses = catalogService.getAssets();
 
         assertThat(responses).hasSize(1);
         assertThat(responses.get(0).code()).isEqualTo("CASH");

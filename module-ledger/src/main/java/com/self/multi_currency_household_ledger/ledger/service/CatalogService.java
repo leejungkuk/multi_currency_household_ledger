@@ -21,19 +21,17 @@ public class CatalogService {
     private final CategoryRepository categoryRepository;
     private final AssetRepository assetRepository;
 
-    public List<CategoryResponse> getCategories(TransactionType transactionType, Long memberId) {
+    public List<CategoryResponse> getCategories(TransactionType transactionType) {
         return categoryRepository
-                .findByTransactionTypeAndOwnerMemberIdInAndIsActiveTrueOrderBySortOrder(
-                        transactionType, List.of(Category.SYSTEM_OWNER_ID, memberId))
+                .findByTransactionTypeAndOwnerMemberIdAndIsActiveTrueOrderBySortOrder(
+                        transactionType, Category.SYSTEM_OWNER_ID)
                 .stream()
                 .map(CategoryResponse::from)
                 .toList();
     }
 
-    public List<AssetResponse> getAssets(Long memberId) {
-        return assetRepository
-                .findByOwnerMemberIdInAndIsActiveTrueOrderBySortOrder(List.of(Asset.SYSTEM_OWNER_ID, memberId))
-                .stream()
+    public List<AssetResponse> getAssets() {
+        return assetRepository.findByOwnerMemberIdAndIsActiveTrueOrderBySortOrder(Asset.SYSTEM_OWNER_ID).stream()
                 .map(AssetResponse::from)
                 .toList();
     }

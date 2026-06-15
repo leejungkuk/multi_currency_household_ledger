@@ -6,10 +6,10 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface CategoryRepository extends JpaRepository<Category, Long> {
 
-    Optional<Category> findByIdAndOwnerMemberIdIn(Long id, List<Long> ownerMemberIds);
+    Optional<Category> findByIdAndOwnerMemberId(Long id, Long ownerMemberId);
 
-    List<Category> findByTransactionTypeAndOwnerMemberIdInAndIsActiveTrueOrderBySortOrder(
-            TransactionType type, List<Long> ownerMemberIds);
+    List<Category> findByTransactionTypeAndOwnerMemberIdAndIsActiveTrueOrderBySortOrder(
+            TransactionType type, Long ownerMemberId);
 
     boolean existsByOwnerMemberIdAndTransactionTypeAndCode(
             Long ownerMemberId, TransactionType transactionType, String code);

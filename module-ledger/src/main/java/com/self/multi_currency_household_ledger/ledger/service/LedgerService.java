@@ -12,7 +12,7 @@ import com.self.multi_currency_household_ledger.ledger.domain.LedgerEntryReposit
 import com.self.multi_currency_household_ledger.ledger.dto.CreateLedgerEntryRequest;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerEntryResponse;
 import com.self.multi_currency_household_ledger.ledger.exception.LedgerErrorCode;
-import java.util.List;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,13 +27,13 @@ public class LedgerService {
     private final ExchangeRateService exchangeRateService;
 
     @Transactional
-    public LedgerEntryResponse create(CreateLedgerEntryRequest request, Long memberId) {
+    public LedgerEntryResponse create(CreateLedgerEntryRequest request, UUID memberId) {
         Category category = categoryRepository
-                .findByIdAndOwnerMemberIdIn(request.categoryId(), List.of(Category.SYSTEM_OWNER_ID, memberId))
+                .findByIdAndOwnerMemberId(request.categoryId(), Category.SYSTEM_OWNER_ID)
                 .orElseThrow(() -> new BusinessException(LedgerErrorCode.CATEGORY_NOT_FOUND));
 
         Asset asset = assetRepository
-                .findByIdAndOwnerMemberIdIn(request.assetId(), List.of(Asset.SYSTEM_OWNER_ID, memberId))
+                .findByIdAndOwnerMemberId(request.assetId(), Asset.SYSTEM_OWNER_ID)
                 .orElseThrow(() -> new BusinessException(LedgerErrorCode.ASSET_NOT_FOUND));
 
         ExchangeRate exchangeRate = null;

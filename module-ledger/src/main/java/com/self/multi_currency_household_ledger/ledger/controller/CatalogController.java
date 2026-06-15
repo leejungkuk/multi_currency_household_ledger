@@ -22,13 +22,11 @@ public class CatalogController {
     @GetMapping("/categories")
     public ApiResponse<List<CategoryResponse>> getCategories(
             @RequestParam("transactionType") TransactionType transactionType) {
-        Long memberId = 1L; // TODO: Spring Security 적용 후 @AuthenticationPrincipal 등으로 대체
-        return ApiResponse.success(catalogService.getCategories(transactionType, memberId));
+        return ApiResponse.success(catalogService.getCategories(transactionType));
     }
 
     @GetMapping("/assets")
     public ApiResponse<List<AssetResponse>> getAssets() {
-        Long memberId = 1L; // TODO: Spring Security 적용 후 @AuthenticationPrincipal 등으로 대체
-        return ApiResponse.success(catalogService.getAssets(memberId));
+        return ApiResponse.success(catalogService.getAssets());
     }
 }
