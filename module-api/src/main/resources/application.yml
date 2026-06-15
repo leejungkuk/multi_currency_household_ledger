@@ -43,6 +43,10 @@ exchange:
     connect-timeout: ${EXIMBANK_CONNECT_TIMEOUT:2s}
     read-timeout: ${EXIMBANK_READ_TIMEOUT:5s}
 
+ledger:
+  recalculation:
+    window-days: ${LEDGER_RECALCULATION_WINDOW_DAYS:7}
+
 springdoc:
   swagger-ui:
     path: /swagger-ui.html

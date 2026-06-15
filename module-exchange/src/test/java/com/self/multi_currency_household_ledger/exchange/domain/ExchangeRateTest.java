@@ -6,6 +6,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.self.multi_currency_household_ledger.common.exception.BusinessException;
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import org.junit.jupiter.api.DisplayName;
@@ -13,6 +15,10 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 class ExchangeRateTest {
+
+    private static final LocalDate TODAY = LocalDate.of(2026, 4, 6);
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
+    private static final Clock FIXED_CLOCK = Clock.fixed(Instant.parse("2026-04-05T15:00:00Z"), KST);
 
     @Nested
     @DisplayName("정적 팩토리 메서드 of()")
@@ -37,8 +43,7 @@ class ExchangeRateTest {
         @Test
         @DisplayName("USD 100달러를 KRW로 변환한다")
         void converts_usd_to_krw() {
-            ExchangeRate rate = ExchangeRate.of(
-                    CurrencyCode.USD, new BigDecimal("1300.00"), LocalDate.now(ZoneId.of("Asia/Seoul")));
+            ExchangeRate rate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), TODAY);
 
             BigDecimal result = rate.convertToKrw(new BigDecimal("100"));
 
@@ -49,8 +54,7 @@ class ExchangeRateTest {
         @DisplayName("JPY 100엔 단위 환율을 올바르게 변환한다")
         void converts_jpy_to_krw() {
             // tts = 900.00 (100엔당)
-            ExchangeRate rate =
-                    ExchangeRate.of(CurrencyCode.JPY, new BigDecimal("900.00"), LocalDate.now(ZoneId.of("Asia/Seoul")));
+            ExchangeRate rate = ExchangeRate.of(CurrencyCode.JPY, new BigDecimal("900.00"), TODAY);
 
             // 1000엔 → 1000 / 100 * 900 = 9000 KRW
             BigDecimal result = rate.convertToKrw(new BigDecimal("1000"));
@@ -61,8 +65,7 @@ class ExchangeRateTest {
         @Test
         @DisplayName("소수점이 있는 금액을 변환한다")
         void converts_decimal_amount() {
-            ExchangeRate rate = ExchangeRate.of(
-                    CurrencyCode.EUR, new BigDecimal("1450.50"), LocalDate.now(ZoneId.of("Asia/Seoul")));
+            ExchangeRate rate = ExchangeRate.of(CurrencyCode.EUR, new BigDecimal("1450.50"), TODAY);
 
             BigDecimal result = rate.convertToKrw(new BigDecimal("50.5"));
 
@@ -77,23 +80,21 @@ class ExchangeRateTest {
         @Test
         @DisplayName("미래 날짜면 BusinessException을 던진다")
         void throws_for_future_date() {
-            assertThatThrownBy(() -> ExchangeRate.assertNotFuture(
-                            LocalDate.now(ZoneId.of("Asia/Seoul")).plusDays(1)))
+            assertThatThrownBy(() -> ExchangeRate.assertNotFuture(TODAY.plusDays(1), FIXED_CLOCK))
                     .isInstanceOf(BusinessException.class);
         }
 
         @Test
         @DisplayName("오늘 날짜는 통과한다")
         void passes_for_today() {
-            assertThatCode(() -> ExchangeRate.assertNotFuture(LocalDate.now(ZoneId.of("Asia/Seoul"))))
+            assertThatCode(() -> ExchangeRate.assertNotFuture(TODAY, FIXED_CLOCK))
                     .doesNotThrowAnyException();
         }
 
         @Test
         @DisplayName("과거 날짜는 통과한다")
         void passes_for_past_date() {
-            assertThatCode(() -> ExchangeRate.assertNotFuture(
-                            LocalDate.now(ZoneId.of("Asia/Seoul")).minusDays(1)))
+            assertThatCode(() -> ExchangeRate.assertNotFuture(TODAY.minusDays(1), FIXED_CLOCK))
                     .doesNotThrowAnyException();
         }
     }
@@ -105,8 +106,7 @@ class ExchangeRateTest {
         @Test
         @DisplayName("KRW 130000원을 USD로 변환한다")
         void converts_krw_to_usd() {
-            ExchangeRate rate = ExchangeRate.of(
-                    CurrencyCode.USD, new BigDecimal("1300.00"), LocalDate.now(ZoneId.of("Asia/Seoul")));
+            ExchangeRate rate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), TODAY);
 
             BigDecimal result = rate.convertFromKrw(new BigDecimal("130000"));
 
@@ -117,8 +117,7 @@ class ExchangeRateTest {
         @DisplayName("KRW를 JPY로 변환할 때 100엔 단위를 반영한다")
         void converts_krw_to_jpy() {
             // tts = 900.00 (100엔당)
-            ExchangeRate rate =
-                    ExchangeRate.of(CurrencyCode.JPY, new BigDecimal("900.00"), LocalDate.now(ZoneId.of("Asia/Seoul")));
+            ExchangeRate rate = ExchangeRate.of(CurrencyCode.JPY, new BigDecimal("900.00"), TODAY);
 
             // 9000 KRW → 9000 / 900 * 100 = 1000엔
             BigDecimal result = rate.convertFromKrw(new BigDecimal("9000"));

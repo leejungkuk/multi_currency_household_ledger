@@ -13,6 +13,8 @@ import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRate;
 import com.self.multi_currency_household_ledger.exchange.exception.ExchangeErrorCode;
 import com.self.multi_currency_household_ledger.exchange.service.ExchangeRateService;
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -36,10 +38,15 @@ class ExchangeRateControllerTest {
     private ExchangeRateService exchangeRateService;
 
     @MockitoBean
+    private Clock clock;
+
+    @MockitoBean
     @SuppressWarnings("UnusedVariable") // 직접 참조하지 않지만 @WebMvcTest 컨텍스트 기동(JPA Auditing)에 필요한 주입 필드
     private JpaMetamodelMappingContext jpaMetamodelMappingContext;
 
     private static final LocalDate DATE = LocalDate.of(2026, 4, 3);
+    private static final LocalDate TODAY = LocalDate.of(2026, 4, 6);
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
     private static final LocalDateTime FETCHED_AT = LocalDateTime.of(2026, 4, 3, 11, 5);
 
     @Test
@@ -66,8 +73,9 @@ class ExchangeRateControllerTest {
     @DisplayName("GET /api/v1/exchange-rates/{currencyCode} date 생략 시 최신 환율을 반환한다")
     void getRate_returns_latest_when_date_omitted() throws Exception {
         // stale 판정 기준일이 KST 오늘이므로, 결정적 단언을 위해 기준일=오늘 환율을 반환
-        LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
-        var rate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), today);
+        given(clock.instant()).willReturn(Instant.parse("2026-04-05T15:00:00Z"));
+        given(clock.getZone()).willReturn(KST);
+        var rate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), TODAY);
         given(exchangeRateService.getLatestRate(CurrencyCode.USD)).willReturn(rate);
 
         mockMvc.perform(get("/api/v1/exchange-rates/USD"))

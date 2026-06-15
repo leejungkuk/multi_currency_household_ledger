@@ -14,6 +14,7 @@ import com.self.multi_currency_household_ledger.ledger.controller.CatalogControl
 import com.self.multi_currency_household_ledger.ledger.dto.AssetResponse;
 import com.self.multi_currency_household_ledger.ledger.service.CatalogService;
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -55,6 +56,10 @@ class SecurityConfigTest {
 
     @MockitoBean
     private ExchangeRateService exchangeRateService;
+
+    @MockitoBean
+    @SuppressWarnings("UnusedVariable")
+    private Clock clock;
 
     @Test
     @DisplayName("보호된 /api/v1 엔드포인트는 토큰 없이 401 ErrorResponse를 반환한다")

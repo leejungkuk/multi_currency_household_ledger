@@ -6,8 +6,8 @@ import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRate;
 import com.self.multi_currency_household_ledger.exchange.dto.ExchangeRateResponse;
 import com.self.multi_currency_household_ledger.exchange.dto.ExchangeRateStatusResponse;
 import com.self.multi_currency_household_ledger.exchange.service.ExchangeRateService;
+import java.time.Clock;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class ExchangeRateController {
 
     private final ExchangeRateService exchangeRateService;
+    private final Clock clock;
 
     @GetMapping
     public ApiResponse<List<ExchangeRateResponse>> getRatesByDate(
@@ -43,7 +44,7 @@ public class ExchangeRateController {
         ExchangeRate rate = date != null
                 ? exchangeRateService.getRateOnOrBefore(currencyCode, date)
                 : exchangeRateService.getLatestRate(currencyCode);
-        LocalDate effectiveDate = date != null ? date : LocalDate.now(ZoneId.of("Asia/Seoul"));
+        LocalDate effectiveDate = date != null ? date : LocalDate.now(clock);
         return ApiResponse.success(ExchangeRateResponse.from(rate, effectiveDate));
     }
 
