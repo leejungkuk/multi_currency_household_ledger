@@ -40,6 +40,8 @@ woni:
 exchange:
   eximbank:
     api-url: https://oapi.koreaexim.go.kr/site/program/financial/exchangeJSON
+    connect-timeout: ${EXIMBANK_CONNECT_TIMEOUT:2s}
+    read-timeout: ${EXIMBANK_READ_TIMEOUT:5s}
 
 springdoc:
   swagger-ui:

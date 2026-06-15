@@ -2,6 +2,7 @@ package com.self.multi_currency_household_ledger.exchange.provider;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.get;
+import static com.github.tomakehurst.wiremock.client.WireMock.getRequestedFor;
 import static com.github.tomakehurst.wiremock.client.WireMock.urlPathEqualTo;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -12,6 +13,7 @@ import com.self.multi_currency_household_ledger.common.exception.BusinessExcepti
 import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
 import com.self.multi_currency_household_ledger.exchange.domain.FetchedRate;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.util.List;
 import org.junit.jupiter.api.AfterEach;
@@ -22,6 +24,9 @@ import org.springframework.web.client.RestClient;
 
 class EximBankExchangeRateProviderTest {
 
+    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(2);
+    private static final Duration READ_TIMEOUT = Duration.ofSeconds(2);
+
     private WireMockServer wireMock;
     private EximBankExchangeRateProvider provider;
 
@@ -31,7 +36,11 @@ class EximBankExchangeRateProviderTest {
         wireMock.start();
 
         provider = new EximBankExchangeRateProvider(
-                RestClient.builder(), wireMock.baseUrl() + "/exchangeJSON", "test-api-key");
+                RestClient.builder(),
+                wireMock.baseUrl() + "/exchangeJSON",
+                "test-api-key",
+                CONNECT_TIMEOUT,
+                READ_TIMEOUT);
     }
 
     @AfterEach
@@ -86,6 +95,69 @@ class EximBankExchangeRateProviderTest {
         assertThatThrownBy(() -> provider.getExchangeRates(LocalDate.of(2026, 4, 3)))
                 .isInstanceOf(BusinessException.class)
                 .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("EXCHANGE_API_ERROR"));
+    }
+
+    @Test
+    @DisplayName("result=3 응답은 EXCHANGE_API_AUTH_ERROR로 매핑한다")
+    void maps_result_3_to_auth_error() {
+        wireMock.stubFor(
+                get(urlPathEqualTo("/exchangeJSON"))
+                        .willReturn(
+                                aResponse()
+                                        .withHeader("Content-Type", "application/json")
+                                        .withBody(
+                                                """
+                                [{"result":3}]
+                                """)));
+
+        assertThatThrownBy(() -> provider.getExchangeRates(LocalDate.of(2026, 4, 3)))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("EXCHANGE_API_AUTH_ERROR"));
+    }
+
+    @Test
+    @DisplayName("result=4 응답은 EXCHANGE_API_LIMIT_EXCEEDED로 매핑한다")
+    void maps_result_4_to_limit_exceeded() {
+        wireMock.stubFor(
+                get(urlPathEqualTo("/exchangeJSON"))
+                        .willReturn(
+                                aResponse()
+                                        .withHeader("Content-Type", "application/json")
+                                        .withBody(
+                                                """
+                                [{"result":4}]
+                                """)));
+
+        assertThatThrownBy(() -> provider.getExchangeRates(LocalDate.of(2026, 4, 3)))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(
+                        ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("EXCHANGE_API_LIMIT_EXCEEDED"));
+    }
+
+    @Test
+    @DisplayName("read timeout 발생 시 1회 재시도 후 EXCHANGE_API_ERROR를 던진다")
+    void retries_once_on_read_timeout() {
+        provider = new EximBankExchangeRateProvider(
+                RestClient.builder(),
+                wireMock.baseUrl() + "/exchangeJSON",
+                "test-api-key",
+                CONNECT_TIMEOUT,
+                Duration.ofMillis(50));
+        wireMock.stubFor(
+                get(urlPathEqualTo("/exchangeJSON"))
+                        .willReturn(
+                                aResponse()
+                                        .withHeader("Content-Type", "application/json")
+                                        .withFixedDelay(200)
+                                        .withBody(
+                                                """
+                                [{"cur_unit":"USD","cur_nm":"미 달러","tts":"1,300.123456"}]
+                                """)));
+
+        assertThatThrownBy(() -> provider.getExchangeRates(LocalDate.of(2026, 4, 3)))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("EXCHANGE_API_ERROR"));
+        wireMock.verify(2, getRequestedFor(urlPathEqualTo("/exchangeJSON")));
     }
 
     @Test

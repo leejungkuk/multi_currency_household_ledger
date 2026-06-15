@@ -28,7 +28,13 @@ public class ExchangeRateService {
      * 트랜잭션 없이 통화별 saveAndFlush로 독립 커밋한다. unique constraint 위반은 중복 적재이므로 정상 skip.
      */
     public void fetchAndSaveRates(LocalDate date) {
-        List<FetchedRate> fetched = exchangeRateProvider.getExchangeRates(date);
+        List<FetchedRate> fetched;
+        try {
+            fetched = exchangeRateProvider.getExchangeRates(date);
+        } catch (BusinessException e) {
+            log.warn("환율 수집 실패로 저장을 건너뜁니다. date={}, code={}", date, e.getCode());
+            return;
+        }
 
         for (FetchedRate rate : fetched) {
             ExchangeRate entity = ExchangeRate.of(rate.currencyCode(), rate.tts(), date);

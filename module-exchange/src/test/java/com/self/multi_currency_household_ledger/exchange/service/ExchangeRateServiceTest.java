@@ -13,6 +13,7 @@ import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
 import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRate;
 import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRateRepository;
 import com.self.multi_currency_household_ledger.exchange.domain.FetchedRate;
+import com.self.multi_currency_household_ledger.exchange.exception.ExchangeErrorCode;
 import com.self.multi_currency_household_ledger.exchange.provider.ExchangeRateProvider;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -23,6 +24,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -66,6 +68,30 @@ class ExchangeRateServiceTest {
                     .willThrow(DataIntegrityViolationException.class);
 
             assertThatCode(() -> exchangeRateService.fetchAndSaveRates(DATE)).doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("일부 통화가 누락되어도 Provider가 반환한 나머지 통화는 저장한다")
+        void saves_remaining_rates_when_some_currencies_are_missing() {
+            given(exchangeRateProvider.getExchangeRates(DATE))
+                    .willReturn(List.of(new FetchedRate(CurrencyCode.EUR, new BigDecimal("1450.00"))));
+            ArgumentCaptor<ExchangeRate> captor = ArgumentCaptor.forClass(ExchangeRate.class);
+
+            exchangeRateService.fetchAndSaveRates(DATE);
+
+            verify(exchangeRateRepository).saveAndFlush(captor.capture());
+            assertThat(captor.getValue().getCurrencyCode()).isEqualTo(CurrencyCode.EUR);
+        }
+
+        @Test
+        @DisplayName("Provider 실패는 배경 수집 경로에서 전파하지 않고 저장을 건너뛴다")
+        void skips_when_provider_fails() {
+            given(exchangeRateProvider.getExchangeRates(DATE))
+                    .willThrow(new BusinessException(ExchangeErrorCode.EXCHANGE_API_LIMIT_EXCEEDED));
+
+            assertThatCode(() -> exchangeRateService.fetchAndSaveRates(DATE)).doesNotThrowAnyException();
+
+            verify(exchangeRateRepository, never()).saveAndFlush(any(ExchangeRate.class));
         }
     }
 
