@@ -42,7 +42,7 @@ subprojects {
         testAnnotationProcessor 'org.projectlombok:lombok'
         testImplementation 'org.springframework.boot:spring-boot-starter-test'
         testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-        errorprone 'com.google.errorprone:error_prone_core:2.36.0'
+        errorprone 'com.google.errorprone:error_prone_core:2.50.0'
     }
 
     // 컴파일 타임 정적 분석 — 테스트가 못 잡는 버그(NPE·자기대입·잘못된 equals 등)를 ERROR 로 차단
