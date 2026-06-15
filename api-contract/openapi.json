@@ -243,11 +243,11 @@
                     "currencyName": {
                         "type": "string"
                     },
-                    "dealBasRate": {
-                        "type": "number"
-                    },
                     "stale": {
                         "type": "boolean"
+                    },
+                    "tts": {
+                        "type": "number"
                     }
                 },
                 "type": "object"

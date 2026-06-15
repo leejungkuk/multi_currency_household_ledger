@@ -25,7 +25,7 @@ class ExchangeRateTest {
             ExchangeRate rate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), date);
 
             assertThat(rate.getCurrencyCode()).isEqualTo(CurrencyCode.USD);
-            assertThat(rate.getDealBasRate()).isEqualByComparingTo(new BigDecimal("1300.00"));
+            assertThat(rate.getTts()).isEqualByComparingTo(new BigDecimal("1300.00"));
             assertThat(rate.getBaseDate()).isEqualTo(date);
         }
     }
@@ -48,7 +48,7 @@ class ExchangeRateTest {
         @Test
         @DisplayName("JPY 100엔 단위 환율을 올바르게 변환한다")
         void converts_jpy_to_krw() {
-            // dealBasRate = 900.00 (100엔당)
+            // tts = 900.00 (100엔당)
             ExchangeRate rate =
                     ExchangeRate.of(CurrencyCode.JPY, new BigDecimal("900.00"), LocalDate.now(ZoneId.of("Asia/Seoul")));
 
@@ -116,7 +116,7 @@ class ExchangeRateTest {
         @Test
         @DisplayName("KRW를 JPY로 변환할 때 100엔 단위를 반영한다")
         void converts_krw_to_jpy() {
-            // dealBasRate = 900.00 (100엔당)
+            // tts = 900.00 (100엔당)
             ExchangeRate rate =
                     ExchangeRate.of(CurrencyCode.JPY, new BigDecimal("900.00"), LocalDate.now(ZoneId.of("Asia/Seoul")));
 

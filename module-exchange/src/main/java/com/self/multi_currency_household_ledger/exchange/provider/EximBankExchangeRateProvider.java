@@ -70,23 +70,24 @@ public class EximBankExchangeRateProvider implements ExchangeRateProvider {
 
     private Optional<FetchedRate> mapToFetchedRate(Map<String, Object> item) {
         String curUnit = (String) item.get("cur_unit");
-        Object rawRate = item.get("deal_bas_r");
+        // tts = 전신환매도율
+        Object rawRate = item.get("tts");
 
         if (rawRate == null) {
-            log.warn("deal_bas_r is null. cur_unit={}", curUnit);
+            log.warn("tts is null. cur_unit={}", curUnit);
             return Optional.empty();
         }
 
         try {
             BigDecimal rate = new BigDecimal(rawRate.toString().replace(",", ""));
             if (rate.signum() <= 0) {
-                log.warn("deal_bas_r is zero or negative. cur_unit={}, value={}", curUnit, rate);
+                log.warn("tts is zero or negative. cur_unit={}, value={}", curUnit, rate);
                 return Optional.empty();
             }
             CurrencyCode currencyCode = CurrencyCode.fromCode(curUnit);
             return Optional.of(new FetchedRate(currencyCode, rate));
         } catch (NumberFormatException e) {
-            log.warn("deal_bas_r is non-numeric. cur_unit={}, value={}", curUnit, rawRate);
+            log.warn("tts is non-numeric. cur_unit={}, value={}", curUnit, rawRate);
             return Optional.empty();
         }
     }

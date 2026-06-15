@@ -57,7 +57,7 @@ public class LedgerEntry extends BaseEntity {
     @Column(nullable = false, length = 10)
     private CurrencyCode currencyCode;
 
-    @Column(nullable = false, precision = 12, scale = 2)
+    @Column(nullable = false, precision = 19, scale = 6)
     private BigDecimal appliedRate;
 
     @Column
@@ -119,7 +119,7 @@ public class LedgerEntry extends BaseEntity {
         } else {
             // 외화 거래에는 서비스가 항상 비-null ExchangeRate를 주입한다. null은 호출자 프로그래밍 오류.
             Objects.requireNonNull(exchangeRate, "외화 거래에는 ExchangeRate가 필요합니다.");
-            appliedRate = exchangeRate.getDealBasRate();
+            appliedRate = exchangeRate.getTts();
             rateBaseDate = exchangeRate.getBaseDate();
             krwAmount = exchangeRate.convertToKrw(originalAmount);
         }

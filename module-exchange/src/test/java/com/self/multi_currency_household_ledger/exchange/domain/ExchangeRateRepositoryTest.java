@@ -44,7 +44,7 @@ class ExchangeRateRepositoryTest {
                     exchangeRateRepository.findByCurrencyCodeAndBaseDate(CurrencyCode.USD, DATE);
 
             assertThat(result).isPresent();
-            assertThat(result.get().getDealBasRate()).isEqualByComparingTo(new BigDecimal("1300.00"));
+            assertThat(result.get().getTts()).isEqualByComparingTo(new BigDecimal("1300.00"));
         }
 
         @Test
@@ -75,7 +75,7 @@ class ExchangeRateRepositoryTest {
 
             assertThat(result).isPresent();
             assertThat(result.get().getBaseDate()).isEqualTo(DATE);
-            assertThat(result.get().getDealBasRate()).isEqualByComparingTo(new BigDecimal("1310.00"));
+            assertThat(result.get().getTts()).isEqualByComparingTo(new BigDecimal("1310.00"));
         }
 
         @Test
@@ -131,6 +131,19 @@ class ExchangeRateRepositoryTest {
             assertThat(saved.getId()).isNotNull();
             assertThat(saved.getCreatedAt()).isNotNull();
             assertThat(saved.getUpdatedAt()).isNotNull();
+        }
+
+        @Test
+        @DisplayName("tts는 소수 6자리 정밀도로 저장한다")
+        void stores_tts_with_six_decimal_places() {
+            ExchangeRate saved =
+                    exchangeRateRepository.save(ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.123456"), DATE));
+            em.flush();
+            em.clear();
+
+            ExchangeRate found = exchangeRateRepository.findById(saved.getId()).orElseThrow();
+
+            assertThat(found.getTts()).isEqualByComparingTo(new BigDecimal("1300.123456"));
         }
     }
 }

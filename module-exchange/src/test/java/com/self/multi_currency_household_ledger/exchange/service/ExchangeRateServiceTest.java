@@ -82,7 +82,7 @@ class ExchangeRateServiceTest {
 
             ExchangeRate result = exchangeRateService.getRate(CurrencyCode.USD, DATE);
 
-            assertThat(result.getDealBasRate()).isEqualByComparingTo(new BigDecimal("1300.00"));
+            assertThat(result.getTts()).isEqualByComparingTo(new BigDecimal("1300.00"));
         }
 
         @Test

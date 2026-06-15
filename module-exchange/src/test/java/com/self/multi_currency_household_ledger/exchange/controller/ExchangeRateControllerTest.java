@@ -54,7 +54,7 @@ class ExchangeRateControllerTest {
                 .andExpect(jsonPath("$.data.length()").value(2))
                 .andExpect(jsonPath("$.data[0].currencyCode").value("USD"))
                 .andExpect(jsonPath("$.data[0].currencyName").value("미 달러"))
-                .andExpect(jsonPath("$.data[0].dealBasRate").value(1300.00))
+                .andExpect(jsonPath("$.data[0].tts").value(1300.00))
                 .andExpect(jsonPath("$.data[0].baseDate").value("2026-04-03"))
                 .andExpect(jsonPath("$.data[0].stale").value(false));
     }
@@ -71,7 +71,7 @@ class ExchangeRateControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.currencyCode").value("USD"))
-                .andExpect(jsonPath("$.data.dealBasRate").value(1300.00))
+                .andExpect(jsonPath("$.data.tts").value(1300.00))
                 .andExpect(jsonPath("$.data.stale").value(false));
     }
 

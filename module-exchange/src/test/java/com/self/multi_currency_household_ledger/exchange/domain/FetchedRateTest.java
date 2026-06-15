@@ -14,6 +14,6 @@ class FetchedRateTest {
         FetchedRate rate = new FetchedRate(CurrencyCode.USD, new BigDecimal("1300.00"));
 
         assertThat(rate.currencyCode()).isEqualTo(CurrencyCode.USD);
-        assertThat(rate.dealBasRate()).isEqualByComparingTo(new BigDecimal("1300.00"));
+        assertThat(rate.tts()).isEqualByComparingTo(new BigDecimal("1300.00"));
     }
 }

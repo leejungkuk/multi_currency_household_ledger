@@ -31,10 +31,10 @@ public class ExchangeRateService {
         List<FetchedRate> fetched = exchangeRateProvider.getExchangeRates(date);
 
         for (FetchedRate rate : fetched) {
-            ExchangeRate entity = ExchangeRate.of(rate.currencyCode(), rate.dealBasRate(), date);
+            ExchangeRate entity = ExchangeRate.of(rate.currencyCode(), rate.tts(), date);
             try {
                 exchangeRateRepository.saveAndFlush(entity);
-                log.info("환율 저장 완료: {} {} {}", entity.getCurrencyCode(), entity.getDealBasRate(), date);
+                log.info("환율 저장 완료: {} {} {}", entity.getCurrencyCode(), entity.getTts(), date);
             } catch (DataIntegrityViolationException e) {
                 log.debug("환율 이미 존재 (skip): {} {}", entity.getCurrencyCode(), date);
             }
