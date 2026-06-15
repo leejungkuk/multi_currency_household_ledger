@@ -3,6 +3,7 @@ package com.self.multi_currency_household_ledger.ledger.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 
@@ -59,8 +60,8 @@ class LedgerServiceTest {
 
     @BeforeEach
     void setUp() {
-        category = new Category(TransactionType.EXPENSE, "FOOD", "식비", "icon", 1, 1L);
-        asset = new Asset("CASH", "현금", "icon", 1, 1L);
+        category = new Category(TransactionType.EXPENSE, "FOOD", "식비", "icon", 1, Category.SYSTEM_OWNER_ID);
+        asset = new Asset("CASH", "현금", "icon", 1, Asset.SYSTEM_OWNER_ID);
     }
 
     // 원화 거래 시 환율 조회를 건너뛰는지 확인한다.
@@ -70,8 +71,10 @@ class LedgerServiceTest {
         CreateLedgerEntryRequest request = new CreateLedgerEntryRequest(
                 BigDecimal.valueOf(5000), CurrencyCode.KRW, 1L, 1L, LocalDate.now(ZoneId.of("Asia/Seoul")), "커피");
 
-        given(categoryRepository.findByIdAndOwnerMemberIdIn(any(), any())).willReturn(Optional.of(category));
-        given(assetRepository.findByIdAndOwnerMemberIdIn(any(), any())).willReturn(Optional.of(asset));
+        given(categoryRepository.findByIdAndOwnerMemberId(eq(1L), eq(Category.SYSTEM_OWNER_ID)))
+                .willReturn(Optional.of(category));
+        given(assetRepository.findByIdAndOwnerMemberId(eq(1L), eq(Asset.SYSTEM_OWNER_ID)))
+                .willReturn(Optional.of(asset));
         given(ledgerEntryRepository.save(any(LedgerEntry.class))).willAnswer(invocation -> invocation.getArgument(0));
 
         LedgerEntryResponse response = ledgerService.create(request, MEMBER_ID);
@@ -94,8 +97,10 @@ class LedgerServiceTest {
         ExchangeRate exchangeRate =
                 ExchangeRate.of(CurrencyCode.USD, BigDecimal.valueOf(1300), LocalDate.now(ZoneId.of("Asia/Seoul")));
 
-        given(categoryRepository.findByIdAndOwnerMemberIdIn(any(), any())).willReturn(Optional.of(category));
-        given(assetRepository.findByIdAndOwnerMemberIdIn(any(), any())).willReturn(Optional.of(asset));
+        given(categoryRepository.findByIdAndOwnerMemberId(eq(1L), eq(Category.SYSTEM_OWNER_ID)))
+                .willReturn(Optional.of(category));
+        given(assetRepository.findByIdAndOwnerMemberId(eq(1L), eq(Asset.SYSTEM_OWNER_ID)))
+                .willReturn(Optional.of(asset));
         given(exchangeRateService.getRateOnOrBefore(any(), any())).willReturn(exchangeRate);
         given(ledgerEntryRepository.save(any(LedgerEntry.class))).willAnswer(invocation -> invocation.getArgument(0));
 
@@ -118,8 +123,10 @@ class LedgerServiceTest {
                 LocalDate.now(ZoneId.of("Asia/Seoul")).plusDays(1),
                 "점심 식사");
 
-        given(categoryRepository.findByIdAndOwnerMemberIdIn(any(), any())).willReturn(Optional.of(category));
-        given(assetRepository.findByIdAndOwnerMemberIdIn(any(), any())).willReturn(Optional.of(asset));
+        given(categoryRepository.findByIdAndOwnerMemberId(eq(1L), eq(Category.SYSTEM_OWNER_ID)))
+                .willReturn(Optional.of(category));
+        given(assetRepository.findByIdAndOwnerMemberId(eq(1L), eq(Asset.SYSTEM_OWNER_ID)))
+                .willReturn(Optional.of(asset));
         given(exchangeRateService.getRateOnOrBefore(any(), any()))
                 .willReturn(ExchangeRate.of(
                         CurrencyCode.USD, BigDecimal.valueOf(1300), LocalDate.now(ZoneId.of("Asia/Seoul"))));

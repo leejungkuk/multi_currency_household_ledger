@@ -21,16 +21,19 @@ class CategoryRepositoryTest {
     @Autowired
     private CategoryRepository categoryRepository;
 
-    // 특정 회원의 활성화된 카테고리 목록을 조회한다.
+    // 공용 시스템 카탈로그의 활성화된 카테고리 목록을 조회한다.
     @Test
-    @DisplayName("소유자와 공통(0L) 소유의 활성화된 카테고리를 타입별로 조회할 수 있다")
-    void find_categories_by_type_and_owner() {
-        categoryRepository.save(new Category(TransactionType.EXPENSE, "FOOD", "식비", "icon-food", 1, 1L));
-        categoryRepository.save(new Category(TransactionType.INCOME, "SALARY", "급여", "icon-salary", 1, 0L));
+    @DisplayName("공용 시스템 소유의 활성화된 카테고리를 타입별로 조회할 수 있다")
+    void find_categories_by_type_and_system_owner() {
+        categoryRepository.save(
+                new Category(TransactionType.EXPENSE, "FOOD", "식비", "icon-food", 1, Category.SYSTEM_OWNER_ID));
+        categoryRepository.save(new Category(TransactionType.EXPENSE, "CUSTOM", "커스텀", "icon-custom", 2, 1L));
+        categoryRepository.save(
+                new Category(TransactionType.INCOME, "SALARY", "급여", "icon-salary", 1, Category.SYSTEM_OWNER_ID));
 
         List<Category> categories =
-                categoryRepository.findByTransactionTypeAndOwnerMemberIdInAndIsActiveTrueOrderBySortOrder(
-                        TransactionType.EXPENSE, List.of(0L, 1L));
+                categoryRepository.findByTransactionTypeAndOwnerMemberIdAndIsActiveTrueOrderBySortOrder(
+                        TransactionType.EXPENSE, Category.SYSTEM_OWNER_ID);
 
         assertThat(categories).hasSize(1);
         assertThat(categories.get(0).getCode()).isEqualTo("FOOD");

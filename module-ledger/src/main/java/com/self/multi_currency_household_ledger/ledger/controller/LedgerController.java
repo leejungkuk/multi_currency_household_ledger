@@ -1,5 +1,6 @@
 package com.self.multi_currency_household_ledger.ledger.controller;
 
+import com.self.multi_currency_household_ledger.common.annotation.CurrentMemberId;
 import com.self.multi_currency_household_ledger.common.dto.ApiResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.CreateLedgerEntryRequest;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerEntryResponse;
@@ -17,14 +18,12 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/ledgers")
 public class LedgerController {
 
-    private static final UUID TEMP_MEMBER_ID =
-            UUID.fromString("00000000-0000-0000-0000-000000000001"); // TODO: step 2에서 @CurrentMemberId로 교체
-
     private final LedgerService ledgerService;
 
     @PostMapping
-    public ApiResponse<LedgerEntryResponse> createLedgerEntry(@Valid @RequestBody CreateLedgerEntryRequest request) {
-        LedgerEntryResponse response = ledgerService.create(request, TEMP_MEMBER_ID);
+    public ApiResponse<LedgerEntryResponse> createLedgerEntry(
+            @CurrentMemberId UUID memberId, @Valid @RequestBody CreateLedgerEntryRequest request) {
+        LedgerEntryResponse response = ledgerService.create(request, memberId);
         return ApiResponse.success(response);
     }
 }
