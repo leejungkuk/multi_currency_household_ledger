@@ -1,0 +1,17 @@
+{
+  "description": "TDD toolkit — 테스트 없는 프로덕션 Java 편집 시 알림(비차단)",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/tdd_reminder.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

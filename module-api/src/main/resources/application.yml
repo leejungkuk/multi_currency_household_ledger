@@ -3,18 +3,20 @@ spring:
     include: secret
 
   datasource:
-    url: jdbc:mysql://localhost:3306/exchange_ledger?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul
-    driver-class-name: com.mysql.cj.jdbc.Driver
+    driver-class-name: org.postgresql.Driver
 
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
     properties:
       hibernate:
-        dialect: org.hibernate.dialect.MySQLDialect
+        dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
     show-sql: true
     open-in-view: false
+
+  flyway:
+    enabled: true
 
   jackson:
     time-zone: Asia/Seoul

@@ -1,0 +1,516 @@
+{
+    "components": {
+        "schemas": {
+            "ApiResponseExchangeRateResponse": {
+                "properties": {
+                    "code": {
+                        "type": "string"
+                    },
+                    "data": {
+                        "$ref": "#/components/schemas/ExchangeRateResponse"
+                    },
+                    "message": {
+                        "type": "string"
+                    },
+                    "success": {
+                        "type": "boolean"
+                    },
+                    "timestamp": {
+                        "format": "date-time",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "ApiResponseLedgerEntryResponse": {
+                "properties": {
+                    "code": {
+                        "type": "string"
+                    },
+                    "data": {
+                        "$ref": "#/components/schemas/LedgerEntryResponse"
+                    },
+                    "message": {
+                        "type": "string"
+                    },
+                    "success": {
+                        "type": "boolean"
+                    },
+                    "timestamp": {
+                        "format": "date-time",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "ApiResponseListAssetResponse": {
+                "properties": {
+                    "code": {
+                        "type": "string"
+                    },
+                    "data": {
+                        "items": {
+                            "$ref": "#/components/schemas/AssetResponse"
+                        },
+                        "type": "array"
+                    },
+                    "message": {
+                        "type": "string"
+                    },
+                    "success": {
+                        "type": "boolean"
+                    },
+                    "timestamp": {
+                        "format": "date-time",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "ApiResponseListCategoryResponse": {
+                "properties": {
+                    "code": {
+                        "type": "string"
+                    },
+                    "data": {
+                        "items": {
+                            "$ref": "#/components/schemas/CategoryResponse"
+                        },
+                        "type": "array"
+                    },
+                    "message": {
+                        "type": "string"
+                    },
+                    "success": {
+                        "type": "boolean"
+                    },
+                    "timestamp": {
+                        "format": "date-time",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "ApiResponseListExchangeRateResponse": {
+                "properties": {
+                    "code": {
+                        "type": "string"
+                    },
+                    "data": {
+                        "items": {
+                            "$ref": "#/components/schemas/ExchangeRateResponse"
+                        },
+                        "type": "array"
+                    },
+                    "message": {
+                        "type": "string"
+                    },
+                    "success": {
+                        "type": "boolean"
+                    },
+                    "timestamp": {
+                        "format": "date-time",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "ApiResponseVoid": {
+                "properties": {
+                    "code": {
+                        "type": "string"
+                    },
+                    "data": {
+                        "type": "object"
+                    },
+                    "message": {
+                        "type": "string"
+                    },
+                    "success": {
+                        "type": "boolean"
+                    },
+                    "timestamp": {
+                        "format": "date-time",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "AssetResponse": {
+                "properties": {
+                    "code": {
+                        "type": "string"
+                    },
+                    "displayName": {
+                        "type": "string"
+                    },
+                    "icon": {
+                        "type": "string"
+                    },
+                    "id": {
+                        "format": "int64",
+                        "type": "integer"
+                    },
+                    "sortOrder": {
+                        "format": "int32",
+                        "type": "integer"
+                    }
+                },
+                "type": "object"
+            },
+            "CategoryResponse": {
+                "properties": {
+                    "code": {
+                        "type": "string"
+                    },
+                    "displayName": {
+                        "type": "string"
+                    },
+                    "icon": {
+                        "type": "string"
+                    },
+                    "id": {
+                        "format": "int64",
+                        "type": "integer"
+                    },
+                    "sortOrder": {
+                        "format": "int32",
+                        "type": "integer"
+                    }
+                },
+                "type": "object"
+            },
+            "CreateLedgerEntryRequest": {
+                "properties": {
+                    "amount": {
+                        "type": "number"
+                    },
+                    "assetId": {
+                        "format": "int64",
+                        "type": "integer"
+                    },
+                    "categoryId": {
+                        "format": "int64",
+                        "type": "integer"
+                    },
+                    "currencyCode": {
+                        "enum": [
+                            "KRW",
+                            "USD",
+                            "EUR",
+                            "JPY",
+                            "CNY",
+                            "GBP"
+                        ],
+                        "type": "string"
+                    },
+                    "memo": {
+                        "maxLength": 255,
+                        "minLength": 0,
+                        "type": "string"
+                    },
+                    "transactionDate": {
+                        "format": "date",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "amount",
+                    "assetId",
+                    "categoryId",
+                    "currencyCode",
+                    "transactionDate"
+                ],
+                "type": "object"
+            },
+            "ExchangeRateResponse": {
+                "properties": {
+                    "baseDate": {
+                        "format": "date",
+                        "type": "string"
+                    },
+                    "currencyCode": {
+                        "enum": [
+                            "KRW",
+                            "USD",
+                            "EUR",
+                            "JPY",
+                            "CNY",
+                            "GBP"
+                        ],
+                        "type": "string"
+                    },
+                    "currencyName": {
+                        "type": "string"
+                    },
+                    "dealBasRate": {
+                        "type": "number"
+                    },
+                    "stale": {
+                        "type": "boolean"
+                    }
+                },
+                "type": "object"
+            },
+            "LedgerEntryResponse": {
+                "properties": {
+                    "appliedRate": {
+                        "type": "number"
+                    },
+                    "asset": {
+                        "$ref": "#/components/schemas/AssetResponse"
+                    },
+                    "category": {
+                        "$ref": "#/components/schemas/CategoryResponse"
+                    },
+                    "currencyCode": {
+                        "enum": [
+                            "KRW",
+                            "USD",
+                            "EUR",
+                            "JPY",
+                            "CNY",
+                            "GBP"
+                        ],
+                        "type": "string"
+                    },
+                    "id": {
+                        "format": "int64",
+                        "type": "integer"
+                    },
+                    "krwAmount": {
+                        "type": "number"
+                    },
+                    "memo": {
+                        "type": "string"
+                    },
+                    "originalAmount": {
+                        "type": "number"
+                    },
+                    "rateBaseDate": {
+                        "format": "date",
+                        "type": "string"
+                    },
+                    "transactionDate": {
+                        "format": "date",
+                        "type": "string"
+                    },
+                    "transactionType": {
+                        "enum": [
+                            "EXPENSE",
+                            "INCOME"
+                        ],
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            }
+        }
+    },
+    "info": {
+        "title": "OpenAPI definition",
+        "version": "v0"
+    },
+    "openapi": "3.0.1",
+    "paths": {
+        "/api/v1/assets": {
+            "get": {
+                "operationId": "getAssets",
+                "responses": {
+                    "200": {
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiResponseListAssetResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    }
+                },
+                "tags": [
+                    "catalog-controller"
+                ]
+            }
+        },
+        "/api/v1/categories": {
+            "get": {
+                "operationId": "getCategories",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "transactionType",
+                        "required": true,
+                        "schema": {
+                            "enum": [
+                                "EXPENSE",
+                                "INCOME"
+                            ],
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiResponseListCategoryResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    }
+                },
+                "tags": [
+                    "catalog-controller"
+                ]
+            }
+        },
+        "/api/v1/exchange-rates": {
+            "get": {
+                "operationId": "getRatesByDate",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "date",
+                        "required": true,
+                        "schema": {
+                            "format": "date",
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiResponseListExchangeRateResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    }
+                },
+                "tags": [
+                    "exchange-rate-controller"
+                ]
+            }
+        },
+        "/api/v1/exchange-rates/fetch": {
+            "post": {
+                "operationId": "fetchRates",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "date",
+                        "required": true,
+                        "schema": {
+                            "format": "date",
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiResponseVoid"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    }
+                },
+                "tags": [
+                    "exchange-rate-controller"
+                ]
+            }
+        },
+        "/api/v1/exchange-rates/{currencyCode}": {
+            "get": {
+                "operationId": "getRate",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "currencyCode",
+                        "required": true,
+                        "schema": {
+                            "enum": [
+                                "KRW",
+                                "USD",
+                                "EUR",
+                                "JPY",
+                                "CNY",
+                                "GBP"
+                            ],
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "in": "query",
+                        "name": "date",
+                        "required": false,
+                        "schema": {
+                            "format": "date",
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiResponseExchangeRateResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    }
+                },
+                "tags": [
+                    "exchange-rate-controller"
+                ]
+            }
+        },
+        "/api/v1/ledgers": {
+            "post": {
+                "operationId": "createLedgerEntry",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CreateLedgerEntryRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiResponseLedgerEntryResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    }
+                },
+                "tags": [
+                    "ledger-controller"
+                ]
+            }
+        }
+    },
+    "servers": [
+        {
+            "description": "Generated server url",
+            "url": "http://localhost:8080"
+        }
+    ]
+}

@@ -1,0 +1,9 @@
+{
+  "name": "tdd-toolkit",
+  "version": "0.1.0",
+  "description": "환율 가계부 프로젝트의 TDD 보조 도구. 프로덕션 Java 코드를 테스트 없이 편집하면 알려주는 hook과, 프로젝트 컨벤션(@Nested+한글 @DisplayName, AssertJ, BDDMockito, @DataJpaTest+실 MySQL, @WebMvcTest, WireMock)에 맞춰 단위/슬라이스 테스트를 작성하는 write-unit-test 스킬을 함께 제공한다.",
+  "author": {
+    "name": "leejungkuk",
+    "email": "siro5643@gmail.com"
+  }
+}

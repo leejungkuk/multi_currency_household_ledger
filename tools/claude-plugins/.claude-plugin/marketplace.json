@@ -1,0 +1,20 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "household-ledger-tools",
+  "description": "환율 가계부 프로젝트 내부용 Claude Code 플러그인 마켓플레이스",
+  "owner": {
+    "name": "leejungkuk",
+    "email": "siro5643@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "tdd-toolkit",
+      "description": "테스트 없는 프로덕션 편집 알림 hook + 프로젝트 컨벤션 기반 단위 테스트 작성 스킬",
+      "author": {
+        "name": "leejungkuk"
+      },
+      "category": "development",
+      "source": "./plugins/tdd-toolkit"
+    }
+  ]
+}

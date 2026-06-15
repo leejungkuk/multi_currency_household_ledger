@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/api/exchange-rates")
+@RequestMapping("/api/v1/exchange-rates")
 @RequiredArgsConstructor
 public class ExchangeRateController {
 

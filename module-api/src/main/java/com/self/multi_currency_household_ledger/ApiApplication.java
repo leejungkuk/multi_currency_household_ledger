@@ -6,7 +6,9 @@ import org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfi
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
-@SpringBootApplication(scanBasePackages = "com.self.multi_currency_household_ledger", exclude = SecurityAutoConfiguration.class)
+@SpringBootApplication(
+        scanBasePackages = "com.self.multi_currency_household_ledger",
+        exclude = SecurityAutoConfiguration.class)
 @EnableJpaAuditing
 @EnableScheduling
 public class ApiApplication {
@@ -14,5 +16,4 @@ public class ApiApplication {
     public static void main(String[] args) {
         SpringApplication.run(ApiApplication.class, args);
     }
-
 }

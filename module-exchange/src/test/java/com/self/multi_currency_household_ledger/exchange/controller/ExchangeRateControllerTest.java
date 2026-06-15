@@ -40,14 +40,14 @@ class ExchangeRateControllerTest {
     private static final LocalDate DATE = LocalDate.of(2026, 4, 3);
 
     @Test
-    @DisplayName("GET /api/exchange-rates?date= 특정 날짜 전체 환율을 ApiResponse 봉투로 반환한다")
+    @DisplayName("GET /api/v1/exchange-rates?date= 특정 날짜 전체 환율을 ApiResponse 봉투로 반환한다")
     void getRatesByDate_returns_all_rates() throws Exception {
         var rates = List.of(
                 ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), DATE),
                 ExchangeRate.of(CurrencyCode.EUR, new BigDecimal("1450.00"), DATE));
         given(exchangeRateService.getAllRatesByDate(DATE)).willReturn(rates);
 
-        mockMvc.perform(get("/api/exchange-rates").param("date", "2026-04-03"))
+        mockMvc.perform(get("/api/v1/exchange-rates").param("date", "2026-04-03"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.timestamp").exists())
@@ -60,14 +60,14 @@ class ExchangeRateControllerTest {
     }
 
     @Test
-    @DisplayName("GET /api/exchange-rates/{currencyCode} date 생략 시 최신 환율을 반환한다")
+    @DisplayName("GET /api/v1/exchange-rates/{currencyCode} date 생략 시 최신 환율을 반환한다")
     void getRate_returns_latest_when_date_omitted() throws Exception {
         // stale 판정 기준일이 KST 오늘이므로, 결정적 단언을 위해 기준일=오늘 환율을 반환
         LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
         var rate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), today);
         given(exchangeRateService.getLatestRate(CurrencyCode.USD)).willReturn(rate);
 
-        mockMvc.perform(get("/api/exchange-rates/USD"))
+        mockMvc.perform(get("/api/v1/exchange-rates/USD"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.currencyCode").value("USD"))
@@ -76,13 +76,13 @@ class ExchangeRateControllerTest {
     }
 
     @Test
-    @DisplayName("GET /api/exchange-rates/{currencyCode}?date= 지정일 환율을 조회하고 fallback이면 stale=true")
+    @DisplayName("GET /api/v1/exchange-rates/{currencyCode}?date= 지정일 환율을 조회하고 fallback이면 stale=true")
     void getRate_returns_rate_on_or_before_requested_date() throws Exception {
         var rate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), DATE);
         given(exchangeRateService.getRateOnOrBefore(CurrencyCode.USD, LocalDate.of(2026, 4, 5)))
                 .willReturn(rate);
 
-        mockMvc.perform(get("/api/exchange-rates/USD").param("date", "2026-04-05"))
+        mockMvc.perform(get("/api/v1/exchange-rates/USD").param("date", "2026-04-05"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.baseDate").value("2026-04-03"))
@@ -92,31 +92,31 @@ class ExchangeRateControllerTest {
     @Test
     @DisplayName("지원하지 않는 통화 코드로 요청하면 400을 반환한다")
     void getLatestRate_returns_400_for_invalid_currency() throws Exception {
-        mockMvc.perform(get("/api/exchange-rates/INVALID")).andExpect(status().isBadRequest());
+        mockMvc.perform(get("/api/v1/exchange-rates/INVALID")).andExpect(status().isBadRequest());
     }
 
     @Test
     @DisplayName("date 파라미터 형식이 잘못되면 400과 ErrorResponse(봉투 아님)를 반환한다")
     void getRate_returns_400_for_invalid_date_format() throws Exception {
-        mockMvc.perform(get("/api/exchange-rates/USD").param("date", "not-a-date"))
+        mockMvc.perform(get("/api/v1/exchange-rates/USD").param("date", "not-a-date"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value("INVALID_PARAMETER"));
     }
 
     @Test
-    @DisplayName("GET /api/exchange-rates date 형식이 잘못되면 400과 ErrorResponse를 반환한다")
+    @DisplayName("GET /api/v1/exchange-rates date 형식이 잘못되면 400과 ErrorResponse를 반환한다")
     void getRatesByDate_returns_400_for_invalid_date_format() throws Exception {
-        mockMvc.perform(get("/api/exchange-rates").param("date", "20260403"))
+        mockMvc.perform(get("/api/v1/exchange-rates").param("date", "20260403"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value("INVALID_PARAMETER"));
     }
 
     @Test
-    @DisplayName("POST /api/exchange-rates/fetch 환율 가져오기를 트리거한다")
+    @DisplayName("POST /api/v1/exchange-rates/fetch 환율 가져오기를 트리거한다")
     void fetchRates_triggers_fetch() throws Exception {
-        mockMvc.perform(post("/api/exchange-rates/fetch").param("date", "2026-04-03"))
+        mockMvc.perform(post("/api/v1/exchange-rates/fetch").param("date", "2026-04-03"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true));
 
@@ -129,7 +129,7 @@ class ExchangeRateControllerTest {
         given(exchangeRateService.getLatestRate(CurrencyCode.GBP))
                 .willThrow(new BusinessException(ExchangeErrorCode.EXCHANGE_RATE_NOT_FOUND));
 
-        mockMvc.perform(get("/api/exchange-rates/GBP"))
+        mockMvc.perform(get("/api/v1/exchange-rates/GBP"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("EXCHANGE_RATE_NOT_FOUND"));
     }
