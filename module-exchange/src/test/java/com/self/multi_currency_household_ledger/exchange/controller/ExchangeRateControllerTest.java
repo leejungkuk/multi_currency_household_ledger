@@ -14,6 +14,7 @@ import com.self.multi_currency_household_ledger.exchange.exception.ExchangeError
 import com.self.multi_currency_household_ledger.exchange.service.ExchangeRateService;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
@@ -22,6 +23,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.data.jpa.mapping.JpaMetamodelMappingContext;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(controllers = ExchangeRateController.class)
@@ -38,6 +40,7 @@ class ExchangeRateControllerTest {
     private JpaMetamodelMappingContext jpaMetamodelMappingContext;
 
     private static final LocalDate DATE = LocalDate.of(2026, 4, 3);
+    private static final LocalDateTime FETCHED_AT = LocalDateTime.of(2026, 4, 3, 11, 5);
 
     @Test
     @DisplayName("GET /api/v1/exchange-rates?date= 특정 날짜 전체 환율을 ApiResponse 봉투로 반환한다")
@@ -90,6 +93,26 @@ class ExchangeRateControllerTest {
     }
 
     @Test
+    @DisplayName("GET /api/v1/exchange-rates/status 는 통화별 수집 상태와 last_updated만 반환한다")
+    void getStatus_returns_currency_status_without_stale_flags() throws Exception {
+        var usd = exchangeRate(CurrencyCode.USD, "1300.00", DATE, FETCHED_AT);
+        var eur = exchangeRate(CurrencyCode.EUR, "1450.00", DATE.minusDays(1), FETCHED_AT.plusMinutes(1));
+        given(exchangeRateService.getLatestRatesByCurrency()).willReturn(List.of(usd, eur));
+
+        mockMvc.perform(get("/api/v1/exchange-rates/status"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.rates.length()").value(2))
+                .andExpect(jsonPath("$.data.rates[0].currency_code").value("USD"))
+                .andExpect(jsonPath("$.data.rates[0].base_date").value("2026-04-03"))
+                .andExpect(jsonPath("$.data.rates[0].fetched_at").value("2026-04-03T11:05:00"))
+                .andExpect(jsonPath("$.data.last_updated").value("2026-04-03T11:06:00"))
+                .andExpect(jsonPath("$.data.rates[0].stale").doesNotExist())
+                .andExpect(jsonPath("$.data.rates[0].fallbackStale").doesNotExist())
+                .andExpect(jsonPath("$.data.rates[0].fallback_stale").doesNotExist());
+    }
+
+    @Test
     @DisplayName("지원하지 않는 통화 코드로 요청하면 400을 반환한다")
     void getLatestRate_returns_400_for_invalid_currency() throws Exception {
         mockMvc.perform(get("/api/v1/exchange-rates/INVALID")).andExpect(status().isBadRequest());
@@ -132,5 +155,12 @@ class ExchangeRateControllerTest {
         mockMvc.perform(get("/api/v1/exchange-rates/GBP"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("EXCHANGE_RATE_NOT_FOUND"));
+    }
+
+    private static ExchangeRate exchangeRate(
+            CurrencyCode currencyCode, String tts, LocalDate baseDate, LocalDateTime fetchedAt) {
+        ExchangeRate rate = ExchangeRate.of(currencyCode, new BigDecimal(tts), baseDate);
+        ReflectionTestUtils.setField(rate, "createdAt", fetchedAt);
+        return rate;
     }
 }

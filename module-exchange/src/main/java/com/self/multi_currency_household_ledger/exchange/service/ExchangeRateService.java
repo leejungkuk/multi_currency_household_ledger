@@ -75,4 +75,9 @@ public class ExchangeRateService {
         ExchangeRate.assertNotFuture(date);
         return exchangeRateRepository.findByBaseDate(date);
     }
+
+    @Transactional(readOnly = true)
+    public List<ExchangeRate> getLatestRatesByCurrency() {
+        return exchangeRateRepository.findLatestRatesByCurrency();
+    }
 }

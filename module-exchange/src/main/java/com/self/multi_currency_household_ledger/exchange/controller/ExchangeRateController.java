@@ -4,6 +4,7 @@ import com.self.multi_currency_household_ledger.common.dto.ApiResponse;
 import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
 import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRate;
 import com.self.multi_currency_household_ledger.exchange.dto.ExchangeRateResponse;
+import com.self.multi_currency_household_ledger.exchange.dto.ExchangeRateStatusResponse;
 import com.self.multi_currency_household_ledger.exchange.service.ExchangeRateService;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -46,8 +47,14 @@ public class ExchangeRateController {
         return ApiResponse.success(ExchangeRateResponse.from(rate, effectiveDate));
     }
 
+    @GetMapping("/status")
+    public ApiResponse<ExchangeRateStatusResponse> getStatus() {
+        return ApiResponse.success(ExchangeRateStatusResponse.from(exchangeRateService.getLatestRatesByCurrency()));
+    }
+
+    /** 내부 운영/스케줄러용 환율 수집 트리거. 사용자 설정 화면 계약에서는 사용하지 않는다. */
     @PostMapping("/fetch")
-    public ApiResponse<Void> fetchRates(
+    public ApiResponse<Void> fetchRatesForScheduler(
             @RequestParam("date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
         exchangeRateService.fetchAndSaveRates(date);
         return ApiResponse.success(null);

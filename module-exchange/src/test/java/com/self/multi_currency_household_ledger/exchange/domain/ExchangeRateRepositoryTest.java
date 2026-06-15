@@ -86,6 +86,25 @@ class ExchangeRateRepositoryTest {
 
             assertThat(result).isEmpty();
         }
+
+        @Test
+        @DisplayName("통화별 가장 최신 기준일의 환율만 조회한다")
+        void returns_latest_rates_by_currency() {
+            em.persist(ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1290.00"), DATE.minusDays(1)));
+            em.persist(ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), DATE));
+            em.persist(ExchangeRate.of(CurrencyCode.EUR, new BigDecimal("1440.00"), DATE.minusDays(2)));
+            em.persist(ExchangeRate.of(CurrencyCode.EUR, new BigDecimal("1450.00"), DATE.minusDays(1)));
+            em.flush();
+
+            List<ExchangeRate> result = exchangeRateRepository.findLatestRatesByCurrency();
+
+            assertThat(result)
+                    .hasSize(2)
+                    .extracting(ExchangeRate::getCurrencyCode, ExchangeRate::getBaseDate)
+                    .containsExactlyInAnyOrder(
+                            org.assertj.core.groups.Tuple.tuple(CurrencyCode.USD, DATE),
+                            org.assertj.core.groups.Tuple.tuple(CurrencyCode.EUR, DATE.minusDays(1)));
+        }
     }
 
     @Nested

@@ -194,4 +194,22 @@ class ExchangeRateServiceTest {
             verify(exchangeRateRepository, never()).findByBaseDate(any());
         }
     }
+
+    @Nested
+    @DisplayName("getLatestRatesByCurrency()")
+    class GetLatestRatesByCurrency {
+
+        @Test
+        @DisplayName("Repository의 통화별 최신 환율 목록을 반환한다")
+        void returns_latest_rates_by_currency() {
+            var rates = List.of(
+                    ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), DATE),
+                    ExchangeRate.of(CurrencyCode.EUR, new BigDecimal("1450.00"), DATE.minusDays(1)));
+            given(exchangeRateRepository.findLatestRatesByCurrency()).willReturn(rates);
+
+            List<ExchangeRate> result = exchangeRateService.getLatestRatesByCurrency();
+
+            assertThat(result).containsExactlyElementsOf(rates);
+        }
+    }
 }
