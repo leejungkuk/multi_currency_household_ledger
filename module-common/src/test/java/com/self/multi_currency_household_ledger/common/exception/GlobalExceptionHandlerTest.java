@@ -3,6 +3,8 @@ package com.self.multi_currency_household_ledger.common.exception;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.self.multi_currency_household_ledger.common.dto.ErrorResponse;
+import jakarta.validation.ConstraintViolationException;
+import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -61,5 +63,17 @@ class GlobalExceptionHandlerTest {
         ErrorResponse body = response.getBody();
         assertThat(body).isNotNull();
         assertThat(body.code()).isEqualTo("INTERNAL_ERROR");
+    }
+
+    @Test
+    @DisplayName("ConstraintViolationException은 400 + VALIDATION_ERROR 봉투로 변환된다")
+    void handleConstraintViolationException_returns_400_validation_error() {
+        ResponseEntity<ErrorResponse> response =
+                handler.handleConstraintViolationException(new ConstraintViolationException(Set.of()));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        ErrorResponse body = response.getBody();
+        assertThat(body).isNotNull();
+        assertThat(body.code()).isEqualTo("VALIDATION_ERROR");
     }
 }

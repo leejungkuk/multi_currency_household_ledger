@@ -64,6 +64,27 @@
                 },
                 "type": "object"
             },
+            "ApiResponseLedgerMonthlySummaryResponse": {
+                "properties": {
+                    "code": {
+                        "type": "string"
+                    },
+                    "data": {
+                        "$ref": "#/components/schemas/LedgerMonthlySummaryResponse"
+                    },
+                    "message": {
+                        "type": "string"
+                    },
+                    "success": {
+                        "type": "boolean"
+                    },
+                    "timestamp": {
+                        "format": "date-time",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
             "ApiResponseListAssetResponse": {
                 "properties": {
                     "code": {
@@ -120,6 +141,30 @@
                     "data": {
                         "items": {
                             "$ref": "#/components/schemas/ExchangeRateResponse"
+                        },
+                        "type": "array"
+                    },
+                    "message": {
+                        "type": "string"
+                    },
+                    "success": {
+                        "type": "boolean"
+                    },
+                    "timestamp": {
+                        "format": "date-time",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "ApiResponseListLedgerEntryResponse": {
+                "properties": {
+                    "code": {
+                        "type": "string"
+                    },
+                    "data": {
+                        "items": {
+                            "$ref": "#/components/schemas/LedgerEntryResponse"
                         },
                         "type": "array"
                     },
@@ -204,6 +249,8 @@
             "CreateLedgerEntryRequest": {
                 "properties": {
                     "amount": {
+                        "exclusiveMaximum": false,
+                        "maximum": 99999999.0,
                         "type": "number"
                     },
                     "assetId": {
@@ -361,6 +408,20 @@
                             "INCOME"
                         ],
                         "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "LedgerMonthlySummaryResponse": {
+                "properties": {
+                    "expense": {
+                        "type": "number"
+                    },
+                    "income": {
+                        "type": "number"
+                    },
+                    "total": {
+                        "type": "number"
                     }
                 },
                 "type": "object"
@@ -557,6 +618,48 @@
             }
         },
         "/api/v1/ledgers": {
+            "get": {
+                "operationId": "getMonthlyEntries",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "year",
+                        "required": true,
+                        "schema": {
+                            "format": "int32",
+                            "maximum": 9999,
+                            "minimum": 1900,
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "in": "query",
+                        "name": "month",
+                        "required": true,
+                        "schema": {
+                            "format": "int32",
+                            "maximum": 12,
+                            "minimum": 1,
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiResponseListLedgerEntryResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    }
+                },
+                "tags": [
+                    "ledger-controller"
+                ]
+            },
             "post": {
                 "operationId": "createLedgerEntry",
                 "requestBody": {
@@ -575,6 +678,50 @@
                             "*/*": {
                                 "schema": {
                                     "$ref": "#/components/schemas/ApiResponseLedgerEntryResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    }
+                },
+                "tags": [
+                    "ledger-controller"
+                ]
+            }
+        },
+        "/api/v1/ledgers/summary": {
+            "get": {
+                "operationId": "getMonthlySummary",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "year",
+                        "required": true,
+                        "schema": {
+                            "format": "int32",
+                            "maximum": 9999,
+                            "minimum": 1900,
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "in": "query",
+                        "name": "month",
+                        "required": true,
+                        "schema": {
+                            "format": "int32",
+                            "maximum": 12,
+                            "minimum": 1,
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiResponseLedgerMonthlySummaryResponse"
                                 }
                             }
                         },

@@ -72,6 +72,22 @@ class LedgerEntryTest {
                 .isInstanceOf(BusinessException.class);
     }
 
+    @Test
+    @DisplayName("금액이 99,999,999를 초과하면 예외가 발생한다")
+    void create_ledger_entry_fails_when_amount_exceeds_maximum() {
+        assertThatThrownBy(() -> LedgerEntry.of(
+                        MEMBER_ID,
+                        category,
+                        asset,
+                        new BigDecimal("100000000.00"),
+                        CurrencyCode.KRW,
+                        TODAY,
+                        "큰 금액",
+                        null,
+                        FIXED_CLOCK))
+                .isInstanceOf(BusinessException.class);
+    }
+
     // 외화 거래 시 미래 날짜로 생성할 수 없는지 확인한다.
     @Test
     @DisplayName("외화 거래의 경우 미래 날짜로 생성할 수 없다")

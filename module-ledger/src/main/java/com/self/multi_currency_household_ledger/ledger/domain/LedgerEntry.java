@@ -32,6 +32,9 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class LedgerEntry extends BaseEntity {
 
+    private static final BigDecimal MAX_ORIGINAL_AMOUNT = new BigDecimal("99999999.00");
+    private static final int MAX_ORIGINAL_AMOUNT_SCALE = 2;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -51,7 +54,7 @@ public class LedgerEntry extends BaseEntity {
     @JoinColumn(name = "asset_id", nullable = false)
     private Asset asset;
 
-    @Column(nullable = false, precision = 15, scale = 2)
+    @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal originalAmount;
 
     @Enumerated(EnumType.STRING)
@@ -64,7 +67,7 @@ public class LedgerEntry extends BaseEntity {
     @Column
     private LocalDate rateBaseDate;
 
-    @Column(nullable = false, precision = 15, scale = 2)
+    @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal krwAmount;
 
     @Column(nullable = false)
@@ -107,7 +110,7 @@ public class LedgerEntry extends BaseEntity {
             String memo,
             ExchangeRate exchangeRate,
             Clock clock) {
-        assertAmountPositive(originalAmount);
+        assertValidOriginalAmount(originalAmount);
         assertFutureDateOnlyKrw(currencyCode, transactionDate, clock);
 
         BigDecimal appliedRate;
@@ -157,8 +160,11 @@ public class LedgerEntry extends BaseEntity {
         return rateBaseDate == null || rateBaseDate.isBefore(applicableBaseDate);
     }
 
-    private static void assertAmountPositive(BigDecimal amount) {
-        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+    private static void assertValidOriginalAmount(BigDecimal amount) {
+        if (amount == null
+                || amount.compareTo(BigDecimal.ZERO) <= 0
+                || amount.compareTo(MAX_ORIGINAL_AMOUNT) > 0
+                || amount.scale() > MAX_ORIGINAL_AMOUNT_SCALE) {
             throw new BusinessException(LedgerErrorCode.INVALID_AMOUNT);
         }
     }

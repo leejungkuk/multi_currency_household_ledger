@@ -3,6 +3,7 @@ package com.self.multi_currency_household_ledger.ledger.controller;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -15,6 +16,7 @@ import com.self.multi_currency_household_ledger.ledger.dto.AssetResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.CategoryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.CreateLedgerEntryRequest;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerEntryResponse;
+import com.self.multi_currency_household_ledger.ledger.dto.LedgerMonthlySummaryResponse;
 import com.self.multi_currency_household_ledger.ledger.service.LedgerService;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -93,6 +95,67 @@ class LedgerControllerTest {
         mockMvc.perform(post("/api/v1/ledgers")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    @DisplayName("월 요약을 조회한다")
+    void get_monthly_summary_success() throws Exception {
+        LedgerMonthlySummaryResponse response =
+                new LedgerMonthlySummaryResponse(new BigDecimal("3000.00"), new BigDecimal("1200.00"));
+
+        given(ledgerService.getMonthlySummary(MEMBER_ID, 2026, 4)).willReturn(response);
+
+        mockMvc.perform(get("/api/v1/ledgers/summary").param("year", "2026").param("month", "4"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.income").value(3000.00))
+                .andExpect(jsonPath("$.data.expense").value(1200.00))
+                .andExpect(jsonPath("$.data.total").value(1800.00));
+    }
+
+    @Test
+    @DisplayName("월 거래 목록을 조회한다")
+    void get_monthly_entries_success() throws Exception {
+        CategoryResponse categoryResponse = new CategoryResponse(1L, "FOOD", "식비", "icon-food", 1);
+        AssetResponse assetResponse = new AssetResponse(1L, "CASH", "현금", "icon-cash", 1);
+        LedgerEntryResponse response = new LedgerEntryResponse(
+                1L,
+                TransactionType.EXPENSE,
+                categoryResponse,
+                assetResponse,
+                BigDecimal.valueOf(5000),
+                CurrencyCode.KRW,
+                BigDecimal.ONE,
+                BigDecimal.valueOf(5000),
+                null,
+                LocalDate.of(2026, 4, 6),
+                "커피");
+
+        given(ledgerService.getMonthlyEntries(MEMBER_ID, 2026, 4)).willReturn(List.of(response));
+
+        mockMvc.perform(get("/api/v1/ledgers").param("year", "2026").param("month", "4"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data[0].id").value(1L))
+                .andExpect(jsonPath("$.data[0].memo").value("커피"));
+    }
+
+    @Test
+    @DisplayName("월 요약에 범위를 벗어난 month를 주면 400 VALIDATION_ERROR를 반환한다")
+    void get_monthly_summary_fails_when_month_out_of_range() throws Exception {
+        mockMvc.perform(get("/api/v1/ledgers/summary").param("year", "2026").param("month", "13"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    @DisplayName("월 거래 목록에 범위를 벗어난 month를 주면 400 VALIDATION_ERROR를 반환한다")
+    void get_monthly_entries_fails_when_month_out_of_range() throws Exception {
+        mockMvc.perform(get("/api/v1/ledgers").param("year", "2026").param("month", "0"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));

@@ -20,12 +20,14 @@ import com.self.multi_currency_household_ledger.ledger.domain.LedgerEntryReposit
 import com.self.multi_currency_household_ledger.ledger.domain.TransactionType;
 import com.self.multi_currency_household_ledger.ledger.dto.CreateLedgerEntryRequest;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerEntryResponse;
+import com.self.multi_currency_household_ledger.ledger.dto.LedgerMonthlySummaryResponse;
 import com.self.multi_currency_household_ledger.ledger.exception.LedgerErrorCode;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -35,6 +37,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Pageable;
 
 @ExtendWith(MockitoExtension.class)
 class LedgerServiceTest {
@@ -133,5 +136,45 @@ class LedgerServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getCode())
                 .isEqualTo(LedgerErrorCode.INVALID_FUTURE_DATE.getCode());
+    }
+
+    @Test
+    @DisplayName("월 요약은 member_id와 월 범위로 수입, 지출, 순액을 계산한다")
+    void get_monthly_summary_calculates_income_expense_and_net_total() {
+        LocalDate startDate = LocalDate.of(2026, 4, 1);
+        LocalDate endDate = LocalDate.of(2026, 5, 1);
+        given(ledgerEntryRepository.sumKrwAmountByMemberIdAndTransactionTypeAndTransactionDateRange(
+                        MEMBER_ID, TransactionType.INCOME, startDate, endDate))
+                .willReturn(new BigDecimal("3000.00"));
+        given(ledgerEntryRepository.sumKrwAmountByMemberIdAndTransactionTypeAndTransactionDateRange(
+                        MEMBER_ID, TransactionType.EXPENSE, startDate, endDate))
+                .willReturn(new BigDecimal("1200.00"));
+
+        LedgerMonthlySummaryResponse response = ledgerService.getMonthlySummary(MEMBER_ID, 2026, 4);
+
+        assertThat(response.income()).isEqualByComparingTo(new BigDecimal("3000.00"));
+        assertThat(response.expense()).isEqualByComparingTo(new BigDecimal("1200.00"));
+        assertThat(response.total()).isEqualByComparingTo(new BigDecimal("1800.00"));
+    }
+
+    @Test
+    @DisplayName("월 거래 목록은 member_id와 월 범위, 서버 하드 캡으로 조회한다")
+    void get_monthly_entries_uses_member_period_and_hard_cap() {
+        LocalDate startDate = LocalDate.of(2026, 4, 1);
+        LocalDate endDate = LocalDate.of(2026, 5, 1);
+        given(ledgerEntryRepository
+                        .findByMemberIdAndTransactionDateGreaterThanEqualAndTransactionDateLessThanOrderByTransactionDateDescIdDesc(
+                                eq(MEMBER_ID), eq(startDate), eq(endDate), any(Pageable.class)))
+                .willReturn(List.of());
+
+        List<LedgerEntryResponse> responses = ledgerService.getMonthlyEntries(MEMBER_ID, 2026, 4);
+
+        assertThat(responses).isEmpty();
+        ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+        then(ledgerEntryRepository)
+                .should()
+                .findByMemberIdAndTransactionDateGreaterThanEqualAndTransactionDateLessThanOrderByTransactionDateDescIdDesc(
+                        eq(MEMBER_ID), eq(startDate), eq(endDate), pageableCaptor.capture());
+        assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(500);
     }
 }
