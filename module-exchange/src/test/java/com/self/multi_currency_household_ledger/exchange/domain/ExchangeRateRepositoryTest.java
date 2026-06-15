@@ -44,7 +44,7 @@ class ExchangeRateRepositoryTest {
                     exchangeRateRepository.findByCurrencyCodeAndBaseDate(CurrencyCode.USD, DATE);
 
             assertThat(result).isPresent();
-            assertThat(result.get().getDealBasRate()).isEqualByComparingTo(new BigDecimal("1300.00"));
+            assertThat(result.get().getTts()).isEqualByComparingTo(new BigDecimal("1300.00"));
         }
 
         @Test
@@ -75,7 +75,7 @@ class ExchangeRateRepositoryTest {
 
             assertThat(result).isPresent();
             assertThat(result.get().getBaseDate()).isEqualTo(DATE);
-            assertThat(result.get().getDealBasRate()).isEqualByComparingTo(new BigDecimal("1310.00"));
+            assertThat(result.get().getTts()).isEqualByComparingTo(new BigDecimal("1310.00"));
         }
 
         @Test
@@ -85,6 +85,25 @@ class ExchangeRateRepositoryTest {
                     exchangeRateRepository.findTopByCurrencyCodeOrderByBaseDateDesc(CurrencyCode.GBP);
 
             assertThat(result).isEmpty();
+        }
+
+        @Test
+        @DisplayName("통화별 가장 최신 기준일의 환율만 조회한다")
+        void returns_latest_rates_by_currency() {
+            em.persist(ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1290.00"), DATE.minusDays(1)));
+            em.persist(ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), DATE));
+            em.persist(ExchangeRate.of(CurrencyCode.EUR, new BigDecimal("1440.00"), DATE.minusDays(2)));
+            em.persist(ExchangeRate.of(CurrencyCode.EUR, new BigDecimal("1450.00"), DATE.minusDays(1)));
+            em.flush();
+
+            List<ExchangeRate> result = exchangeRateRepository.findLatestRatesByCurrency();
+
+            assertThat(result)
+                    .hasSize(2)
+                    .extracting(ExchangeRate::getCurrencyCode, ExchangeRate::getBaseDate)
+                    .containsExactlyInAnyOrder(
+                            org.assertj.core.groups.Tuple.tuple(CurrencyCode.USD, DATE),
+                            org.assertj.core.groups.Tuple.tuple(CurrencyCode.EUR, DATE.minusDays(1)));
         }
     }
 
@@ -131,6 +150,19 @@ class ExchangeRateRepositoryTest {
             assertThat(saved.getId()).isNotNull();
             assertThat(saved.getCreatedAt()).isNotNull();
             assertThat(saved.getUpdatedAt()).isNotNull();
+        }
+
+        @Test
+        @DisplayName("tts는 소수 6자리 정밀도로 저장한다")
+        void stores_tts_with_six_decimal_places() {
+            ExchangeRate saved =
+                    exchangeRateRepository.save(ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.123456"), DATE));
+            em.flush();
+            em.clear();
+
+            ExchangeRate found = exchangeRateRepository.findById(saved.getId()).orElseThrow();
+
+            assertThat(found.getTts()).isEqualByComparingTo(new BigDecimal("1300.123456"));
         }
     }
 }

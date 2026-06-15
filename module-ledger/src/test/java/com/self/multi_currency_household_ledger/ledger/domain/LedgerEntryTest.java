@@ -7,6 +7,8 @@ import com.self.multi_currency_household_ledger.common.exception.BusinessExcepti
 import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
 import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRate;
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.UUID;
@@ -17,6 +19,9 @@ import org.junit.jupiter.api.Test;
 class LedgerEntryTest {
 
     private static final UUID MEMBER_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
+    private static final LocalDate TODAY = LocalDate.of(2026, 4, 6);
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
+    private static final Clock FIXED_CLOCK = Clock.fixed(Instant.parse("2026-04-05T15:00:00Z"), KST);
 
     private Category category;
     private Asset asset;
@@ -31,17 +36,17 @@ class LedgerEntryTest {
     @Test
     @DisplayName("정상적인 데이터로 가계부 내역을 생성할 수 있다")
     void create_ledger_entry_success() {
-        ExchangeRate exchangeRate =
-                ExchangeRate.of(CurrencyCode.USD, BigDecimal.valueOf(1300), LocalDate.now(ZoneId.of("Asia/Seoul")));
+        ExchangeRate exchangeRate = ExchangeRate.of(CurrencyCode.USD, BigDecimal.valueOf(1300), TODAY);
         LedgerEntry entry = LedgerEntry.of(
                 MEMBER_ID,
                 category,
                 asset,
                 BigDecimal.valueOf(100),
                 CurrencyCode.USD,
-                LocalDate.now(ZoneId.of("Asia/Seoul")),
+                TODAY,
                 "점심 식사",
-                exchangeRate);
+                exchangeRate,
+                FIXED_CLOCK);
 
         assertThat(entry.getOriginalAmount()).isEqualByComparingTo(BigDecimal.valueOf(100));
         assertThat(entry.getMemberId()).isEqualTo(MEMBER_ID);
@@ -53,17 +58,17 @@ class LedgerEntryTest {
     @Test
     @DisplayName("금액이 0 이하일 경우 예외가 발생한다")
     void create_ledger_entry_fails_when_amount_is_zero_or_negative() {
-        ExchangeRate exchangeRate =
-                ExchangeRate.of(CurrencyCode.USD, BigDecimal.valueOf(1300), LocalDate.now(ZoneId.of("Asia/Seoul")));
+        ExchangeRate exchangeRate = ExchangeRate.of(CurrencyCode.USD, BigDecimal.valueOf(1300), TODAY);
         assertThatThrownBy(() -> LedgerEntry.of(
                         MEMBER_ID,
                         category,
                         asset,
                         BigDecimal.ZERO,
                         CurrencyCode.USD,
-                        LocalDate.now(ZoneId.of("Asia/Seoul")),
+                        TODAY,
                         "점심 식사",
-                        exchangeRate))
+                        exchangeRate,
+                        FIXED_CLOCK))
                 .isInstanceOf(BusinessException.class);
     }
 
@@ -71,17 +76,85 @@ class LedgerEntryTest {
     @Test
     @DisplayName("외화 거래의 경우 미래 날짜로 생성할 수 없다")
     void create_ledger_entry_fails_when_future_date_for_foreign_currency() {
-        ExchangeRate exchangeRate =
-                ExchangeRate.of(CurrencyCode.USD, BigDecimal.valueOf(1300), LocalDate.now(ZoneId.of("Asia/Seoul")));
+        ExchangeRate exchangeRate = ExchangeRate.of(CurrencyCode.USD, BigDecimal.valueOf(1300), TODAY);
         assertThatThrownBy(() -> LedgerEntry.of(
                         MEMBER_ID,
                         category,
                         asset,
                         BigDecimal.valueOf(100),
                         CurrencyCode.USD,
-                        LocalDate.now(ZoneId.of("Asia/Seoul")).plusDays(1),
+                        TODAY.plusDays(1),
                         "점심 식사",
-                        exchangeRate))
+                        exchangeRate,
+                        FIXED_CLOCK))
                 .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    @DisplayName("외화 거래 재계산은 환율, 기준일, 원화 금액을 함께 갱신한다")
+    void recalculate_foreign_currency_updates_rate_snapshot_together() {
+        ExchangeRate oldRate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.000000"), TODAY.minusDays(1));
+        LedgerEntry entry = LedgerEntry.of(
+                MEMBER_ID,
+                category,
+                asset,
+                new BigDecimal("100.00"),
+                CurrencyCode.USD,
+                TODAY,
+                "점심 식사",
+                oldRate,
+                FIXED_CLOCK);
+
+        boolean recalculated = entry.recalculate(new BigDecimal("1320.000000"), TODAY);
+
+        assertThat(recalculated).isTrue();
+        assertThat(entry.getAppliedRate()).isEqualByComparingTo(new BigDecimal("1320.000000"));
+        assertThat(entry.getRateBaseDate()).isEqualTo(TODAY);
+        assertThat(entry.getKrwAmount()).isEqualByComparingTo(new BigDecimal("132000.00"));
+    }
+
+    @Test
+    @DisplayName("이미 적용 가능한 최신 기준일을 쓰는 외화 거래는 재계산하지 않는다")
+    void recalculate_foreign_currency_is_noop_when_base_date_is_current() {
+        ExchangeRate currentRate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1320.000000"), TODAY);
+        LedgerEntry entry = LedgerEntry.of(
+                MEMBER_ID,
+                category,
+                asset,
+                new BigDecimal("100.00"),
+                CurrencyCode.USD,
+                TODAY,
+                "점심 식사",
+                currentRate,
+                FIXED_CLOCK);
+
+        boolean recalculated = entry.recalculate(new BigDecimal("1320.000000"), TODAY);
+
+        assertThat(recalculated).isFalse();
+        assertThat(entry.getAppliedRate()).isEqualByComparingTo(new BigDecimal("1320.000000"));
+        assertThat(entry.getRateBaseDate()).isEqualTo(TODAY);
+        assertThat(entry.getKrwAmount()).isEqualByComparingTo(new BigDecimal("132000.00"));
+    }
+
+    @Test
+    @DisplayName("KRW 거래는 재계산 요청이 와도 불변이다")
+    void recalculate_krw_entry_is_noop() {
+        LedgerEntry entry = LedgerEntry.of(
+                MEMBER_ID,
+                category,
+                asset,
+                new BigDecimal("5000.00"),
+                CurrencyCode.KRW,
+                TODAY,
+                "커피",
+                null,
+                FIXED_CLOCK);
+
+        boolean recalculated = entry.recalculate(new BigDecimal("1320.000000"), TODAY);
+
+        assertThat(recalculated).isFalse();
+        assertThat(entry.getAppliedRate()).isEqualByComparingTo(BigDecimal.ONE);
+        assertThat(entry.getRateBaseDate()).isNull();
+        assertThat(entry.getKrwAmount()).isEqualByComparingTo(new BigDecimal("5000.00"));
     }
 }

@@ -13,17 +13,21 @@ import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
 import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRate;
 import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRateRepository;
 import com.self.multi_currency_household_ledger.exchange.domain.FetchedRate;
+import com.self.multi_currency_household_ledger.exchange.exception.ExchangeErrorCode;
 import com.self.multi_currency_household_ledger.exchange.provider.ExchangeRateProvider;
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -31,7 +35,6 @@ import org.springframework.dao.DataIntegrityViolationException;
 @ExtendWith(MockitoExtension.class)
 class ExchangeRateServiceTest {
 
-    @InjectMocks
     private ExchangeRateService exchangeRateService;
 
     @Mock
@@ -41,6 +44,13 @@ class ExchangeRateServiceTest {
     private ExchangeRateProvider exchangeRateProvider;
 
     private static final LocalDate DATE = LocalDate.of(2026, 4, 3);
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
+    private static final Clock FIXED_CLOCK = Clock.fixed(Instant.parse("2026-04-05T15:00:00Z"), KST);
+
+    @BeforeEach
+    void setUp() {
+        exchangeRateService = new ExchangeRateService(exchangeRateRepository, exchangeRateProvider, FIXED_CLOCK);
+    }
 
     @Nested
     @DisplayName("fetchAndSaveRates()")
@@ -52,8 +62,9 @@ class ExchangeRateServiceTest {
             given(exchangeRateProvider.getExchangeRates(DATE))
                     .willReturn(List.of(new FetchedRate(CurrencyCode.USD, new BigDecimal("1300.00"))));
 
-            exchangeRateService.fetchAndSaveRates(DATE);
+            boolean fetched = exchangeRateService.fetchAndSaveRates(DATE);
 
+            assertThat(fetched).isTrue();
             verify(exchangeRateRepository).saveAndFlush(any(ExchangeRate.class));
         }
 
@@ -66,6 +77,32 @@ class ExchangeRateServiceTest {
                     .willThrow(DataIntegrityViolationException.class);
 
             assertThatCode(() -> exchangeRateService.fetchAndSaveRates(DATE)).doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("일부 통화가 누락되어도 Provider가 반환한 나머지 통화는 저장한다")
+        void saves_remaining_rates_when_some_currencies_are_missing() {
+            given(exchangeRateProvider.getExchangeRates(DATE))
+                    .willReturn(List.of(new FetchedRate(CurrencyCode.EUR, new BigDecimal("1450.00"))));
+            ArgumentCaptor<ExchangeRate> captor = ArgumentCaptor.forClass(ExchangeRate.class);
+
+            boolean fetched = exchangeRateService.fetchAndSaveRates(DATE);
+
+            assertThat(fetched).isTrue();
+            verify(exchangeRateRepository).saveAndFlush(captor.capture());
+            assertThat(captor.getValue().getCurrencyCode()).isEqualTo(CurrencyCode.EUR);
+        }
+
+        @Test
+        @DisplayName("Provider 실패는 배경 수집 경로에서 전파하지 않고 저장을 건너뛴다")
+        void skips_when_provider_fails() {
+            given(exchangeRateProvider.getExchangeRates(DATE))
+                    .willThrow(new BusinessException(ExchangeErrorCode.EXCHANGE_API_LIMIT_EXCEEDED));
+
+            boolean fetched = exchangeRateService.fetchAndSaveRates(DATE);
+
+            assertThat(fetched).isFalse();
+            verify(exchangeRateRepository, never()).saveAndFlush(any(ExchangeRate.class));
         }
     }
 
@@ -82,7 +119,7 @@ class ExchangeRateServiceTest {
 
             ExchangeRate result = exchangeRateService.getRate(CurrencyCode.USD, DATE);
 
-            assertThat(result.getDealBasRate()).isEqualByComparingTo(new BigDecimal("1300.00"));
+            assertThat(result.getTts()).isEqualByComparingTo(new BigDecimal("1300.00"));
         }
 
         @Test
@@ -102,7 +139,7 @@ class ExchangeRateServiceTest {
         @Test
         @DisplayName("미래 날짜 조회 시 BusinessException을 던진다")
         void throws_for_future_date() {
-            LocalDate future = LocalDate.now(ZoneId.of("Asia/Seoul")).plusDays(1);
+            LocalDate future = DATE.plusDays(4);
 
             assertThatThrownBy(() -> exchangeRateService.getRate(CurrencyCode.USD, future))
                     .isInstanceOf(BusinessException.class);
@@ -160,12 +197,30 @@ class ExchangeRateServiceTest {
         @Test
         @DisplayName("미래 날짜 조회 시 BusinessException을 던진다")
         void throws_for_future_date() {
-            LocalDate future = LocalDate.now(ZoneId.of("Asia/Seoul")).plusDays(1);
+            LocalDate future = DATE.plusDays(4);
 
             assertThatThrownBy(() -> exchangeRateService.getAllRatesByDate(future))
                     .isInstanceOf(BusinessException.class);
 
             verify(exchangeRateRepository, never()).findByBaseDate(any());
+        }
+    }
+
+    @Nested
+    @DisplayName("getLatestRatesByCurrency()")
+    class GetLatestRatesByCurrency {
+
+        @Test
+        @DisplayName("Repository의 통화별 최신 환율 목록을 반환한다")
+        void returns_latest_rates_by_currency() {
+            var rates = List.of(
+                    ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), DATE),
+                    ExchangeRate.of(CurrencyCode.EUR, new BigDecimal("1450.00"), DATE.minusDays(1)));
+            given(exchangeRateRepository.findLatestRatesByCurrency()).willReturn(rates);
+
+            List<ExchangeRate> result = exchangeRateService.getLatestRatesByCurrency();
+
+            assertThat(result).containsExactlyElementsOf(rates);
         }
     }
 }

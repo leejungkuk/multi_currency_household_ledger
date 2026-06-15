@@ -13,7 +13,10 @@ import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRate;
 import com.self.multi_currency_household_ledger.exchange.exception.ExchangeErrorCode;
 import com.self.multi_currency_household_ledger.exchange.service.ExchangeRateService;
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
@@ -22,6 +25,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.data.jpa.mapping.JpaMetamodelMappingContext;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 
 @WebMvcTest(controllers = ExchangeRateController.class)
@@ -34,10 +38,16 @@ class ExchangeRateControllerTest {
     private ExchangeRateService exchangeRateService;
 
     @MockitoBean
+    private Clock clock;
+
+    @MockitoBean
     @SuppressWarnings("UnusedVariable") // 직접 참조하지 않지만 @WebMvcTest 컨텍스트 기동(JPA Auditing)에 필요한 주입 필드
     private JpaMetamodelMappingContext jpaMetamodelMappingContext;
 
     private static final LocalDate DATE = LocalDate.of(2026, 4, 3);
+    private static final LocalDate TODAY = LocalDate.of(2026, 4, 6);
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
+    private static final LocalDateTime FETCHED_AT = LocalDateTime.of(2026, 4, 3, 11, 5);
 
     @Test
     @DisplayName("GET /api/v1/exchange-rates?date= 특정 날짜 전체 환율을 ApiResponse 봉투로 반환한다")
@@ -54,7 +64,7 @@ class ExchangeRateControllerTest {
                 .andExpect(jsonPath("$.data.length()").value(2))
                 .andExpect(jsonPath("$.data[0].currencyCode").value("USD"))
                 .andExpect(jsonPath("$.data[0].currencyName").value("미 달러"))
-                .andExpect(jsonPath("$.data[0].dealBasRate").value(1300.00))
+                .andExpect(jsonPath("$.data[0].tts").value(1300.00))
                 .andExpect(jsonPath("$.data[0].baseDate").value("2026-04-03"))
                 .andExpect(jsonPath("$.data[0].stale").value(false));
     }
@@ -63,15 +73,16 @@ class ExchangeRateControllerTest {
     @DisplayName("GET /api/v1/exchange-rates/{currencyCode} date 생략 시 최신 환율을 반환한다")
     void getRate_returns_latest_when_date_omitted() throws Exception {
         // stale 판정 기준일이 KST 오늘이므로, 결정적 단언을 위해 기준일=오늘 환율을 반환
-        LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
-        var rate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), today);
+        given(clock.instant()).willReturn(Instant.parse("2026-04-05T15:00:00Z"));
+        given(clock.getZone()).willReturn(KST);
+        var rate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), TODAY);
         given(exchangeRateService.getLatestRate(CurrencyCode.USD)).willReturn(rate);
 
         mockMvc.perform(get("/api/v1/exchange-rates/USD"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.currencyCode").value("USD"))
-                .andExpect(jsonPath("$.data.dealBasRate").value(1300.00))
+                .andExpect(jsonPath("$.data.tts").value(1300.00))
                 .andExpect(jsonPath("$.data.stale").value(false));
     }
 
@@ -87,6 +98,26 @@ class ExchangeRateControllerTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.baseDate").value("2026-04-03"))
                 .andExpect(jsonPath("$.data.stale").value(true));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/exchange-rates/status 는 통화별 수집 상태와 last_updated만 반환한다")
+    void getStatus_returns_currency_status_without_stale_flags() throws Exception {
+        var usd = exchangeRate(CurrencyCode.USD, "1300.00", DATE, FETCHED_AT);
+        var eur = exchangeRate(CurrencyCode.EUR, "1450.00", DATE.minusDays(1), FETCHED_AT.plusMinutes(1));
+        given(exchangeRateService.getLatestRatesByCurrency()).willReturn(List.of(usd, eur));
+
+        mockMvc.perform(get("/api/v1/exchange-rates/status"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.rates.length()").value(2))
+                .andExpect(jsonPath("$.data.rates[0].currency_code").value("USD"))
+                .andExpect(jsonPath("$.data.rates[0].base_date").value("2026-04-03"))
+                .andExpect(jsonPath("$.data.rates[0].fetched_at").value("2026-04-03T11:05:00"))
+                .andExpect(jsonPath("$.data.last_updated").value("2026-04-03T11:06:00"))
+                .andExpect(jsonPath("$.data.rates[0].stale").doesNotExist())
+                .andExpect(jsonPath("$.data.rates[0].fallbackStale").doesNotExist())
+                .andExpect(jsonPath("$.data.rates[0].fallback_stale").doesNotExist());
     }
 
     @Test
@@ -132,5 +163,12 @@ class ExchangeRateControllerTest {
         mockMvc.perform(get("/api/v1/exchange-rates/GBP"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("EXCHANGE_RATE_NOT_FOUND"));
+    }
+
+    private static ExchangeRate exchangeRate(
+            CurrencyCode currencyCode, String tts, LocalDate baseDate, LocalDateTime fetchedAt) {
+        ExchangeRate rate = ExchangeRate.of(currencyCode, new BigDecimal(tts), baseDate);
+        ReflectionTestUtils.setField(rate, "createdAt", fetchedAt);
+        return rate;
     }
 }
