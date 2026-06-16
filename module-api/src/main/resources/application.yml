@@ -18,11 +18,24 @@ spring:
   flyway:
     enabled: true
 
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${SUPABASE_JWT_ISSUER_URI}
+
   jackson:
     time-zone: Asia/Seoul
 
 jwt:
   expiration: 3600000  # 1 hour
+
+woni:
+  security:
+    jwt:
+      audience: ${SUPABASE_JWT_AUDIENCE:authenticated}
+    cors:
+      allowed-origins: ${WONI_CORS_ALLOWED_ORIGINS:http://localhost:3000}
 
 exchange:
   eximbank:

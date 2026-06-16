@@ -6,9 +6,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface AssetRepository extends JpaRepository<Asset, Long> {
 
-    Optional<Asset> findByIdAndOwnerMemberIdIn(Long id, List<Long> ownerMemberIds);
+    Optional<Asset> findByIdAndOwnerMemberId(Long id, Long ownerMemberId);
 
-    List<Asset> findByOwnerMemberIdInAndIsActiveTrueOrderBySortOrder(List<Long> ownerMemberIds);
+    List<Asset> findByOwnerMemberIdAndIsActiveTrueOrderBySortOrder(Long ownerMemberId);
 
     boolean existsByOwnerMemberIdAndCode(Long ownerMemberId, String code);
 }

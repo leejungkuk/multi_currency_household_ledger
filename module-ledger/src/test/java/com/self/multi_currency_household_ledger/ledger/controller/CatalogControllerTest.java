@@ -1,11 +1,11 @@
 package com.self.multi_currency_household_ledger.ledger.controller;
 
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.self.multi_currency_household_ledger.ledger.domain.TransactionType;
 import com.self.multi_currency_household_ledger.ledger.dto.AssetResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.CategoryResponse;
 import com.self.multi_currency_household_ledger.ledger.service.CatalogService;
@@ -30,7 +30,7 @@ class CatalogControllerTest {
     @Test
     @DisplayName("거래 유형별 활성화된 카테고리 목록을 조회한다")
     void get_categories_success() throws Exception {
-        given(catalogService.getCategories(any(), any()))
+        given(catalogService.getCategories(TransactionType.EXPENSE))
                 .willReturn(List.of(new CategoryResponse(1L, "FOOD", "식비", "icon-food", 1)));
 
         mockMvc.perform(get("/api/v1/categories")
@@ -45,7 +45,7 @@ class CatalogControllerTest {
     @Test
     @DisplayName("활성화된 자산 목록을 조회한다")
     void get_assets_success() throws Exception {
-        given(catalogService.getAssets(any())).willReturn(List.of(new AssetResponse(1L, "CASH", "현금", "icon-cash", 1)));
+        given(catalogService.getAssets()).willReturn(List.of(new AssetResponse(1L, "CASH", "현금", "icon-cash", 1)));
 
         mockMvc.perform(get("/api/v1/assets").contentType(MediaType.APPLICATION_JSON))
                 .andExpect(status().isOk())
