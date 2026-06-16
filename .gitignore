@@ -38,6 +38,9 @@ out/
 ### calude ###
 .claude_v1_bak/
 .claudeignore
+### AI tools (실제 내용은 .ai-context 서브모듈 보관, 메인 레포엔 symlink만 추적) ###
+/tools/claude-plugins/
+/tools/cross-review-loop.sh
 ### 민감정보 ###
 .env
 **/application-secret.yml
