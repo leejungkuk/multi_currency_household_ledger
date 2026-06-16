@@ -1,4 +1,6 @@
-# 의존성 보안 패치·업데이트 PR 자동화 — build.yml CI 가 각 PR 을 검증한다.
+# 보안 전용 — open-pull-requests-limit: 0 으로 일상 버전범프 PR은 끄고
+# 보안(CVE) 업데이트 PR만 자동 생성한다(보안 업데이트는 이 제한을 무시함).
+# build.yml CI 가 각 PR 을 검증한다.
 version: 2
 updates:
   - package-ecosystem: "gradle"
@@ -8,7 +10,7 @@ updates:
       day: "monday"
       time: "09:00"
       timezone: "Asia/Seoul"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -17,3 +19,4 @@ updates:
       day: "monday"
       time: "09:00"
       timezone: "Asia/Seoul"
+    open-pull-requests-limit: 0
