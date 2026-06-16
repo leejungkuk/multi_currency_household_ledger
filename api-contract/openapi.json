@@ -181,27 +181,6 @@
                 },
                 "type": "object"
             },
-            "ApiResponseVoid": {
-                "properties": {
-                    "code": {
-                        "type": "string"
-                    },
-                    "data": {
-                        "type": "object"
-                    },
-                    "message": {
-                        "type": "string"
-                    },
-                    "success": {
-                        "type": "boolean"
-                    },
-                    "timestamp": {
-                        "format": "date-time",
-                        "type": "string"
-                    }
-                },
-                "type": "object"
-            },
             "AssetResponse": {
                 "properties": {
                     "code": {
@@ -508,37 +487,6 @@
                             "*/*": {
                                 "schema": {
                                     "$ref": "#/components/schemas/ApiResponseListExchangeRateResponse"
-                                }
-                            }
-                        },
-                        "description": "OK"
-                    }
-                },
-                "tags": [
-                    "exchange-rate-controller"
-                ]
-            }
-        },
-        "/api/v1/exchange-rates/fetch": {
-            "post": {
-                "operationId": "fetchRatesForScheduler",
-                "parameters": [
-                    {
-                        "in": "query",
-                        "name": "date",
-                        "required": true,
-                        "schema": {
-                            "format": "date",
-                            "type": "string"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "content": {
-                            "*/*": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/ApiResponseVoid"
                                 }
                             }
                         },

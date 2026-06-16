@@ -13,7 +13,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -51,13 +50,5 @@ public class ExchangeRateController {
     @GetMapping("/status")
     public ApiResponse<ExchangeRateStatusResponse> getStatus() {
         return ApiResponse.success(ExchangeRateStatusResponse.from(exchangeRateService.getLatestRatesByCurrency()));
-    }
-
-    /** 내부 운영/스케줄러용 환율 수집 트리거. 사용자 설정 화면 계약에서는 사용하지 않는다. */
-    @PostMapping("/fetch")
-    public ApiResponse<Void> fetchRatesForScheduler(
-            @RequestParam("date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
-        exchangeRateService.fetchAndSaveRates(date);
-        return ApiResponse.success(null);
     }
 }
