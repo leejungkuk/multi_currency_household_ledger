@@ -11,10 +11,12 @@ class CategoryTest {
     @Test
     @DisplayName("카테고리를 생성하면 활성화 상태(isActive=true)로 생성된다")
     void create_category_success() {
-        Category category = new Category(TransactionType.EXPENSE, "FOOD", "식비", "icon-food", 1, 1L);
+        Category category = new Category(TransactionType.EXPENSE, "FOOD", "식비", "Food", "icon-food", 1);
 
         assertThat(category.getTransactionType()).isEqualTo(TransactionType.EXPENSE);
         assertThat(category.getCode()).isEqualTo("FOOD");
+        assertThat(category.getDisplayNameKo()).isEqualTo("식비");
+        assertThat(category.getDisplayNameEn()).isEqualTo("Food");
         assertThat(category.isActive()).isTrue();
     }
 }

@@ -13,8 +13,8 @@ class LedgerEntryResponseTest {
 
     @Test
     void test() {
-        CategoryResponse category = new CategoryResponse(1L, "food", "식비", "🍔", 1);
-        AssetResponse asset = new AssetResponse(1L, "card", "카드", "💳", 1);
+        CategoryResponse category = new CategoryResponse(1L, "FOOD_DINING", "식비", "Food & Dining", "🍽️", 1);
+        AssetResponse asset = new AssetResponse(1L, "CREDIT_CARD", "신용카드", "Credit Card", 1);
         LedgerEntryResponse response = new LedgerEntryResponse(
                 1L,
                 TransactionType.EXPENSE,

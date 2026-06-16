@@ -49,8 +49,8 @@ class LedgerRecalculationServiceTest {
     @BeforeEach
     void setUp() {
         service = new LedgerRecalculationService(ledgerEntryRepository, exchangeRateService, FIXED_CLOCK, WINDOW_DAYS);
-        category = new Category(TransactionType.EXPENSE, "FOOD", "식비", "icon", 1, Category.SYSTEM_OWNER_ID);
-        asset = new Asset("CASH", "현금", "icon", 1, Asset.SYSTEM_OWNER_ID);
+        category = new Category(TransactionType.EXPENSE, "FOOD_DINING", "식비", "Food & Dining", "🍽️", 1);
+        asset = new Asset("CASH", "현금", "Cash", 3);
     }
 
     @Test

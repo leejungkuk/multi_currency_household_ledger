@@ -74,7 +74,7 @@ class SecurityConfigTest {
     @Test
     @DisplayName("유효한 mock JWT가 있으면 보호된 /api/v1 엔드포인트에 접근할 수 있다")
     void protected_endpoint_with_mock_jwt_passes_authentication() throws Exception {
-        given(catalogService.getAssets()).willReturn(List.of(new AssetResponse(1L, "CASH", "현금", "icon-cash", 1)));
+        given(catalogService.getAssets()).willReturn(List.of(new AssetResponse(3L, "CASH", "현금", "Cash", 3)));
 
         mockMvc.perform(get("/api/v1/assets")
                         .with(jwt().jwt(token -> token.subject("00000000-0000-0000-0000-000000000001")

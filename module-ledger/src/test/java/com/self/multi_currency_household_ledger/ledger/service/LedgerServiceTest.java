@@ -70,8 +70,8 @@ class LedgerServiceTest {
     void setUp() {
         ledgerService = new LedgerService(
                 ledgerEntryRepository, categoryRepository, assetRepository, exchangeRateService, FIXED_CLOCK);
-        category = new Category(TransactionType.EXPENSE, "FOOD", "식비", "icon", 1, Category.SYSTEM_OWNER_ID);
-        asset = new Asset("CASH", "현금", "icon", 1, Asset.SYSTEM_OWNER_ID);
+        category = new Category(TransactionType.EXPENSE, "FOOD_DINING", "식비", "Food & Dining", "🍽️", 1);
+        asset = new Asset("CASH", "현금", "Cash", 3);
     }
 
     // 원화 거래 시 환율 조회를 건너뛰는지 확인한다.
@@ -81,10 +81,8 @@ class LedgerServiceTest {
         CreateLedgerEntryRequest request =
                 new CreateLedgerEntryRequest(BigDecimal.valueOf(5000), CurrencyCode.KRW, 1L, 1L, TODAY, "커피");
 
-        given(categoryRepository.findByIdAndOwnerMemberId(eq(1L), eq(Category.SYSTEM_OWNER_ID)))
-                .willReturn(Optional.of(category));
-        given(assetRepository.findByIdAndOwnerMemberId(eq(1L), eq(Asset.SYSTEM_OWNER_ID)))
-                .willReturn(Optional.of(asset));
+        given(categoryRepository.findById(1L)).willReturn(Optional.of(category));
+        given(assetRepository.findById(1L)).willReturn(Optional.of(asset));
         given(ledgerEntryRepository.save(any(LedgerEntry.class))).willAnswer(invocation -> invocation.getArgument(0));
 
         LedgerEntryResponse response = ledgerService.create(request, MEMBER_ID);
@@ -106,10 +104,8 @@ class LedgerServiceTest {
 
         ExchangeRate exchangeRate = ExchangeRate.of(CurrencyCode.USD, BigDecimal.valueOf(1300), TODAY);
 
-        given(categoryRepository.findByIdAndOwnerMemberId(eq(1L), eq(Category.SYSTEM_OWNER_ID)))
-                .willReturn(Optional.of(category));
-        given(assetRepository.findByIdAndOwnerMemberId(eq(1L), eq(Asset.SYSTEM_OWNER_ID)))
-                .willReturn(Optional.of(asset));
+        given(categoryRepository.findById(1L)).willReturn(Optional.of(category));
+        given(assetRepository.findById(1L)).willReturn(Optional.of(asset));
         given(exchangeRateService.getRateOnOrBefore(any(), any())).willReturn(exchangeRate);
         given(ledgerEntryRepository.save(any(LedgerEntry.class))).willAnswer(invocation -> invocation.getArgument(0));
 
@@ -127,10 +123,8 @@ class LedgerServiceTest {
         CreateLedgerEntryRequest request = new CreateLedgerEntryRequest(
                 BigDecimal.valueOf(100), CurrencyCode.USD, 1L, 1L, TODAY.plusDays(1), "점심 식사");
 
-        given(categoryRepository.findByIdAndOwnerMemberId(eq(1L), eq(Category.SYSTEM_OWNER_ID)))
-                .willReturn(Optional.of(category));
-        given(assetRepository.findByIdAndOwnerMemberId(eq(1L), eq(Asset.SYSTEM_OWNER_ID)))
-                .willReturn(Optional.of(asset));
+        given(categoryRepository.findById(1L)).willReturn(Optional.of(category));
+        given(assetRepository.findById(1L)).willReturn(Optional.of(asset));
         given(exchangeRateService.getRateOnOrBefore(any(), any()))
                 .willReturn(ExchangeRate.of(CurrencyCode.USD, BigDecimal.valueOf(1300), TODAY));
 
@@ -153,17 +147,15 @@ class LedgerServiceTest {
                 "기존 메모",
                 ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.000000"), TODAY.minusDays(1)),
                 FIXED_CLOCK);
-        Category incomeCategory = new Category(TransactionType.INCOME, "SALARY", "급여", "icon-salary", 2, 1L);
-        Asset card = new Asset("CARD", "카드", "icon-card", 2, Asset.SYSTEM_OWNER_ID);
+        Category incomeCategory = new Category(TransactionType.INCOME, "SALARY", "급여", "Salary", "💼", 1);
+        Asset card = new Asset("CREDIT_CARD", "신용카드", "Credit Card", 1);
         CreateLedgerEntryRequest request =
                 new CreateLedgerEntryRequest(new BigDecimal("50.00"), CurrencyCode.EUR, 2L, 2L, TODAY, "수정 메모");
         ExchangeRate newRate = ExchangeRate.of(CurrencyCode.EUR, new BigDecimal("1400.000000"), TODAY);
 
         given(ledgerEntryRepository.findByIdAndMemberId(1L, MEMBER_ID)).willReturn(Optional.of(entry));
-        given(categoryRepository.findByIdAndOwnerMemberId(eq(2L), eq(Category.SYSTEM_OWNER_ID)))
-                .willReturn(Optional.of(incomeCategory));
-        given(assetRepository.findByIdAndOwnerMemberId(eq(2L), eq(Asset.SYSTEM_OWNER_ID)))
-                .willReturn(Optional.of(card));
+        given(categoryRepository.findById(2L)).willReturn(Optional.of(incomeCategory));
+        given(assetRepository.findById(2L)).willReturn(Optional.of(card));
         given(exchangeRateService.getRateOnOrBefore(CurrencyCode.EUR, TODAY)).willReturn(newRate);
 
         LedgerEntryResponse response = ledgerService.update(1L, request, MEMBER_ID);
@@ -210,10 +202,8 @@ class LedgerServiceTest {
                 new CreateLedgerEntryRequest(new BigDecimal("5000.00"), CurrencyCode.KRW, 1L, 1L, TODAY, null);
 
         given(ledgerEntryRepository.findByIdAndMemberId(1L, MEMBER_ID)).willReturn(Optional.of(entry));
-        given(categoryRepository.findByIdAndOwnerMemberId(eq(1L), eq(Category.SYSTEM_OWNER_ID)))
-                .willReturn(Optional.of(category));
-        given(assetRepository.findByIdAndOwnerMemberId(eq(1L), eq(Asset.SYSTEM_OWNER_ID)))
-                .willReturn(Optional.of(asset));
+        given(categoryRepository.findById(1L)).willReturn(Optional.of(category));
+        given(assetRepository.findById(1L)).willReturn(Optional.of(asset));
 
         LedgerEntryResponse response = ledgerService.update(1L, request, MEMBER_ID);
 
@@ -302,7 +292,14 @@ class LedgerServiceTest {
         given(ledgerEntryRepository.findCategorySubtotalsByMemberIdAndTransactionDateRange(
                         MEMBER_ID, startDate, endDate))
                 .willReturn(List.of(new CategorySubtotalStub(
-                        1L, TransactionType.EXPENSE, "FOOD", "식비", "icon-food", 1, new BigDecimal("14000.00"))));
+                        1L,
+                        TransactionType.EXPENSE,
+                        "FOOD_DINING",
+                        "식비",
+                        "Food & Dining",
+                        "🍽️",
+                        1,
+                        new BigDecimal("14000.00"))));
 
         LedgerReportResponse response = ledgerService.getMonthlyReport(MEMBER_ID, 2026, 4);
 
@@ -314,7 +311,7 @@ class LedgerServiceTest {
                         new BigDecimal("195000.00")));
         assertThat(response.categorySubtotals())
                 .containsExactly(new LedgerReportResponse.CategorySubtotal(
-                        new CategoryResponse(1L, "FOOD", "식비", "icon-food", 1),
+                        new CategoryResponse(1L, "FOOD_DINING", "식비", "Food & Dining", "🍽️", 1),
                         TransactionType.EXPENSE,
                         new BigDecimal("14000.00")));
     }
@@ -348,7 +345,8 @@ class LedgerServiceTest {
             Long categoryId,
             TransactionType transactionType,
             String categoryCode,
-            String categoryDisplayName,
+            String categoryDisplayNameKo,
+            String categoryDisplayNameEn,
             String categoryIcon,
             Integer categorySortOrder,
             BigDecimal krwAmount)
@@ -370,8 +368,13 @@ class LedgerServiceTest {
         }
 
         @Override
-        public String getCategoryDisplayName() {
-            return categoryDisplayName;
+        public String getCategoryDisplayNameKo() {
+            return categoryDisplayNameKo;
+        }
+
+        @Override
+        public String getCategoryDisplayNameEn() {
+            return categoryDisplayNameEn;
         }
 
         @Override

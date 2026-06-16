@@ -30,7 +30,8 @@ public record LedgerReportResponse(List<CurrencySubtotal> currencySubtotals, Lis
             CategoryResponse category = new CategoryResponse(
                     subtotal.getCategoryId(),
                     subtotal.getCategoryCode(),
-                    subtotal.getCategoryDisplayName(),
+                    subtotal.getCategoryDisplayNameKo(),
+                    subtotal.getCategoryDisplayNameEn(),
                     subtotal.getCategoryIcon(),
                     subtotal.getCategorySortOrder());
             return new CategorySubtotal(category, subtotal.getTransactionType(), subtotal.getKrwAmount());

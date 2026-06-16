@@ -52,10 +52,11 @@ class LedgerEntryRepositoryTest {
 
     @BeforeEach
     void setUp() {
-        category = categoryRepository.save(new Category(TransactionType.EXPENSE, "FOOD", "식비", "icon-food", 1, 1L));
-        incomeCategory =
-                categoryRepository.save(new Category(TransactionType.INCOME, "SALARY", "급여", "icon-salary", 2, 1L));
-        asset = assetRepository.save(new Asset("CASH", "현금", "icon-cash", 1, 1L));
+        category = categoryRepository.save(
+                new Category(TransactionType.EXPENSE, "TEST_FOOD", "테스트 식비", "Test Food", "icon-food", 100));
+        incomeCategory = categoryRepository.save(
+                new Category(TransactionType.INCOME, "TEST_SALARY", "테스트 급여", "Test Salary", "icon-salary", 100));
+        asset = assetRepository.save(new Asset("TEST_CASH", "테스트 현금", "Test Cash", 100));
     }
 
     // 가계부 내역을 정상적으로 저장할 수 있는지 확인한다.
@@ -250,8 +251,8 @@ class LedgerEntryRepositoryTest {
         UUID otherMemberId = UUID.fromString("00000000-0000-0000-0000-000000000002");
         LocalDate startDate = LocalDate.of(2026, 4, 1);
         LocalDate endDate = LocalDate.of(2026, 5, 1);
-        Category transportCategory =
-                categoryRepository.save(new Category(TransactionType.EXPENSE, "TRANSPORT", "교통", "icon-bus", 3, 1L));
+        Category transportCategory = categoryRepository.save(
+                new Category(TransactionType.EXPENSE, "TEST_TRANSPORT", "테스트 교통", "Test Transport", "icon-bus", 101));
         ExchangeRate usdRate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.000000"), startDate);
 
         ledgerEntryRepository.saveAll(List.of(
@@ -270,12 +271,16 @@ class LedgerEntryRepositoryTest {
                 .anySatisfy(subtotal -> {
                     assertThat(subtotal.getCategoryId()).isEqualTo(category.getId());
                     assertThat(subtotal.getTransactionType()).isEqualTo(TransactionType.EXPENSE);
-                    assertThat(subtotal.getCategoryCode()).isEqualTo("FOOD");
+                    assertThat(subtotal.getCategoryCode()).isEqualTo("TEST_FOOD");
+                    assertThat(subtotal.getCategoryDisplayNameKo()).isEqualTo("테스트 식비");
+                    assertThat(subtotal.getCategoryDisplayNameEn()).isEqualTo("Test Food");
                     assertThat(subtotal.getKrwAmount()).isEqualByComparingTo(new BigDecimal("14000.00"));
                 })
                 .anySatisfy(subtotal -> {
                     assertThat(subtotal.getCategoryId()).isEqualTo(transportCategory.getId());
-                    assertThat(subtotal.getCategoryCode()).isEqualTo("TRANSPORT");
+                    assertThat(subtotal.getCategoryCode()).isEqualTo("TEST_TRANSPORT");
+                    assertThat(subtotal.getCategoryDisplayNameKo()).isEqualTo("테스트 교통");
+                    assertThat(subtotal.getCategoryDisplayNameEn()).isEqualTo("Test Transport");
                     assertThat(subtotal.getKrwAmount()).isEqualByComparingTo(new BigDecimal("5000.00"));
                 })
                 .hasSize(2);

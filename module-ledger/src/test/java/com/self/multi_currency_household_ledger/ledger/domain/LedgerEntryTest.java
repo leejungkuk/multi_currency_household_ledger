@@ -28,8 +28,8 @@ class LedgerEntryTest {
 
     @BeforeEach
     void setUp() {
-        category = new Category(TransactionType.EXPENSE, "FOOD", "식비", "icon-food", 1, 1L);
-        asset = new Asset("CASH", "현금", "icon-cash", 1, 1L);
+        category = new Category(TransactionType.EXPENSE, "FOOD_DINING", "식비", "Food & Dining", "🍽️", 1);
+        asset = new Asset("CASH", "현금", "Cash", 3);
     }
 
     // 정상적으로 가계부 내역이 생성되는지 확인한다.
@@ -188,8 +188,8 @@ class LedgerEntryTest {
                 "기존 메모",
                 oldRate,
                 FIXED_CLOCK);
-        Category incomeCategory = new Category(TransactionType.INCOME, "SALARY", "급여", "icon-salary", 2, 1L);
-        Asset card = new Asset("CARD", "카드", "icon-card", 2, 1L);
+        Category incomeCategory = new Category(TransactionType.INCOME, "SALARY", "급여", "Salary", "💼", 1);
+        Asset card = new Asset("CREDIT_CARD", "신용카드", "Credit Card", 1);
         ExchangeRate newRate = ExchangeRate.of(CurrencyCode.EUR, new BigDecimal("1400.000000"), TODAY);
 
         entry.replace(

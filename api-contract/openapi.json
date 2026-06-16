@@ -228,10 +228,10 @@
                     "code": {
                         "type": "string"
                     },
-                    "displayName": {
+                    "displayNameEn": {
                         "type": "string"
                     },
-                    "icon": {
+                    "displayNameKo": {
                         "type": "string"
                     },
                     "id": {
@@ -250,7 +250,10 @@
                     "code": {
                         "type": "string"
                     },
-                    "displayName": {
+                    "displayNameEn": {
+                        "type": "string"
+                    },
+                    "displayNameKo": {
                         "type": "string"
                     },
                     "icon": {
