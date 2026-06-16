@@ -42,7 +42,7 @@ jobs:
           java-version: '21'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
 
       # 시크릿(exchange.eximbank.api-key 등)은 불필요하다: 전 컨텍스트를 띄우는 @SpringBootTest가
       # 없고, 테스트는 module-exchange/src/test/resources/application.yml의 test 값만 쓴다.
