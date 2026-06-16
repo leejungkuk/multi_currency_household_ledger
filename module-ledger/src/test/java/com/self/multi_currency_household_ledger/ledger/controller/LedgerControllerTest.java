@@ -65,8 +65,8 @@ class LedgerControllerTest {
         CreateLedgerEntryRequest request = new CreateLedgerEntryRequest(
                 BigDecimal.valueOf(5000), CurrencyCode.KRW, 1L, 1L, LocalDate.now(ZoneId.of("Asia/Seoul")), "커피");
 
-        CategoryResponse categoryResponse = new CategoryResponse(1L, "FOOD", "식비", "icon-food", 1);
-        AssetResponse assetResponse = new AssetResponse(1L, "CASH", "현금", "icon-cash", 1);
+        CategoryResponse categoryResponse = new CategoryResponse(1L, "FOOD_DINING", "식비", "Food & Dining", "🍽️", 1);
+        AssetResponse assetResponse = new AssetResponse(3L, "CASH", "현금", "Cash", 3);
 
         LedgerEntryResponse response = new LedgerEntryResponse(
                 1L,
@@ -112,8 +112,8 @@ class LedgerControllerTest {
         LocalDate transactionDate = LocalDate.of(2026, 4, 6);
         CreateLedgerEntryRequest request =
                 new CreateLedgerEntryRequest(new BigDecimal("50.00"), CurrencyCode.EUR, 2L, 2L, transactionDate, "수정");
-        CategoryResponse categoryResponse = new CategoryResponse(2L, "SALARY", "급여", "icon-salary", 2);
-        AssetResponse assetResponse = new AssetResponse(2L, "CARD", "카드", "icon-card", 2);
+        CategoryResponse categoryResponse = new CategoryResponse(14L, "SALARY", "급여", "Salary", "💼", 1);
+        AssetResponse assetResponse = new AssetResponse(1L, "CREDIT_CARD", "신용카드", "Credit Card", 1);
         LedgerEntryResponse response = new LedgerEntryResponse(
                 1L,
                 TransactionType.INCOME,
@@ -198,8 +198,8 @@ class LedgerControllerTest {
     @Test
     @DisplayName("월 거래 목록을 조회한다")
     void get_monthly_entries_success() throws Exception {
-        CategoryResponse categoryResponse = new CategoryResponse(1L, "FOOD", "식비", "icon-food", 1);
-        AssetResponse assetResponse = new AssetResponse(1L, "CASH", "현금", "icon-cash", 1);
+        CategoryResponse categoryResponse = new CategoryResponse(1L, "FOOD_DINING", "식비", "Food & Dining", "🍽️", 1);
+        AssetResponse assetResponse = new AssetResponse(3L, "CASH", "현금", "Cash", 3);
         LedgerEntryResponse response = new LedgerEntryResponse(
                 1L,
                 TransactionType.EXPENSE,
@@ -225,7 +225,7 @@ class LedgerControllerTest {
     @Test
     @DisplayName("월 리포트를 조회한다")
     void get_monthly_report_success() throws Exception {
-        CategoryResponse categoryResponse = new CategoryResponse(1L, "FOOD", "식비", "icon-food", 1);
+        CategoryResponse categoryResponse = new CategoryResponse(1L, "FOOD_DINING", "식비", "Food & Dining", "🍽️", 1);
         LedgerReportResponse response = new LedgerReportResponse(
                 List.of(
                         new LedgerReportResponse.CurrencySubtotal(
@@ -254,7 +254,11 @@ class LedgerControllerTest {
                 .andExpect(jsonPath("$.data.currencySubtotals[0].krwAmount").value(195000.00))
                 .andExpect(
                         jsonPath("$.data.currencySubtotals[1].transactionType").value("INCOME"))
-                .andExpect(jsonPath("$.data.categorySubtotals[0].category.code").value("FOOD"))
+                .andExpect(jsonPath("$.data.categorySubtotals[0].category.code").value("FOOD_DINING"))
+                .andExpect(jsonPath("$.data.categorySubtotals[0].category.displayNameKo")
+                        .value("식비"))
+                .andExpect(jsonPath("$.data.categorySubtotals[0].category.displayNameEn")
+                        .value("Food & Dining"))
                 .andExpect(
                         jsonPath("$.data.categorySubtotals[0].transactionType").value("EXPENSE"))
                 .andExpect(jsonPath("$.data.categorySubtotals[0].krwAmount").value(14000.00));

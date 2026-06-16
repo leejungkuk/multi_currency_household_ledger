@@ -53,7 +53,8 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, Long> 
             select category.id as categoryId,
                    category.transactionType as transactionType,
                    category.code as categoryCode,
-                   category.displayName as categoryDisplayName,
+                   category.displayNameKo as categoryDisplayNameKo,
+                   category.displayNameEn as categoryDisplayNameEn,
                    category.icon as categoryIcon,
                    category.sortOrder as categorySortOrder,
                    sum(entry.krwAmount) as krwAmount
@@ -65,7 +66,8 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, Long> 
             group by category.id,
                      category.transactionType,
                      category.code,
-                     category.displayName,
+                     category.displayNameKo,
+                     category.displayNameEn,
                      category.icon,
                      category.sortOrder
             order by category.sortOrder asc, category.id asc
@@ -106,7 +108,9 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, Long> 
 
         String getCategoryCode();
 
-        String getCategoryDisplayName();
+        String getCategoryDisplayNameKo();
+
+        String getCategoryDisplayNameEn();
 
         String getCategoryIcon();
 

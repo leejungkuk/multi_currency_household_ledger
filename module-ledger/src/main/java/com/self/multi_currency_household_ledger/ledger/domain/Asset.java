@@ -17,8 +17,6 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Asset extends BaseEntity {
 
-    public static final Long SYSTEM_OWNER_ID = 0L;
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -27,26 +25,22 @@ public class Asset extends BaseEntity {
     private String code;
 
     @Column(nullable = false, length = 100)
-    private String displayName;
+    private String displayNameKo;
 
-    @Column(length = 20)
-    private String icon;
+    @Column(nullable = false, length = 100)
+    private String displayNameEn;
 
     @Column(nullable = false)
     private int sortOrder;
 
     @Column(nullable = false)
-    private Long ownerMemberId;
-
-    @Column(nullable = false)
     private boolean isActive;
 
-    public Asset(String code, String displayName, String icon, int sortOrder, Long ownerMemberId) {
+    public Asset(String code, String displayNameKo, String displayNameEn, int sortOrder) {
         this.code = code;
-        this.displayName = displayName;
-        this.icon = icon;
+        this.displayNameKo = displayNameKo;
+        this.displayNameEn = displayNameEn;
         this.sortOrder = sortOrder;
-        this.ownerMemberId = ownerMemberId;
         this.isActive = true;
     }
 }

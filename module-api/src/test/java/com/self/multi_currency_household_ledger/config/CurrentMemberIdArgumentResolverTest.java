@@ -137,8 +137,8 @@ class CurrentMemberIdArgumentResolverTest {
         return new LedgerEntryResponse(
                 1L,
                 TransactionType.EXPENSE,
-                new CategoryResponse(1L, "FOOD", "식비", "icon-food", 1),
-                new AssetResponse(1L, "CASH", "현금", "icon-cash", 1),
+                new CategoryResponse(1L, "FOOD_DINING", "식비", "Food & Dining", "🍽️", 1),
+                new AssetResponse(3L, "CASH", "현금", "Cash", 3),
                 BigDecimal.valueOf(5000),
                 CurrencyCode.KRW,
                 BigDecimal.ONE,

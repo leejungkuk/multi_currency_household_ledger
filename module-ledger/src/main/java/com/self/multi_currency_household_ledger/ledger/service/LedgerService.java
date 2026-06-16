@@ -41,11 +41,11 @@ public class LedgerService {
     @Transactional
     public LedgerEntryResponse create(CreateLedgerEntryRequest request, UUID memberId) {
         Category category = categoryRepository
-                .findByIdAndOwnerMemberId(request.categoryId(), Category.SYSTEM_OWNER_ID)
+                .findById(request.categoryId())
                 .orElseThrow(() -> new BusinessException(LedgerErrorCode.CATEGORY_NOT_FOUND));
 
         Asset asset = assetRepository
-                .findByIdAndOwnerMemberId(request.assetId(), Asset.SYSTEM_OWNER_ID)
+                .findById(request.assetId())
                 .orElseThrow(() -> new BusinessException(LedgerErrorCode.ASSET_NOT_FOUND));
 
         ExchangeRate exchangeRate = null;
@@ -75,11 +75,11 @@ public class LedgerService {
                 .orElseThrow(() -> new BusinessException(LedgerErrorCode.LEDGER_ENTRY_NOT_FOUND));
 
         Category category = categoryRepository
-                .findByIdAndOwnerMemberId(request.categoryId(), Category.SYSTEM_OWNER_ID)
+                .findById(request.categoryId())
                 .orElseThrow(() -> new BusinessException(LedgerErrorCode.CATEGORY_NOT_FOUND));
 
         Asset asset = assetRepository
-                .findByIdAndOwnerMemberId(request.assetId(), Asset.SYSTEM_OWNER_ID)
+                .findById(request.assetId())
                 .orElseThrow(() -> new BusinessException(LedgerErrorCode.ASSET_NOT_FOUND));
 
         ExchangeRate exchangeRate = null;

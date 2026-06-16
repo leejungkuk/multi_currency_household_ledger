@@ -11,10 +11,11 @@ class AssetTest {
     @Test
     @DisplayName("자산을 생성하면 활성화 상태(isActive=true)로 생성된다")
     void create_asset_success() {
-        Asset asset = new Asset("CASH", "현금", "icon-cash", 1, 1L);
+        Asset asset = new Asset("CASH", "현금", "Cash", 1);
 
         assertThat(asset.getCode()).isEqualTo("CASH");
-        assertThat(asset.getDisplayName()).isEqualTo("현금");
+        assertThat(asset.getDisplayNameKo()).isEqualTo("현금");
+        assertThat(asset.getDisplayNameEn()).isEqualTo("Cash");
         assertThat(asset.isActive()).isTrue();
     }
 }

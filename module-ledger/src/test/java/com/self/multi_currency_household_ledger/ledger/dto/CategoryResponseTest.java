@@ -7,7 +7,10 @@ import org.junit.jupiter.api.Test;
 class CategoryResponseTest {
 
     @Test
-    void test() {
-        assertThat(new CategoryResponse(1L, "food", "식비", "🍔", 1)).isNotNull();
+    void exposes_ko_and_en_display_names() {
+        CategoryResponse response = new CategoryResponse(1L, "FOOD_DINING", "식비", "Food & Dining", "🍽️", 1);
+
+        assertThat(response.displayNameKo()).isEqualTo("식비");
+        assertThat(response.displayNameEn()).isEqualTo("Food & Dining");
     }
 }

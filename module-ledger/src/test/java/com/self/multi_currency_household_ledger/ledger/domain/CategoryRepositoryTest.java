@@ -21,21 +21,19 @@ class CategoryRepositoryTest {
     @Autowired
     private CategoryRepository categoryRepository;
 
-    // 공용 시스템 카탈로그의 활성화된 카테고리 목록을 조회한다.
+    // 공용 고정 카탈로그의 활성화된 카테고리 목록을 조회한다.
     @Test
-    @DisplayName("공용 시스템 소유의 활성화된 카테고리를 타입별로 조회할 수 있다")
-    void find_categories_by_type_and_system_owner() {
+    @DisplayName("공용 활성화 카테고리를 타입별로 sort_order 순서로 조회할 수 있다")
+    void find_categories_by_type_as_shared_catalog() {
+        categoryRepository.save(new Category(TransactionType.EXPENSE, "TEST_FOOD", "식비", "Food", "icon-food", 100));
+        categoryRepository.save(new Category(TransactionType.EXPENSE, "TEST_CAFE", "카페", "Cafe", "icon-cafe", 101));
         categoryRepository.save(
-                new Category(TransactionType.EXPENSE, "FOOD", "식비", "icon-food", 1, Category.SYSTEM_OWNER_ID));
-        categoryRepository.save(new Category(TransactionType.EXPENSE, "CUSTOM", "커스텀", "icon-custom", 2, 1L));
-        categoryRepository.save(
-                new Category(TransactionType.INCOME, "SALARY", "급여", "icon-salary", 1, Category.SYSTEM_OWNER_ID));
+                new Category(TransactionType.INCOME, "TEST_SALARY", "급여", "Salary", "icon-salary", 100));
 
         List<Category> categories =
-                categoryRepository.findByTransactionTypeAndOwnerMemberIdAndIsActiveTrueOrderBySortOrder(
-                        TransactionType.EXPENSE, Category.SYSTEM_OWNER_ID);
+                categoryRepository.findByTransactionTypeAndIsActiveTrueOrderBySortOrder(TransactionType.EXPENSE);
 
-        assertThat(categories).hasSize(1);
-        assertThat(categories.get(0).getCode()).isEqualTo("FOOD");
+        assertThat(categories).extracting(Category::getCode).containsSubsequence("TEST_FOOD", "TEST_CAFE");
+        assertThat(categories).noneMatch(category -> category.getCode().equals("TEST_SALARY"));
     }
 }

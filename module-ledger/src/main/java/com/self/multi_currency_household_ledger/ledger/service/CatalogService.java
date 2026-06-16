@@ -1,8 +1,6 @@
 package com.self.multi_currency_household_ledger.ledger.service;
 
-import com.self.multi_currency_household_ledger.ledger.domain.Asset;
 import com.self.multi_currency_household_ledger.ledger.domain.AssetRepository;
-import com.self.multi_currency_household_ledger.ledger.domain.Category;
 import com.self.multi_currency_household_ledger.ledger.domain.CategoryRepository;
 import com.self.multi_currency_household_ledger.ledger.domain.TransactionType;
 import com.self.multi_currency_household_ledger.ledger.dto.AssetResponse;
@@ -22,16 +20,13 @@ public class CatalogService {
     private final AssetRepository assetRepository;
 
     public List<CategoryResponse> getCategories(TransactionType transactionType) {
-        return categoryRepository
-                .findByTransactionTypeAndOwnerMemberIdAndIsActiveTrueOrderBySortOrder(
-                        transactionType, Category.SYSTEM_OWNER_ID)
-                .stream()
+        return categoryRepository.findByTransactionTypeAndIsActiveTrueOrderBySortOrder(transactionType).stream()
                 .map(CategoryResponse::from)
                 .toList();
     }
 
     public List<AssetResponse> getAssets() {
-        return assetRepository.findByOwnerMemberIdAndIsActiveTrueOrderBySortOrder(Asset.SYSTEM_OWNER_ID).stream()
+        return assetRepository.findByIsActiveTrueOrderBySortOrder().stream()
                 .map(AssetResponse::from)
                 .toList();
     }

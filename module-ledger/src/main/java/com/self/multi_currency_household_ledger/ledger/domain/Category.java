@@ -19,8 +19,6 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Category extends BaseEntity {
 
-    public static final Long SYSTEM_OWNER_ID = 0L;
-
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -33,7 +31,10 @@ public class Category extends BaseEntity {
     private String code;
 
     @Column(nullable = false, length = 100)
-    private String displayName;
+    private String displayNameKo;
+
+    @Column(nullable = false, length = 100)
+    private String displayNameEn;
 
     @Column(length = 20)
     private String icon;
@@ -42,24 +43,21 @@ public class Category extends BaseEntity {
     private int sortOrder;
 
     @Column(nullable = false)
-    private Long ownerMemberId;
-
-    @Column(nullable = false)
     private boolean isActive;
 
     public Category(
             TransactionType transactionType,
             String code,
-            String displayName,
+            String displayNameKo,
+            String displayNameEn,
             String icon,
-            int sortOrder,
-            Long ownerMemberId) {
+            int sortOrder) {
         this.transactionType = transactionType;
         this.code = code;
-        this.displayName = displayName;
+        this.displayNameKo = displayNameKo;
+        this.displayNameEn = displayNameEn;
         this.icon = icon;
         this.sortOrder = sortOrder;
-        this.ownerMemberId = ownerMemberId;
         this.isActive = true;
     }
 }

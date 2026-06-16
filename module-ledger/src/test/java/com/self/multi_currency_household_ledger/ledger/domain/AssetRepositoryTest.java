@@ -21,16 +21,15 @@ class AssetRepositoryTest {
     @Autowired
     private AssetRepository assetRepository;
 
-    // 공용 시스템 카탈로그의 활성화된 자산 목록을 조회한다.
+    // 공용 고정 카탈로그의 활성화된 자산 목록을 조회한다.
     @Test
-    @DisplayName("공용 시스템 소유의 활성화된 자산을 조회할 수 있다")
-    void find_assets_by_system_owner() {
-        assetRepository.save(new Asset("CASH", "현금", "icon-cash", 1, Asset.SYSTEM_OWNER_ID));
-        assetRepository.save(new Asset("CARD", "신용카드", "icon-card", 2, 1L));
+    @DisplayName("공용 활성화 자산을 sort_order 순서로 조회할 수 있다")
+    void find_assets_as_shared_catalog() {
+        assetRepository.save(new Asset("TEST_CASH", "현금", "Cash", 100));
+        assetRepository.save(new Asset("TEST_CARD", "카드", "Card", 101));
 
-        List<Asset> assets = assetRepository.findByOwnerMemberIdAndIsActiveTrueOrderBySortOrder(Asset.SYSTEM_OWNER_ID);
+        List<Asset> assets = assetRepository.findByIsActiveTrueOrderBySortOrder();
 
-        assertThat(assets).hasSize(1);
-        assertThat(assets.get(0).getCode()).isEqualTo("CASH");
+        assertThat(assets).extracting(Asset::getCode).containsSubsequence("TEST_CASH", "TEST_CARD");
     }
 }
