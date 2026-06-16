@@ -21,6 +21,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 @DataJpaTest
@@ -46,11 +47,14 @@ class LedgerEntryRepositoryTest {
     private AssetRepository assetRepository;
 
     private Category category;
+    private Category incomeCategory;
     private Asset asset;
 
     @BeforeEach
     void setUp() {
         category = categoryRepository.save(new Category(TransactionType.EXPENSE, "FOOD", "식비", "icon-food", 1, 1L));
+        incomeCategory =
+                categoryRepository.save(new Category(TransactionType.INCOME, "SALARY", "급여", "icon-salary", 2, 1L));
         asset = assetRepository.save(new Asset("CASH", "현금", "icon-cash", 1, 1L));
     }
 
@@ -133,5 +137,181 @@ class LedgerEntryRepositoryTest {
         List<LedgerEntry> entries = ledgerEntryRepository.findForeignEntriesOnOrAfter(cutoff);
 
         assertThat(entries).extracting(LedgerEntry::getMemo).containsExactly("보정창 내 외화");
+    }
+
+    @Test
+    @DisplayName("월 합계는 member_id와 기간, 거래 유형으로 격리해 집계한다")
+    void sum_krw_amount_by_member_period_and_transaction_type() {
+        UUID otherMemberId = UUID.fromString("00000000-0000-0000-0000-000000000002");
+        LocalDate startDate = LocalDate.of(2026, 4, 1);
+        LocalDate endDate = LocalDate.of(2026, 5, 1);
+
+        ledgerEntryRepository.saveAll(List.of(
+                krwEntry(MEMBER_ID, incomeCategory, startDate, "3000.00", "내 수입"),
+                krwEntry(MEMBER_ID, category, startDate.plusDays(1), "1000.00", "내 지출"),
+                krwEntry(otherMemberId, category, startDate.plusDays(2), "90000.00", "다른 회원 지출"),
+                krwEntry(MEMBER_ID, category, startDate.minusDays(1), "500.00", "전월 지출")));
+        ledgerEntryRepository.flush();
+
+        BigDecimal income = ledgerEntryRepository.sumKrwAmountByMemberIdAndTransactionTypeAndTransactionDateRange(
+                MEMBER_ID, TransactionType.INCOME, startDate, endDate);
+        BigDecimal expense = ledgerEntryRepository.sumKrwAmountByMemberIdAndTransactionTypeAndTransactionDateRange(
+                MEMBER_ID, TransactionType.EXPENSE, startDate, endDate);
+
+        assertThat(income).isEqualByComparingTo(new BigDecimal("3000.00"));
+        assertThat(expense).isEqualByComparingTo(new BigDecimal("1000.00"));
+    }
+
+    @Test
+    @DisplayName("월 목록은 member_id로 격리하고 거래일 내림차순, id 내림차순, 하드 캡으로 조회한다")
+    void find_monthly_entries_filters_member_sorts_by_date_and_id_desc_with_cap() {
+        UUID otherMemberId = UUID.fromString("00000000-0000-0000-0000-000000000002");
+        LocalDate startDate = LocalDate.of(2026, 4, 1);
+        LocalDate endDate = LocalDate.of(2026, 5, 1);
+
+        ledgerEntryRepository.saveAll(List.of(
+                krwEntry(MEMBER_ID, category, startDate, "1000.00", "오래된 내역"),
+                krwEntry(MEMBER_ID, category, startDate.plusDays(1), "2000.00", "같은날 첫 내역"),
+                krwEntry(MEMBER_ID, category, startDate.plusDays(1), "3000.00", "같은날 나중 내역"),
+                krwEntry(otherMemberId, category, startDate.plusDays(2), "90000.00", "다른 회원 최신 내역")));
+        ledgerEntryRepository.flush();
+
+        List<LedgerEntry> entries = ledgerEntryRepository
+                .findByMemberIdAndTransactionDateGreaterThanEqualAndTransactionDateLessThanOrderByTransactionDateDescIdDesc(
+                        MEMBER_ID, startDate, endDate, PageRequest.of(0, 2));
+
+        assertThat(entries).extracting(LedgerEntry::getMemo).containsExactly("같은날 나중 내역", "같은날 첫 내역");
+    }
+
+    @Test
+    @DisplayName("단건 조회는 id와 member_id를 함께 사용해 다른 회원 거래를 찾지 않는다")
+    void find_by_id_and_member_id_filters_member() {
+        UUID otherMemberId = UUID.fromString("00000000-0000-0000-0000-000000000002");
+        LedgerEntry myEntry = ledgerEntryRepository.save(krwEntry(MEMBER_ID, category, TODAY, "1000.00", "내 거래"));
+        ledgerEntryRepository.save(krwEntry(otherMemberId, category, TODAY, "90000.00", "다른 회원 거래"));
+        ledgerEntryRepository.flush();
+
+        assertThat(ledgerEntryRepository.findByIdAndMemberId(myEntry.getId(), MEMBER_ID))
+                .isPresent()
+                .get()
+                .extracting(LedgerEntry::getMemo)
+                .isEqualTo("내 거래");
+        assertThat(ledgerEntryRepository.findByIdAndMemberId(myEntry.getId(), otherMemberId))
+                .isEmpty();
+    }
+
+    @Test
+    @DisplayName("월 리포트 통화 소계는 member_id와 기간으로 격리하고 통화와 거래 유형별로 분리 집계한다")
+    void find_monthly_currency_subtotals_filters_member_and_groups_by_currency_and_type() {
+        UUID otherMemberId = UUID.fromString("00000000-0000-0000-0000-000000000002");
+        LocalDate startDate = LocalDate.of(2026, 4, 1);
+        LocalDate endDate = LocalDate.of(2026, 5, 1);
+        ExchangeRate usdRate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.000000"), startDate);
+
+        ledgerEntryRepository.saveAll(List.of(
+                foreignEntry(MEMBER_ID, category, CurrencyCode.USD, "100.00", startDate, "내 USD 지출 1", usdRate),
+                foreignEntry(
+                        MEMBER_ID, category, CurrencyCode.USD, "50.00", startDate.plusDays(1), "내 USD 지출 2", usdRate),
+                foreignEntry(MEMBER_ID, incomeCategory, CurrencyCode.USD, "200.00", startDate, "내 USD 수입", usdRate),
+                foreignEntry(otherMemberId, category, CurrencyCode.USD, "999.00", startDate, "다른 회원 USD", usdRate),
+                foreignEntry(
+                        MEMBER_ID,
+                        incomeCategory,
+                        CurrencyCode.USD,
+                        "777.00",
+                        startDate.minusDays(1),
+                        "전월 USD",
+                        usdRate)));
+        ledgerEntryRepository.flush();
+
+        List<LedgerEntryRepository.CurrencySubtotalProjection> subtotals =
+                ledgerEntryRepository.findCurrencySubtotalsByMemberIdAndTransactionDateRange(
+                        MEMBER_ID, startDate, endDate);
+
+        assertThat(subtotals)
+                .anySatisfy(subtotal -> {
+                    assertThat(subtotal.getCurrencyCode()).isEqualTo(CurrencyCode.USD);
+                    assertThat(subtotal.getTransactionType()).isEqualTo(TransactionType.EXPENSE);
+                    assertThat(subtotal.getOriginalAmount()).isEqualByComparingTo(new BigDecimal("150.00"));
+                    assertThat(subtotal.getKrwAmount()).isEqualByComparingTo(new BigDecimal("195000.00"));
+                })
+                .anySatisfy(subtotal -> {
+                    assertThat(subtotal.getCurrencyCode()).isEqualTo(CurrencyCode.USD);
+                    assertThat(subtotal.getTransactionType()).isEqualTo(TransactionType.INCOME);
+                    assertThat(subtotal.getOriginalAmount()).isEqualByComparingTo(new BigDecimal("200.00"));
+                    assertThat(subtotal.getKrwAmount()).isEqualByComparingTo(new BigDecimal("260000.00"));
+                })
+                .hasSize(2);
+    }
+
+    @Test
+    @DisplayName("월 리포트 카테고리 소계는 member_id와 기간으로 격리하고 krw_amount 합계로 집계한다")
+    void find_monthly_category_subtotals_filters_member_and_sums_krw_amount() {
+        UUID otherMemberId = UUID.fromString("00000000-0000-0000-0000-000000000002");
+        LocalDate startDate = LocalDate.of(2026, 4, 1);
+        LocalDate endDate = LocalDate.of(2026, 5, 1);
+        Category transportCategory =
+                categoryRepository.save(new Category(TransactionType.EXPENSE, "TRANSPORT", "교통", "icon-bus", 3, 1L));
+        ExchangeRate usdRate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.000000"), startDate);
+
+        ledgerEntryRepository.saveAll(List.of(
+                krwEntry(MEMBER_ID, category, startDate, "1000.00", "내 식비 원화"),
+                foreignEntry(MEMBER_ID, category, CurrencyCode.USD, "10.00", startDate, "내 식비 외화", usdRate),
+                krwEntry(MEMBER_ID, transportCategory, startDate.plusDays(1), "5000.00", "내 교통비"),
+                krwEntry(otherMemberId, category, startDate, "90000.00", "다른 회원 식비"),
+                krwEntry(MEMBER_ID, category, startDate.minusDays(1), "7000.00", "전월 식비")));
+        ledgerEntryRepository.flush();
+
+        List<LedgerEntryRepository.CategorySubtotalProjection> subtotals =
+                ledgerEntryRepository.findCategorySubtotalsByMemberIdAndTransactionDateRange(
+                        MEMBER_ID, startDate, endDate);
+
+        assertThat(subtotals)
+                .anySatisfy(subtotal -> {
+                    assertThat(subtotal.getCategoryId()).isEqualTo(category.getId());
+                    assertThat(subtotal.getTransactionType()).isEqualTo(TransactionType.EXPENSE);
+                    assertThat(subtotal.getCategoryCode()).isEqualTo("FOOD");
+                    assertThat(subtotal.getKrwAmount()).isEqualByComparingTo(new BigDecimal("14000.00"));
+                })
+                .anySatisfy(subtotal -> {
+                    assertThat(subtotal.getCategoryId()).isEqualTo(transportCategory.getId());
+                    assertThat(subtotal.getCategoryCode()).isEqualTo("TRANSPORT");
+                    assertThat(subtotal.getKrwAmount()).isEqualByComparingTo(new BigDecimal("5000.00"));
+                })
+                .hasSize(2);
+    }
+
+    private LedgerEntry krwEntry(
+            UUID memberId, Category entryCategory, LocalDate transactionDate, String amount, String memo) {
+        return LedgerEntry.of(
+                memberId,
+                entryCategory,
+                asset,
+                new BigDecimal(amount),
+                CurrencyCode.KRW,
+                transactionDate,
+                memo,
+                null,
+                FIXED_CLOCK);
+    }
+
+    private LedgerEntry foreignEntry(
+            UUID memberId,
+            Category entryCategory,
+            CurrencyCode currencyCode,
+            String amount,
+            LocalDate transactionDate,
+            String memo,
+            ExchangeRate exchangeRate) {
+        return LedgerEntry.of(
+                memberId,
+                entryCategory,
+                asset,
+                new BigDecimal(amount),
+                currencyCode,
+                transactionDate,
+                memo,
+                exchangeRate,
+                FIXED_CLOCK);
     }
 }

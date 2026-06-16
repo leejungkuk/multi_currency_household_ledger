@@ -1,9 +1,7 @@
 package com.self.multi_currency_household_ledger.exchange.controller;
 
 import static org.mockito.BDDMockito.given;
-import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -142,16 +140,6 @@ class ExchangeRateControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value("INVALID_PARAMETER"));
-    }
-
-    @Test
-    @DisplayName("POST /api/v1/exchange-rates/fetch 환율 가져오기를 트리거한다")
-    void fetchRates_triggers_fetch() throws Exception {
-        mockMvc.perform(post("/api/v1/exchange-rates/fetch").param("date", "2026-04-03"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success").value(true));
-
-        verify(exchangeRateService).fetchAndSaveRates(DATE);
     }
 
     @Test

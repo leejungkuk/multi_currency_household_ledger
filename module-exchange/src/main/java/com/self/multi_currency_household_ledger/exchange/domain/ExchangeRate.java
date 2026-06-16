@@ -31,7 +31,7 @@ public class ExchangeRate extends BaseEntity {
     private Long id;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(nullable = false, length = 10)
     private CurrencyCode currencyCode;
 
     @Column(nullable = false, precision = 19, scale = 6)

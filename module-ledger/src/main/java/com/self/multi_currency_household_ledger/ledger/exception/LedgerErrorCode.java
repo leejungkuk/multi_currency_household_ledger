@@ -10,7 +10,8 @@ import org.springframework.http.HttpStatus;
 public enum LedgerErrorCode implements ErrorCode {
     CATEGORY_NOT_FOUND("CATEGORY_NOT_FOUND", "카테고리를 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
     ASSET_NOT_FOUND("ASSET_NOT_FOUND", "자산을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
-    INVALID_AMOUNT("INVALID_AMOUNT", "금액은 0보다 커야 합니다.", HttpStatus.BAD_REQUEST),
+    LEDGER_ENTRY_NOT_FOUND("LEDGER_ENTRY_NOT_FOUND", "가계부 내역을 찾을 수 없습니다.", HttpStatus.NOT_FOUND),
+    INVALID_AMOUNT("INVALID_AMOUNT", "금액은 0보다 크고 99,999,999 이하여야 합니다.", HttpStatus.BAD_REQUEST),
     INVALID_FUTURE_DATE("INVALID_FUTURE_DATE", "외화 거래는 미래 날짜를 입력할 수 없습니다.", HttpStatus.BAD_REQUEST);
 
     private final String code;

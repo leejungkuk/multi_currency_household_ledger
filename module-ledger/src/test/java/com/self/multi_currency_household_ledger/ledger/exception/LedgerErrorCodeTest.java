@@ -15,7 +15,16 @@ class LedgerErrorCodeTest {
         assertErrorCode(
                 LedgerErrorCode.CATEGORY_NOT_FOUND, HttpStatus.NOT_FOUND, "CATEGORY_NOT_FOUND", "카테고리를 찾을 수 없습니다.");
         assertErrorCode(LedgerErrorCode.ASSET_NOT_FOUND, HttpStatus.NOT_FOUND, "ASSET_NOT_FOUND", "자산을 찾을 수 없습니다.");
-        assertErrorCode(LedgerErrorCode.INVALID_AMOUNT, HttpStatus.BAD_REQUEST, "INVALID_AMOUNT", "금액은 0보다 커야 합니다.");
+        assertErrorCode(
+                LedgerErrorCode.LEDGER_ENTRY_NOT_FOUND,
+                HttpStatus.NOT_FOUND,
+                "LEDGER_ENTRY_NOT_FOUND",
+                "가계부 내역을 찾을 수 없습니다.");
+        assertErrorCode(
+                LedgerErrorCode.INVALID_AMOUNT,
+                HttpStatus.BAD_REQUEST,
+                "INVALID_AMOUNT",
+                "금액은 0보다 크고 99,999,999 이하여야 합니다.");
         assertErrorCode(
                 LedgerErrorCode.INVALID_FUTURE_DATE,
                 HttpStatus.BAD_REQUEST,

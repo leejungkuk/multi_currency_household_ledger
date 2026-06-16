@@ -27,9 +27,6 @@ spring:
   jackson:
     time-zone: Asia/Seoul
 
-jwt:
-  expiration: 3600000  # 1 hour
-
 woni:
   security:
     jwt:

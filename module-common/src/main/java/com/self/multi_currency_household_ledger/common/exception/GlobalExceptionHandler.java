@@ -1,6 +1,7 @@
 package com.self.multi_currency_household_ledger.common.exception;
 
 import com.self.multi_currency_household_ledger.common.dto.ErrorResponse;
+import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -26,6 +27,16 @@ public class GlobalExceptionHandler {
                 .reduce((a, b) -> a + ", " + b)
                 .orElse("Validation failed");
         log.warn("Validation exception: {}", message);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse.of("VALIDATION_ERROR", message));
+    }
+
+    @ExceptionHandler(ConstraintViolationException.class)
+    public ResponseEntity<ErrorResponse> handleConstraintViolationException(ConstraintViolationException e) {
+        String message = e.getConstraintViolations().stream()
+                .map(violation -> violation.getPropertyPath() + ": " + violation.getMessage())
+                .reduce((a, b) -> a + ", " + b)
+                .orElse("Validation failed");
+        log.warn("Constraint violation exception: {}", message);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse.of("VALIDATION_ERROR", message));
     }
 
