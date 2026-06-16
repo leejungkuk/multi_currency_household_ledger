@@ -17,8 +17,9 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.Clock;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.Objects;
 import java.util.UUID;
 import lombok.AccessLevel;
@@ -57,7 +58,7 @@ public class LedgerEntry extends BaseEntity {
     @Column(nullable = false, length = 10)
     private CurrencyCode currencyCode;
 
-    @Column(nullable = false, precision = 12, scale = 2)
+    @Column(nullable = false, precision = 19, scale = 6)
     private BigDecimal appliedRate;
 
     @Column
@@ -104,9 +105,10 @@ public class LedgerEntry extends BaseEntity {
             CurrencyCode currencyCode,
             LocalDate transactionDate,
             String memo,
-            ExchangeRate exchangeRate) {
+            ExchangeRate exchangeRate,
+            Clock clock) {
         assertAmountPositive(originalAmount);
-        assertFutureDateOnlyKrw(currencyCode, transactionDate);
+        assertFutureDateOnlyKrw(currencyCode, transactionDate, clock);
 
         BigDecimal appliedRate;
         LocalDate rateBaseDate;
@@ -119,7 +121,7 @@ public class LedgerEntry extends BaseEntity {
         } else {
             // 외화 거래에는 서비스가 항상 비-null ExchangeRate를 주입한다. null은 호출자 프로그래밍 오류.
             Objects.requireNonNull(exchangeRate, "외화 거래에는 ExchangeRate가 필요합니다.");
-            appliedRate = exchangeRate.getDealBasRate();
+            appliedRate = exchangeRate.getTts();
             rateBaseDate = exchangeRate.getBaseDate();
             krwAmount = exchangeRate.convertToKrw(originalAmount);
         }
@@ -137,16 +139,40 @@ public class LedgerEntry extends BaseEntity {
                 krwAmount);
     }
 
+    public boolean recalculate(BigDecimal newRate, LocalDate newBaseDate) {
+        if (currencyCode.isBase() || !usesOlderRateThan(newBaseDate)) {
+            return false;
+        }
+
+        this.appliedRate = Objects.requireNonNull(newRate, "newRate must not be null");
+        this.rateBaseDate = Objects.requireNonNull(newBaseDate, "newBaseDate must not be null");
+        this.krwAmount = convertToKrw(originalAmount, newRate);
+        return true;
+    }
+
+    public boolean usesOlderRateThan(LocalDate applicableBaseDate) {
+        if (currencyCode.isBase()) {
+            return false;
+        }
+        return rateBaseDate == null || rateBaseDate.isBefore(applicableBaseDate);
+    }
+
     private static void assertAmountPositive(BigDecimal amount) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new BusinessException(LedgerErrorCode.INVALID_AMOUNT);
         }
     }
 
-    private static void assertFutureDateOnlyKrw(CurrencyCode currencyCode, LocalDate transactionDate) {
-        // "오늘" 판정은 서버 TZ 와 무관하게 KST 기준 (프론트 계약과 일치)
-        if (!currencyCode.isBase() && transactionDate.isAfter(LocalDate.now(ZoneId.of("Asia/Seoul")))) {
+    private static void assertFutureDateOnlyKrw(CurrencyCode currencyCode, LocalDate transactionDate, Clock clock) {
+        if (!currencyCode.isBase() && transactionDate.isAfter(LocalDate.now(clock))) {
             throw new BusinessException(LedgerErrorCode.INVALID_FUTURE_DATE);
         }
+    }
+
+    private BigDecimal convertToKrw(BigDecimal foreignAmount, BigDecimal rate) {
+        return foreignAmount
+                .divide(BigDecimal.valueOf(currencyCode.getUnit()), 10, RoundingMode.HALF_UP)
+                .multiply(rate)
+                .setScale(2, RoundingMode.HALF_UP);
     }
 }

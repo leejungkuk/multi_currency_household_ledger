@@ -22,6 +22,8 @@ import com.self.multi_currency_household_ledger.ledger.dto.CreateLedgerEntryRequ
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerEntryResponse;
 import com.self.multi_currency_household_ledger.ledger.exception.LedgerErrorCode;
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Optional;
@@ -31,7 +33,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -39,8 +40,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class LedgerServiceTest {
 
     private static final UUID MEMBER_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
+    private static final LocalDate TODAY = LocalDate.of(2026, 4, 6);
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
+    private static final Clock FIXED_CLOCK = Clock.fixed(Instant.parse("2026-04-05T15:00:00Z"), KST);
 
-    @InjectMocks
     private LedgerService ledgerService;
 
     @Mock
@@ -60,6 +63,8 @@ class LedgerServiceTest {
 
     @BeforeEach
     void setUp() {
+        ledgerService = new LedgerService(
+                ledgerEntryRepository, categoryRepository, assetRepository, exchangeRateService, FIXED_CLOCK);
         category = new Category(TransactionType.EXPENSE, "FOOD", "식비", "icon", 1, Category.SYSTEM_OWNER_ID);
         asset = new Asset("CASH", "현금", "icon", 1, Asset.SYSTEM_OWNER_ID);
     }
@@ -68,8 +73,8 @@ class LedgerServiceTest {
     @Test
     @DisplayName("원화(KRW) 거래 시 환율 조회 없이 생성된다")
     void create_ledger_entry_krw_skip_exchange_rate() {
-        CreateLedgerEntryRequest request = new CreateLedgerEntryRequest(
-                BigDecimal.valueOf(5000), CurrencyCode.KRW, 1L, 1L, LocalDate.now(ZoneId.of("Asia/Seoul")), "커피");
+        CreateLedgerEntryRequest request =
+                new CreateLedgerEntryRequest(BigDecimal.valueOf(5000), CurrencyCode.KRW, 1L, 1L, TODAY, "커피");
 
         given(categoryRepository.findByIdAndOwnerMemberId(eq(1L), eq(Category.SYSTEM_OWNER_ID)))
                 .willReturn(Optional.of(category));
@@ -91,11 +96,10 @@ class LedgerServiceTest {
     @Test
     @DisplayName("외화 거래 시 과거 또는 현재 환율이 적용되어 계산된다")
     void create_ledger_entry_foreign_currency() {
-        CreateLedgerEntryRequest request = new CreateLedgerEntryRequest(
-                BigDecimal.valueOf(100), CurrencyCode.USD, 1L, 1L, LocalDate.now(ZoneId.of("Asia/Seoul")), "점심 식사");
+        CreateLedgerEntryRequest request =
+                new CreateLedgerEntryRequest(BigDecimal.valueOf(100), CurrencyCode.USD, 1L, 1L, TODAY, "점심 식사");
 
-        ExchangeRate exchangeRate =
-                ExchangeRate.of(CurrencyCode.USD, BigDecimal.valueOf(1300), LocalDate.now(ZoneId.of("Asia/Seoul")));
+        ExchangeRate exchangeRate = ExchangeRate.of(CurrencyCode.USD, BigDecimal.valueOf(1300), TODAY);
 
         given(categoryRepository.findByIdAndOwnerMemberId(eq(1L), eq(Category.SYSTEM_OWNER_ID)))
                 .willReturn(Optional.of(category));
@@ -116,20 +120,14 @@ class LedgerServiceTest {
     @DisplayName("외화 거래 시 미래 날짜를 입력하면 예외가 발생한다")
     void create_ledger_entry_fails_for_future_date_foreign_currency() {
         CreateLedgerEntryRequest request = new CreateLedgerEntryRequest(
-                BigDecimal.valueOf(100),
-                CurrencyCode.USD,
-                1L,
-                1L,
-                LocalDate.now(ZoneId.of("Asia/Seoul")).plusDays(1),
-                "점심 식사");
+                BigDecimal.valueOf(100), CurrencyCode.USD, 1L, 1L, TODAY.plusDays(1), "점심 식사");
 
         given(categoryRepository.findByIdAndOwnerMemberId(eq(1L), eq(Category.SYSTEM_OWNER_ID)))
                 .willReturn(Optional.of(category));
         given(assetRepository.findByIdAndOwnerMemberId(eq(1L), eq(Asset.SYSTEM_OWNER_ID)))
                 .willReturn(Optional.of(asset));
         given(exchangeRateService.getRateOnOrBefore(any(), any()))
-                .willReturn(ExchangeRate.of(
-                        CurrencyCode.USD, BigDecimal.valueOf(1300), LocalDate.now(ZoneId.of("Asia/Seoul"))));
+                .willReturn(ExchangeRate.of(CurrencyCode.USD, BigDecimal.valueOf(1300), TODAY));
 
         assertThatThrownBy(() -> ledgerService.create(request, MEMBER_ID))
                 .isInstanceOf(BusinessException.class)

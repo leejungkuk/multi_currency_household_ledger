@@ -21,7 +21,7 @@ class ExchangeRateResponseTest {
 
         assertThat(response.currencyCode()).isEqualTo(CurrencyCode.JPY);
         assertThat(response.currencyName()).isEqualTo("일본 엔");
-        assertThat(response.dealBasRate()).isEqualByComparingTo(new BigDecimal("900.00"));
+        assertThat(response.tts()).isEqualByComparingTo(new BigDecimal("900.00"));
         assertThat(response.baseDate()).isEqualTo(date);
         assertThat(response.stale()).isFalse();
     }

@@ -12,6 +12,7 @@ import com.self.multi_currency_household_ledger.ledger.domain.LedgerEntryReposit
 import com.self.multi_currency_household_ledger.ledger.dto.CreateLedgerEntryRequest;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerEntryResponse;
 import com.self.multi_currency_household_ledger.ledger.exception.LedgerErrorCode;
+import java.time.Clock;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -25,6 +26,7 @@ public class LedgerService {
     private final CategoryRepository categoryRepository;
     private final AssetRepository assetRepository;
     private final ExchangeRateService exchangeRateService;
+    private final Clock clock;
 
     @Transactional
     public LedgerEntryResponse create(CreateLedgerEntryRequest request, UUID memberId) {
@@ -49,7 +51,8 @@ public class LedgerService {
                 request.currencyCode(),
                 request.transactionDate(),
                 request.memo(),
-                exchangeRate);
+                exchangeRate,
+                clock);
 
         LedgerEntry saved = ledgerEntryRepository.save(entry);
         return LedgerEntryResponse.from(saved);

@@ -22,6 +22,27 @@
                 },
                 "type": "object"
             },
+            "ApiResponseExchangeRateStatusResponse": {
+                "properties": {
+                    "code": {
+                        "type": "string"
+                    },
+                    "data": {
+                        "$ref": "#/components/schemas/ExchangeRateStatusResponse"
+                    },
+                    "message": {
+                        "type": "string"
+                    },
+                    "success": {
+                        "type": "boolean"
+                    },
+                    "timestamp": {
+                        "format": "date-time",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
             "ApiResponseLedgerEntryResponse": {
                 "properties": {
                     "code": {
@@ -223,6 +244,30 @@
                 ],
                 "type": "object"
             },
+            "CurrencyRateStatus": {
+                "properties": {
+                    "base_date": {
+                        "format": "date",
+                        "type": "string"
+                    },
+                    "currency_code": {
+                        "enum": [
+                            "KRW",
+                            "USD",
+                            "EUR",
+                            "JPY",
+                            "CNY",
+                            "GBP"
+                        ],
+                        "type": "string"
+                    },
+                    "fetched_at": {
+                        "format": "date-time",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
             "ExchangeRateResponse": {
                 "properties": {
                     "baseDate": {
@@ -243,11 +288,26 @@
                     "currencyName": {
                         "type": "string"
                     },
-                    "dealBasRate": {
-                        "type": "number"
-                    },
                     "stale": {
                         "type": "boolean"
+                    },
+                    "tts": {
+                        "type": "number"
+                    }
+                },
+                "type": "object"
+            },
+            "ExchangeRateStatusResponse": {
+                "properties": {
+                    "last_updated": {
+                        "format": "date-time",
+                        "type": "string"
+                    },
+                    "rates": {
+                        "items": {
+                            "$ref": "#/components/schemas/CurrencyRateStatus"
+                        },
+                        "type": "array"
                     }
                 },
                 "type": "object"
@@ -400,7 +460,7 @@
         },
         "/api/v1/exchange-rates/fetch": {
             "post": {
-                "operationId": "fetchRates",
+                "operationId": "fetchRatesForScheduler",
                 "parameters": [
                     {
                         "in": "query",
@@ -418,6 +478,26 @@
                             "*/*": {
                                 "schema": {
                                     "$ref": "#/components/schemas/ApiResponseVoid"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    }
+                },
+                "tags": [
+                    "exchange-rate-controller"
+                ]
+            }
+        },
+        "/api/v1/exchange-rates/status": {
+            "get": {
+                "operationId": "getStatus",
+                "responses": {
+                    "200": {
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiResponseExchangeRateStatusResponse"
                                 }
                             }
                         },
@@ -510,7 +590,7 @@
     "servers": [
         {
             "description": "Generated server url",
-            "url": "http://localhost:8080"
+            "url": "http://localhost"
         }
     ]
 }
