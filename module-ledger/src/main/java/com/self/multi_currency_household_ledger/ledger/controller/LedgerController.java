@@ -5,6 +5,7 @@ import com.self.multi_currency_household_ledger.common.dto.ApiResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.CreateLedgerEntryRequest;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerEntryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerMonthlySummaryResponse;
+import com.self.multi_currency_household_ledger.ledger.dto.LedgerReportResponse;
 import com.self.multi_currency_household_ledger.ledger.service.LedgerService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -50,6 +51,15 @@ public class LedgerController {
             @RequestParam("year") @Min(1900) @Max(9999) int year,
             @RequestParam("month") @Min(1) @Max(12) int month) {
         List<LedgerEntryResponse> response = ledgerService.getMonthlyEntries(memberId, year, month);
+        return ApiResponse.success(response);
+    }
+
+    @GetMapping("/report")
+    public ApiResponse<LedgerReportResponse> getMonthlyReport(
+            @CurrentMemberId UUID memberId,
+            @RequestParam("year") @Min(1900) @Max(9999) int year,
+            @RequestParam("month") @Min(1) @Max(12) int month) {
+        LedgerReportResponse response = ledgerService.getMonthlyReport(memberId, year, month);
         return ApiResponse.success(response);
     }
 }

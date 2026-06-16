@@ -85,6 +85,27 @@
                 },
                 "type": "object"
             },
+            "ApiResponseLedgerReportResponse": {
+                "properties": {
+                    "code": {
+                        "type": "string"
+                    },
+                    "data": {
+                        "$ref": "#/components/schemas/LedgerReportResponse"
+                    },
+                    "message": {
+                        "type": "string"
+                    },
+                    "success": {
+                        "type": "boolean"
+                    },
+                    "timestamp": {
+                        "format": "date-time",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
             "ApiResponseListAssetResponse": {
                 "properties": {
                     "code": {
@@ -225,6 +246,24 @@
                 },
                 "type": "object"
             },
+            "CategorySubtotal": {
+                "properties": {
+                    "category": {
+                        "$ref": "#/components/schemas/CategoryResponse"
+                    },
+                    "krwAmount": {
+                        "type": "number"
+                    },
+                    "transactionType": {
+                        "enum": [
+                            "EXPENSE",
+                            "INCOME"
+                        ],
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
             "CreateLedgerEntryRequest": {
                 "properties": {
                     "amount": {
@@ -289,6 +328,35 @@
                     },
                     "fetched_at": {
                         "format": "date-time",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "CurrencySubtotal": {
+                "properties": {
+                    "currencyCode": {
+                        "enum": [
+                            "KRW",
+                            "USD",
+                            "EUR",
+                            "JPY",
+                            "CNY",
+                            "GBP"
+                        ],
+                        "type": "string"
+                    },
+                    "krwAmount": {
+                        "type": "number"
+                    },
+                    "originalAmount": {
+                        "type": "number"
+                    },
+                    "transactionType": {
+                        "enum": [
+                            "EXPENSE",
+                            "INCOME"
+                        ],
                         "type": "string"
                     }
                 },
@@ -401,6 +469,23 @@
                     },
                     "total": {
                         "type": "number"
+                    }
+                },
+                "type": "object"
+            },
+            "LedgerReportResponse": {
+                "properties": {
+                    "categorySubtotals": {
+                        "items": {
+                            "$ref": "#/components/schemas/CategorySubtotal"
+                        },
+                        "type": "array"
+                    },
+                    "currencySubtotals": {
+                        "items": {
+                            "$ref": "#/components/schemas/CurrencySubtotal"
+                        },
+                        "type": "array"
                     }
                 },
                 "type": "object"
@@ -626,6 +711,50 @@
                             "*/*": {
                                 "schema": {
                                     "$ref": "#/components/schemas/ApiResponseLedgerEntryResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    }
+                },
+                "tags": [
+                    "ledger-controller"
+                ]
+            }
+        },
+        "/api/v1/ledgers/report": {
+            "get": {
+                "operationId": "getMonthlyReport",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "year",
+                        "required": true,
+                        "schema": {
+                            "format": "int32",
+                            "maximum": 9999,
+                            "minimum": 1900,
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "in": "query",
+                        "name": "month",
+                        "required": true,
+                        "schema": {
+                            "format": "int32",
+                            "maximum": 12,
+                            "minimum": 1,
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiResponseLedgerReportResponse"
                                 }
                             }
                         },

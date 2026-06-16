@@ -18,9 +18,11 @@ import com.self.multi_currency_household_ledger.ledger.domain.CategoryRepository
 import com.self.multi_currency_household_ledger.ledger.domain.LedgerEntry;
 import com.self.multi_currency_household_ledger.ledger.domain.LedgerEntryRepository;
 import com.self.multi_currency_household_ledger.ledger.domain.TransactionType;
+import com.self.multi_currency_household_ledger.ledger.dto.CategoryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.CreateLedgerEntryRequest;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerEntryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerMonthlySummaryResponse;
+import com.self.multi_currency_household_ledger.ledger.dto.LedgerReportResponse;
 import com.self.multi_currency_household_ledger.ledger.exception.LedgerErrorCode;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -176,5 +178,108 @@ class LedgerServiceTest {
                 .findByMemberIdAndTransactionDateGreaterThanEqualAndTransactionDateLessThanOrderByTransactionDateDescIdDesc(
                         eq(MEMBER_ID), eq(startDate), eq(endDate), pageableCaptor.capture());
         assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(500);
+    }
+
+    @Test
+    @DisplayName("월 리포트는 member_id와 월 범위로 통화별, 카테고리별 소계를 조회한다")
+    void get_monthly_report_uses_member_period_and_maps_subtotals() {
+        LocalDate startDate = LocalDate.of(2026, 4, 1);
+        LocalDate endDate = LocalDate.of(2026, 5, 1);
+        given(ledgerEntryRepository.findCurrencySubtotalsByMemberIdAndTransactionDateRange(
+                        MEMBER_ID, startDate, endDate))
+                .willReturn(List.of(new CurrencySubtotalStub(
+                        CurrencyCode.USD,
+                        TransactionType.EXPENSE,
+                        new BigDecimal("150.00"),
+                        new BigDecimal("195000.00"))));
+        given(ledgerEntryRepository.findCategorySubtotalsByMemberIdAndTransactionDateRange(
+                        MEMBER_ID, startDate, endDate))
+                .willReturn(List.of(new CategorySubtotalStub(
+                        1L, TransactionType.EXPENSE, "FOOD", "식비", "icon-food", 1, new BigDecimal("14000.00"))));
+
+        LedgerReportResponse response = ledgerService.getMonthlyReport(MEMBER_ID, 2026, 4);
+
+        assertThat(response.currencySubtotals())
+                .containsExactly(new LedgerReportResponse.CurrencySubtotal(
+                        CurrencyCode.USD,
+                        TransactionType.EXPENSE,
+                        new BigDecimal("150.00"),
+                        new BigDecimal("195000.00")));
+        assertThat(response.categorySubtotals())
+                .containsExactly(new LedgerReportResponse.CategorySubtotal(
+                        new CategoryResponse(1L, "FOOD", "식비", "icon-food", 1),
+                        TransactionType.EXPENSE,
+                        new BigDecimal("14000.00")));
+    }
+
+    private record CurrencySubtotalStub(
+            CurrencyCode currencyCode, TransactionType transactionType, BigDecimal originalAmount, BigDecimal krwAmount)
+            implements LedgerEntryRepository.CurrencySubtotalProjection {
+
+        @Override
+        public CurrencyCode getCurrencyCode() {
+            return currencyCode;
+        }
+
+        @Override
+        public TransactionType getTransactionType() {
+            return transactionType;
+        }
+
+        @Override
+        public BigDecimal getOriginalAmount() {
+            return originalAmount;
+        }
+
+        @Override
+        public BigDecimal getKrwAmount() {
+            return krwAmount;
+        }
+    }
+
+    private record CategorySubtotalStub(
+            Long categoryId,
+            TransactionType transactionType,
+            String categoryCode,
+            String categoryDisplayName,
+            String categoryIcon,
+            Integer categorySortOrder,
+            BigDecimal krwAmount)
+            implements LedgerEntryRepository.CategorySubtotalProjection {
+
+        @Override
+        public Long getCategoryId() {
+            return categoryId;
+        }
+
+        @Override
+        public TransactionType getTransactionType() {
+            return transactionType;
+        }
+
+        @Override
+        public String getCategoryCode() {
+            return categoryCode;
+        }
+
+        @Override
+        public String getCategoryDisplayName() {
+            return categoryDisplayName;
+        }
+
+        @Override
+        public String getCategoryIcon() {
+            return categoryIcon;
+        }
+
+        @Override
+        public Integer getCategorySortOrder() {
+            return categorySortOrder;
+        }
+
+        @Override
+        public BigDecimal getKrwAmount() {
+            return krwAmount;
+        }
     }
 }

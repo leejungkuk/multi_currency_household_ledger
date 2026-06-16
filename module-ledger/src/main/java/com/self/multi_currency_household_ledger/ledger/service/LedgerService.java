@@ -13,6 +13,7 @@ import com.self.multi_currency_household_ledger.ledger.domain.TransactionType;
 import com.self.multi_currency_household_ledger.ledger.dto.CreateLedgerEntryRequest;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerEntryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerMonthlySummaryResponse;
+import com.self.multi_currency_household_ledger.ledger.dto.LedgerReportResponse;
 import com.self.multi_currency_household_ledger.ledger.exception.LedgerErrorCode;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -87,6 +88,25 @@ public class LedgerService {
                 .stream()
                 .map(LedgerEntryResponse::from)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public LedgerReportResponse getMonthlyReport(UUID memberId, int year, int month) {
+        DateRange dateRange = DateRange.of(year, month);
+        List<LedgerReportResponse.CurrencySubtotal> currencySubtotals = ledgerEntryRepository
+                .findCurrencySubtotalsByMemberIdAndTransactionDateRange(
+                        memberId, dateRange.startDate(), dateRange.endDate())
+                .stream()
+                .map(LedgerReportResponse.CurrencySubtotal::from)
+                .toList();
+        List<LedgerReportResponse.CategorySubtotal> categorySubtotals = ledgerEntryRepository
+                .findCategorySubtotalsByMemberIdAndTransactionDateRange(
+                        memberId, dateRange.startDate(), dateRange.endDate())
+                .stream()
+                .map(LedgerReportResponse.CategorySubtotal::from)
+                .toList();
+
+        return new LedgerReportResponse(currencySubtotals, categorySubtotals);
     }
 
     private record DateRange(LocalDate startDate, LocalDate endDate) {

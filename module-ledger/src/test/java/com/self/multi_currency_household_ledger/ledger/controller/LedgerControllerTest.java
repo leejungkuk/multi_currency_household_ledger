@@ -17,6 +17,7 @@ import com.self.multi_currency_household_ledger.ledger.dto.CategoryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.CreateLedgerEntryRequest;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerEntryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerMonthlySummaryResponse;
+import com.self.multi_currency_household_ledger.ledger.dto.LedgerReportResponse;
 import com.self.multi_currency_household_ledger.ledger.service.LedgerService;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -144,6 +145,44 @@ class LedgerControllerTest {
     }
 
     @Test
+    @DisplayName("월 리포트를 조회한다")
+    void get_monthly_report_success() throws Exception {
+        CategoryResponse categoryResponse = new CategoryResponse(1L, "FOOD", "식비", "icon-food", 1);
+        LedgerReportResponse response = new LedgerReportResponse(
+                List.of(
+                        new LedgerReportResponse.CurrencySubtotal(
+                                CurrencyCode.USD,
+                                TransactionType.EXPENSE,
+                                new BigDecimal("150.00"),
+                                new BigDecimal("195000.00")),
+                        new LedgerReportResponse.CurrencySubtotal(
+                                CurrencyCode.USD,
+                                TransactionType.INCOME,
+                                new BigDecimal("200.00"),
+                                new BigDecimal("260000.00"))),
+                List.of(new LedgerReportResponse.CategorySubtotal(
+                        categoryResponse, TransactionType.EXPENSE, new BigDecimal("14000.00"))));
+
+        given(ledgerService.getMonthlyReport(MEMBER_ID, 2026, 4)).willReturn(response);
+
+        mockMvc.perform(get("/api/v1/ledgers/report").param("year", "2026").param("month", "4"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.currencySubtotals[0].currencyCode").value("USD"))
+                .andExpect(
+                        jsonPath("$.data.currencySubtotals[0].transactionType").value("EXPENSE"))
+                .andExpect(
+                        jsonPath("$.data.currencySubtotals[0].originalAmount").value(150.00))
+                .andExpect(jsonPath("$.data.currencySubtotals[0].krwAmount").value(195000.00))
+                .andExpect(
+                        jsonPath("$.data.currencySubtotals[1].transactionType").value("INCOME"))
+                .andExpect(jsonPath("$.data.categorySubtotals[0].category.code").value("FOOD"))
+                .andExpect(
+                        jsonPath("$.data.categorySubtotals[0].transactionType").value("EXPENSE"))
+                .andExpect(jsonPath("$.data.categorySubtotals[0].krwAmount").value(14000.00));
+    }
+
+    @Test
     @DisplayName("월 요약에 범위를 벗어난 month를 주면 400 VALIDATION_ERROR를 반환한다")
     void get_monthly_summary_fails_when_month_out_of_range() throws Exception {
         mockMvc.perform(get("/api/v1/ledgers/summary").param("year", "2026").param("month", "13"))
@@ -156,6 +195,15 @@ class LedgerControllerTest {
     @DisplayName("월 거래 목록에 범위를 벗어난 month를 주면 400 VALIDATION_ERROR를 반환한다")
     void get_monthly_entries_fails_when_month_out_of_range() throws Exception {
         mockMvc.perform(get("/api/v1/ledgers").param("year", "2026").param("month", "0"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    @DisplayName("월 리포트에 범위를 벗어난 month를 주면 400 VALIDATION_ERROR를 반환한다")
+    void get_monthly_report_fails_when_month_out_of_range() throws Exception {
+        mockMvc.perform(get("/api/v1/ledgers/report").param("year", "2026").param("month", "13"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
