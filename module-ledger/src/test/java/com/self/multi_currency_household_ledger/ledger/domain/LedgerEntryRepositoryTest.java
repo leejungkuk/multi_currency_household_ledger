@@ -184,6 +184,23 @@ class LedgerEntryRepositoryTest {
     }
 
     @Test
+    @DisplayName("단건 조회는 id와 member_id를 함께 사용해 다른 회원 거래를 찾지 않는다")
+    void find_by_id_and_member_id_filters_member() {
+        UUID otherMemberId = UUID.fromString("00000000-0000-0000-0000-000000000002");
+        LedgerEntry myEntry = ledgerEntryRepository.save(krwEntry(MEMBER_ID, category, TODAY, "1000.00", "내 거래"));
+        ledgerEntryRepository.save(krwEntry(otherMemberId, category, TODAY, "90000.00", "다른 회원 거래"));
+        ledgerEntryRepository.flush();
+
+        assertThat(ledgerEntryRepository.findByIdAndMemberId(myEntry.getId(), MEMBER_ID))
+                .isPresent()
+                .get()
+                .extracting(LedgerEntry::getMemo)
+                .isEqualTo("내 거래");
+        assertThat(ledgerEntryRepository.findByIdAndMemberId(myEntry.getId(), otherMemberId))
+                .isEmpty();
+    }
+
+    @Test
     @DisplayName("월 리포트 통화 소계는 member_id와 기간으로 격리하고 통화와 거래 유형별로 분리 집계한다")
     void find_monthly_currency_subtotals_filters_member_and_groups_by_currency_and_type() {
         UUID otherMemberId = UUID.fromString("00000000-0000-0000-0000-000000000002");

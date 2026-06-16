@@ -112,22 +112,7 @@ public class LedgerEntry extends BaseEntity {
             Clock clock) {
         assertValidOriginalAmount(originalAmount);
         assertFutureDateOnlyKrw(currencyCode, transactionDate, clock);
-
-        BigDecimal appliedRate;
-        LocalDate rateBaseDate;
-        BigDecimal krwAmount;
-
-        if (currencyCode.isBase()) {
-            appliedRate = BigDecimal.ONE;
-            rateBaseDate = null;
-            krwAmount = originalAmount;
-        } else {
-            // 외화 거래에는 서비스가 항상 비-null ExchangeRate를 주입한다. null은 호출자 프로그래밍 오류.
-            Objects.requireNonNull(exchangeRate, "외화 거래에는 ExchangeRate가 필요합니다.");
-            appliedRate = exchangeRate.getTts();
-            rateBaseDate = exchangeRate.getBaseDate();
-            krwAmount = exchangeRate.convertToKrw(originalAmount);
-        }
+        AmountSnapshot amountSnapshot = calculateAmountSnapshot(originalAmount, currencyCode, exchangeRate);
 
         return new LedgerEntry(
                 memberId,
@@ -137,9 +122,34 @@ public class LedgerEntry extends BaseEntity {
                 currencyCode,
                 transactionDate,
                 memo,
-                appliedRate,
-                rateBaseDate,
-                krwAmount);
+                amountSnapshot.appliedRate(),
+                amountSnapshot.rateBaseDate(),
+                amountSnapshot.krwAmount());
+    }
+
+    public void replace(
+            Category category,
+            Asset asset,
+            BigDecimal originalAmount,
+            CurrencyCode currencyCode,
+            LocalDate transactionDate,
+            String memo,
+            ExchangeRate exchangeRate,
+            Clock clock) {
+        assertValidOriginalAmount(originalAmount);
+        assertFutureDateOnlyKrw(currencyCode, transactionDate, clock);
+        AmountSnapshot amountSnapshot = calculateAmountSnapshot(originalAmount, currencyCode, exchangeRate);
+
+        this.transactionType = category.getTransactionType();
+        this.category = category;
+        this.asset = asset;
+        this.originalAmount = originalAmount;
+        this.currencyCode = currencyCode;
+        this.transactionDate = transactionDate;
+        this.memo = memo;
+        this.appliedRate = amountSnapshot.appliedRate();
+        this.rateBaseDate = amountSnapshot.rateBaseDate();
+        this.krwAmount = amountSnapshot.krwAmount();
     }
 
     public boolean recalculate(BigDecimal newRate, LocalDate newBaseDate) {
@@ -149,7 +159,7 @@ public class LedgerEntry extends BaseEntity {
 
         this.appliedRate = Objects.requireNonNull(newRate, "newRate must not be null");
         this.rateBaseDate = Objects.requireNonNull(newBaseDate, "newBaseDate must not be null");
-        this.krwAmount = convertToKrw(originalAmount, newRate);
+        this.krwAmount = convertToKrw(originalAmount, currencyCode, newRate);
         return true;
     }
 
@@ -175,10 +185,26 @@ public class LedgerEntry extends BaseEntity {
         }
     }
 
-    private BigDecimal convertToKrw(BigDecimal foreignAmount, BigDecimal rate) {
+    private static AmountSnapshot calculateAmountSnapshot(
+            BigDecimal originalAmount, CurrencyCode currencyCode, ExchangeRate exchangeRate) {
+        if (currencyCode.isBase()) {
+            return new AmountSnapshot(BigDecimal.ONE, null, originalAmount);
+        }
+
+        // 외화 거래에는 서비스가 항상 비-null ExchangeRate를 주입한다. null은 호출자 프로그래밍 오류.
+        Objects.requireNonNull(exchangeRate, "외화 거래에는 ExchangeRate가 필요합니다.");
+        BigDecimal appliedRate = exchangeRate.getTts();
+        LocalDate rateBaseDate = exchangeRate.getBaseDate();
+        BigDecimal krwAmount = convertToKrw(originalAmount, currencyCode, appliedRate);
+        return new AmountSnapshot(appliedRate, rateBaseDate, krwAmount);
+    }
+
+    private static BigDecimal convertToKrw(BigDecimal foreignAmount, CurrencyCode currencyCode, BigDecimal rate) {
         return foreignAmount
                 .divide(BigDecimal.valueOf(currencyCode.getUnit()), 10, RoundingMode.HALF_UP)
                 .multiply(rate)
                 .setScale(2, RoundingMode.HALF_UP);
     }
+
+    private record AmountSnapshot(BigDecimal appliedRate, LocalDate rateBaseDate, BigDecimal krwAmount) {}
 }

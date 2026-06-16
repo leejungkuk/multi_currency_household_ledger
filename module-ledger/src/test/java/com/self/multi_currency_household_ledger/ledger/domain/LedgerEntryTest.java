@@ -173,4 +173,68 @@ class LedgerEntryTest {
         assertThat(entry.getRateBaseDate()).isNull();
         assertThat(entry.getKrwAmount()).isEqualByComparingTo(new BigDecimal("5000.00"));
     }
+
+    @Test
+    @DisplayName("외화 거래 교체는 카테고리 거래 유형과 환율 스냅샷, 원화 금액을 다시 계산한다")
+    void replace_foreign_currency_recalculates_rate_snapshot_and_transaction_type() {
+        ExchangeRate oldRate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.000000"), TODAY.minusDays(1));
+        LedgerEntry entry = LedgerEntry.of(
+                MEMBER_ID,
+                category,
+                asset,
+                new BigDecimal("100.00"),
+                CurrencyCode.USD,
+                TODAY,
+                "기존 메모",
+                oldRate,
+                FIXED_CLOCK);
+        Category incomeCategory = new Category(TransactionType.INCOME, "SALARY", "급여", "icon-salary", 2, 1L);
+        Asset card = new Asset("CARD", "카드", "icon-card", 2, 1L);
+        ExchangeRate newRate = ExchangeRate.of(CurrencyCode.EUR, new BigDecimal("1400.000000"), TODAY);
+
+        entry.replace(
+                incomeCategory, card, new BigDecimal("50.00"), CurrencyCode.EUR, TODAY, "수정 메모", newRate, FIXED_CLOCK);
+
+        assertThat(entry.getTransactionType()).isEqualTo(TransactionType.INCOME);
+        assertThat(entry.getCategory()).isSameAs(incomeCategory);
+        assertThat(entry.getAsset()).isSameAs(card);
+        assertThat(entry.getOriginalAmount()).isEqualByComparingTo(new BigDecimal("50.00"));
+        assertThat(entry.getCurrencyCode()).isEqualTo(CurrencyCode.EUR);
+        assertThat(entry.getAppliedRate()).isEqualByComparingTo(new BigDecimal("1400.000000"));
+        assertThat(entry.getRateBaseDate()).isEqualTo(TODAY);
+        assertThat(entry.getKrwAmount()).isEqualByComparingTo(new BigDecimal("70000.00"));
+        assertThat(entry.getMemo()).isEqualTo("수정 메모");
+    }
+
+    @Test
+    @DisplayName("KRW 거래 교체는 환율 스냅샷을 1과 null로 재설정하고 원금 그대로 원화 금액에 반영한다")
+    void replace_krw_resets_rate_snapshot() {
+        ExchangeRate oldRate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.000000"), TODAY.minusDays(1));
+        LedgerEntry entry = LedgerEntry.of(
+                MEMBER_ID,
+                category,
+                asset,
+                new BigDecimal("100.00"),
+                CurrencyCode.USD,
+                TODAY,
+                "기존 메모",
+                oldRate,
+                FIXED_CLOCK);
+
+        entry.replace(
+                category,
+                asset,
+                new BigDecimal("5000.00"),
+                CurrencyCode.KRW,
+                TODAY.plusDays(1),
+                null,
+                null,
+                FIXED_CLOCK);
+
+        assertThat(entry.getAppliedRate()).isEqualByComparingTo(BigDecimal.ONE);
+        assertThat(entry.getRateBaseDate()).isNull();
+        assertThat(entry.getKrwAmount()).isEqualByComparingTo(new BigDecimal("5000.00"));
+        assertThat(entry.getTransactionDate()).isEqualTo(TODAY.plusDays(1));
+        assertThat(entry.getMemo()).isNull();
+    }
 }

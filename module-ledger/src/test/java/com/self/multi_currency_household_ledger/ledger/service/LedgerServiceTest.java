@@ -141,6 +141,113 @@ class LedgerServiceTest {
     }
 
     @Test
+    @DisplayName("거래 수정은 member_id 술어로 조회한 뒤 외화 환율을 거래일 기준으로 재해석한다")
+    void update_foreign_currency_uses_member_predicate_and_reinterprets_exchange_rate() {
+        LedgerEntry entry = LedgerEntry.of(
+                MEMBER_ID,
+                category,
+                asset,
+                new BigDecimal("100.00"),
+                CurrencyCode.USD,
+                TODAY,
+                "기존 메모",
+                ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.000000"), TODAY.minusDays(1)),
+                FIXED_CLOCK);
+        Category incomeCategory = new Category(TransactionType.INCOME, "SALARY", "급여", "icon-salary", 2, 1L);
+        Asset card = new Asset("CARD", "카드", "icon-card", 2, Asset.SYSTEM_OWNER_ID);
+        CreateLedgerEntryRequest request =
+                new CreateLedgerEntryRequest(new BigDecimal("50.00"), CurrencyCode.EUR, 2L, 2L, TODAY, "수정 메모");
+        ExchangeRate newRate = ExchangeRate.of(CurrencyCode.EUR, new BigDecimal("1400.000000"), TODAY);
+
+        given(ledgerEntryRepository.findByIdAndMemberId(1L, MEMBER_ID)).willReturn(Optional.of(entry));
+        given(categoryRepository.findByIdAndOwnerMemberId(eq(2L), eq(Category.SYSTEM_OWNER_ID)))
+                .willReturn(Optional.of(incomeCategory));
+        given(assetRepository.findByIdAndOwnerMemberId(eq(2L), eq(Asset.SYSTEM_OWNER_ID)))
+                .willReturn(Optional.of(card));
+        given(exchangeRateService.getRateOnOrBefore(CurrencyCode.EUR, TODAY)).willReturn(newRate);
+
+        LedgerEntryResponse response = ledgerService.update(1L, request, MEMBER_ID);
+
+        assertThat(response.transactionType()).isEqualTo(TransactionType.INCOME);
+        assertThat(response.originalAmount()).isEqualByComparingTo(new BigDecimal("50.00"));
+        assertThat(response.currencyCode()).isEqualTo(CurrencyCode.EUR);
+        assertThat(response.appliedRate()).isEqualByComparingTo(new BigDecimal("1400.000000"));
+        assertThat(response.rateBaseDate()).isEqualTo(TODAY);
+        assertThat(response.krwAmount()).isEqualByComparingTo(new BigDecimal("70000.00"));
+        assertThat(response.memo()).isEqualTo("수정 메모");
+        then(ledgerEntryRepository).should().findByIdAndMemberId(1L, MEMBER_ID);
+    }
+
+    @Test
+    @DisplayName("타 회원 또는 없는 거래 수정은 카탈로그 조회 없이 404 예외를 던진다")
+    void update_missing_or_other_member_entry_throws_not_found() {
+        CreateLedgerEntryRequest request =
+                new CreateLedgerEntryRequest(BigDecimal.valueOf(5000), CurrencyCode.KRW, 1L, 1L, TODAY, "커피");
+        given(ledgerEntryRepository.findByIdAndMemberId(99L, MEMBER_ID)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> ledgerService.update(99L, request, MEMBER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getCode())
+                .isEqualTo(LedgerErrorCode.LEDGER_ENTRY_NOT_FOUND.getCode());
+        then(categoryRepository).shouldHaveNoInteractions();
+        then(assetRepository).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("KRW 거래 수정은 환율 조회 없이 rate=1, 기준일 null, 원화 금액=원금으로 교체한다")
+    void update_krw_skips_exchange_rate_and_resets_snapshot() {
+        LedgerEntry entry = LedgerEntry.of(
+                MEMBER_ID,
+                category,
+                asset,
+                new BigDecimal("100.00"),
+                CurrencyCode.USD,
+                TODAY,
+                "기존 메모",
+                ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.000000"), TODAY),
+                FIXED_CLOCK);
+        CreateLedgerEntryRequest request =
+                new CreateLedgerEntryRequest(new BigDecimal("5000.00"), CurrencyCode.KRW, 1L, 1L, TODAY, null);
+
+        given(ledgerEntryRepository.findByIdAndMemberId(1L, MEMBER_ID)).willReturn(Optional.of(entry));
+        given(categoryRepository.findByIdAndOwnerMemberId(eq(1L), eq(Category.SYSTEM_OWNER_ID)))
+                .willReturn(Optional.of(category));
+        given(assetRepository.findByIdAndOwnerMemberId(eq(1L), eq(Asset.SYSTEM_OWNER_ID)))
+                .willReturn(Optional.of(asset));
+
+        LedgerEntryResponse response = ledgerService.update(1L, request, MEMBER_ID);
+
+        assertThat(response.appliedRate()).isEqualByComparingTo(BigDecimal.ONE);
+        assertThat(response.rateBaseDate()).isNull();
+        assertThat(response.krwAmount()).isEqualByComparingTo(new BigDecimal("5000.00"));
+        then(exchangeRateService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("거래 삭제는 member_id 술어로 조회한 거래만 삭제한다")
+    void delete_uses_member_predicate() {
+        LedgerEntry entry = LedgerEntry.of(
+                MEMBER_ID, category, asset, BigDecimal.valueOf(5000), CurrencyCode.KRW, TODAY, "커피", null, FIXED_CLOCK);
+        given(ledgerEntryRepository.findByIdAndMemberId(1L, MEMBER_ID)).willReturn(Optional.of(entry));
+
+        ledgerService.delete(1L, MEMBER_ID);
+
+        then(ledgerEntryRepository).should().findByIdAndMemberId(1L, MEMBER_ID);
+        then(ledgerEntryRepository).should().delete(entry);
+    }
+
+    @Test
+    @DisplayName("타 회원 또는 없는 거래 삭제는 무음 처리하지 않고 404 예외를 던진다")
+    void delete_missing_or_other_member_entry_throws_not_found() {
+        given(ledgerEntryRepository.findByIdAndMemberId(99L, MEMBER_ID)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> ledgerService.delete(99L, MEMBER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getCode())
+                .isEqualTo(LedgerErrorCode.LEDGER_ENTRY_NOT_FOUND.getCode());
+    }
+
+    @Test
     @DisplayName("월 요약은 member_id와 월 범위로 수입, 지출, 순액을 계산한다")
     void get_monthly_summary_calculates_income_expense_and_net_total() {
         LocalDate startDate = LocalDate.of(2026, 4, 1);
