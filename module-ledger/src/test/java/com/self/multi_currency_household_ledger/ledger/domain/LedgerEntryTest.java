@@ -54,6 +54,15 @@ class LedgerEntryTest {
         assertThat(entry.getTransactionType()).isEqualTo(TransactionType.EXPENSE);
     }
 
+    @Test
+    @DisplayName("가계부 내역 생성 시 메모를 정규화한다")
+    void create_normalizes_memo() {
+        assertThat(createKrwEntry("  hi  ").getMemo()).isEqualTo("hi");
+        assertThat(createKrwEntry("   ").getMemo()).isNull();
+        assertThat(createKrwEntry(null).getMemo()).isNull();
+        assertThat(createKrwEntry("점심").getMemo()).isEqualTo("점심");
+    }
+
     // 금액이 0 이하일 경우 예외가 발생하는지 확인한다.
     @Test
     @DisplayName("금액이 0 이하일 경우 예외가 발생한다")
@@ -207,6 +216,15 @@ class LedgerEntryTest {
     }
 
     @Test
+    @DisplayName("가계부 내역 교체 시 메모를 정규화한다")
+    void replace_normalizes_memo() {
+        assertThat(replaceMemo("  hi  ")).isEqualTo("hi");
+        assertThat(replaceMemo("   ")).isNull();
+        assertThat(replaceMemo(null)).isNull();
+        assertThat(replaceMemo("점심")).isEqualTo("점심");
+    }
+
+    @Test
     @DisplayName("KRW 거래 교체는 환율 스냅샷을 1과 null로 재설정하고 원금 그대로 원화 금액에 반영한다")
     void replace_krw_resets_rate_snapshot() {
         ExchangeRate oldRate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.000000"), TODAY.minusDays(1));
@@ -236,5 +254,26 @@ class LedgerEntryTest {
         assertThat(entry.getKrwAmount()).isEqualByComparingTo(new BigDecimal("5000.00"));
         assertThat(entry.getTransactionDate()).isEqualTo(TODAY.plusDays(1));
         assertThat(entry.getMemo()).isNull();
+    }
+
+    private LedgerEntry createKrwEntry(String memo) {
+        return LedgerEntry.of(
+                MEMBER_ID,
+                category,
+                asset,
+                new BigDecimal("5000.00"),
+                CurrencyCode.KRW,
+                TODAY,
+                memo,
+                null,
+                FIXED_CLOCK);
+    }
+
+    private String replaceMemo(String memo) {
+        LedgerEntry entry = createKrwEntry("기존 메모");
+
+        entry.replace(category, asset, new BigDecimal("5000.00"), CurrencyCode.KRW, TODAY, memo, null, FIXED_CLOCK);
+
+        return entry.getMemo();
     }
 }
