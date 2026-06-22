@@ -121,7 +121,7 @@ public class LedgerEntry extends BaseEntity {
                 originalAmount,
                 currencyCode,
                 transactionDate,
-                memo,
+                normalizeMemo(memo),
                 amountSnapshot.appliedRate(),
                 amountSnapshot.rateBaseDate(),
                 amountSnapshot.krwAmount());
@@ -146,7 +146,7 @@ public class LedgerEntry extends BaseEntity {
         this.originalAmount = originalAmount;
         this.currencyCode = currencyCode;
         this.transactionDate = transactionDate;
-        this.memo = memo;
+        this.memo = normalizeMemo(memo);
         this.appliedRate = amountSnapshot.appliedRate();
         this.rateBaseDate = amountSnapshot.rateBaseDate();
         this.krwAmount = amountSnapshot.krwAmount();
@@ -183,6 +183,15 @@ public class LedgerEntry extends BaseEntity {
         if (!currencyCode.isBase() && transactionDate.isAfter(LocalDate.now(clock))) {
             throw new BusinessException(LedgerErrorCode.INVALID_FUTURE_DATE);
         }
+    }
+
+    private static String normalizeMemo(String memo) {
+        if (memo == null) {
+            return null;
+        }
+
+        String stripped = memo.strip();
+        return stripped.isEmpty() ? null : stripped;
     }
 
     private static AmountSnapshot calculateAmountSnapshot(
