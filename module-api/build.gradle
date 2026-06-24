@@ -38,3 +38,9 @@ tasks.register('generateApiSnapshot', Test) {
     // 계약은 코드 상태에 따라 매번 새로 떠야 하므로 up-to-date 캐시를 끈다.
     outputs.upToDateWhen { false }
 }
+
+tasks.named('bootRun') {
+    // bootRun 은 로컬 dev 전용 태스크라 local 프로파일을 강제한다.
+    // (default 로 두면 application.yml 의 'spring.profiles.include: secret' 이 active 를 채워 local 이 안 켜진다.)
+    systemProperty 'spring.profiles.active', 'local'
+}
