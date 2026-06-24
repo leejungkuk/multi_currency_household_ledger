@@ -69,6 +69,10 @@ class OpenApiSnapshotTest {
 
         assertThat(spec).contains("\"openapi\"").contains("\"paths\"");
 
+        // @Profile("local") 전용 dev 엔드포인트(ManualRateCollectController)가 iOS 계약에 새지 않음을 강제한다.
+        // 스냅샷 생성이 외부 환경에서 local 프로파일을 상속하면 여기서 즉시 실패한다.
+        assertThat(spec).doesNotContain("/api/v1/exchange-rates/collect");
+
         Path out = Path.of(System.getProperty("openapi.snapshot.out", DEFAULT_OUT));
         if (out.getParent() != null) {
             Files.createDirectories(out.getParent());
