@@ -71,19 +71,23 @@ class LocalSecurityConfigTest {
     }
 
     @Test
-    @DisplayName("local 이어도 collect 외 경로는 deny-by-default 로 토큰 없이는 401 이다(면제 범위 한정)")
+    @DisplayName("local 이어도 환율 GET/dev 도구 외 경로는 deny-by-default 로 토큰 없이는 401 이다")
     void non_collect_path_still_requires_auth_in_local() throws Exception {
-        mockMvc.perform(get("/api/v1/exchange-rates/2026-04-06"))
+        mockMvc.perform(get("/api/v1/ledgers/summary"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
     }
 
     @Test
-    @DisplayName("local 이어도 collect 경로의 POST 외 메서드(GET)는 메인 체인으로 떨어져 401 이다(메서드 한정)")
-    void non_post_on_collect_path_still_requires_auth_in_local() throws Exception {
-        mockMvc.perform(get("/api/v1/exchange-rates/collect"))
-                .andExpect(status().isUnauthorized())
-                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    @DisplayName("local 에서도 환율 GET 경로는 토큰 없이 보안 체인을 통과한다")
+    void exchange_rate_get_path_is_public_in_local() throws Exception {
+        // @WebMvcTest 슬라이스엔 ManualRateCollectController만 있어 ExchangeRateController(GET /status)
+        // 핸들러가 없다 → downstream 404 는 의미 없다. 핵심은 인증에 막히지 않는다는 점(401/403 아님 =
+        // 메인 체인의 GET permitAll 이 local 에도 적용됨). 200 OK 강검증은 ExchangeRateController 를
+        // 로드하는 SecurityConfigTest 가 담당한다.
+        mockMvc.perform(get("/api/v1/exchange-rates/status"))
+                .andExpect(status().is(not(HttpStatus.UNAUTHORIZED.value())))
+                .andExpect(status().is(not(HttpStatus.FORBIDDEN.value())));
     }
 
     @Test

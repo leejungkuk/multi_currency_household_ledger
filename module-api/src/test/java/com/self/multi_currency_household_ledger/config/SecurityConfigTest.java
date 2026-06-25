@@ -3,6 +3,7 @@ package com.self.multi_currency_household_ledger.config;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -15,9 +16,12 @@ import com.self.multi_currency_household_ledger.ledger.dto.AssetResponse;
 import com.self.multi_currency_household_ledger.ledger.service.CatalogService;
 import java.math.BigDecimal;
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -58,8 +62,13 @@ class SecurityConfigTest {
     private ExchangeRateService exchangeRateService;
 
     @MockitoBean
-    @SuppressWarnings("UnusedVariable")
     private Clock clock;
+
+    @BeforeEach
+    void setUpClock() {
+        given(clock.instant()).willReturn(Instant.parse("2026-04-03T02:05:00Z"));
+        given(clock.getZone()).willReturn(ZoneId.of("Asia/Seoul"));
+    }
 
     @Test
     @DisplayName("보호된 /api/v1 엔드포인트는 토큰 없이 401 ErrorResponse를 반환한다")
@@ -85,9 +94,59 @@ class SecurityConfigTest {
     }
 
     @Test
-    @DisplayName("GET /api/v1/exchange-rates/status 는 토큰 없이는 401을 반환한다")
-    void exchange_rate_status_without_token_returns_401() throws Exception {
+    @DisplayName("GET /api/v1/exchange-rates 는 토큰 없이 접근할 수 있다")
+    void exchange_rates_collection_without_token_is_public() throws Exception {
+        LocalDate requestDate = LocalDate.of(2026, 4, 3);
+        given(exchangeRateService.getAllRatesByDate(requestDate))
+                .willReturn(List.of(
+                        exchangeRate(CurrencyCode.USD, "1300.00", requestDate, LocalDateTime.of(2026, 4, 3, 11, 5))));
+
+        mockMvc.perform(get("/api/v1/exchange-rates").param("date", "2026-04-03"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data[0].currencyCode").value("USD"));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/exchange-rates/snapshot 은 토큰 없이 접근할 수 있다")
+    void exchange_rate_snapshot_without_token_is_public() throws Exception {
+        LocalDate today = LocalDate.of(2026, 4, 3);
+        given(exchangeRateService.getSnapshot(today))
+                .willReturn(
+                        List.of(exchangeRate(CurrencyCode.USD, "1300.00", today, LocalDateTime.of(2026, 4, 3, 11, 5))));
+
+        mockMvc.perform(get("/api/v1/exchange-rates/snapshot"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data[0].currencyCode").value("USD"));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/exchange-rates/status 는 토큰 없이 접근할 수 있다")
+    void exchange_rate_status_without_token_is_public() throws Exception {
+        given(exchangeRateService.getLatestRatesByCurrency())
+                .willReturn(List.of(exchangeRate(
+                        CurrencyCode.USD, "1300.00", LocalDate.of(2026, 4, 3), LocalDateTime.of(2026, 4, 3, 11, 5))));
+
         mockMvc.perform(get("/api/v1/exchange-rates/status"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.rates[0].currency_code").value("USD"));
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/exchange-rates/collect 는 토큰 없이는 401을 반환한다")
+    void exchange_rate_collect_without_token_returns_401() throws Exception {
+        mockMvc.perform(post("/api/v1/exchange-rates/collect"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/ledgers/** 는 토큰 없이는 401을 반환한다")
+    void ledger_endpoint_without_token_returns_401() throws Exception {
+        mockMvc.perform(get("/api/v1/ledgers/summary"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
