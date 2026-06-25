@@ -202,6 +202,30 @@ class LedgerEntryRepositoryTest {
     }
 
     @Test
+    @DisplayName("client_entry_id 조회는 member_id로 격리한다")
+    void find_by_member_id_and_client_entry_id_filters_member() {
+        UUID otherMemberId = UUID.fromString("00000000-0000-0000-0000-000000000002");
+        UUID clientEntryId = UUID.fromString("10000000-0000-0000-0000-000000000001");
+        LedgerEntry myEntry = krwEntry(MEMBER_ID, category, TODAY, "1000.00", "내 import 거래");
+        myEntry.assignClientEntry(clientEntryId, "a".repeat(64));
+        LedgerEntry otherEntry = krwEntry(otherMemberId, category, TODAY, "90000.00", "다른 회원 import 거래");
+        otherEntry.assignClientEntry(clientEntryId, "b".repeat(64));
+        ledgerEntryRepository.saveAll(List.of(myEntry, otherEntry));
+        ledgerEntryRepository.flush();
+
+        assertThat(ledgerEntryRepository.findByMemberIdAndClientEntryId(MEMBER_ID, clientEntryId))
+                .isPresent()
+                .get()
+                .extracting(LedgerEntry::getMemo)
+                .isEqualTo("내 import 거래");
+        assertThat(ledgerEntryRepository.findByMemberIdAndClientEntryId(otherMemberId, clientEntryId))
+                .isPresent()
+                .get()
+                .extracting(LedgerEntry::getMemo)
+                .isEqualTo("다른 회원 import 거래");
+    }
+
+    @Test
     @DisplayName("월 리포트 통화 소계는 member_id와 기간으로 격리하고 통화와 거래 유형별로 분리 집계한다")
     void find_monthly_currency_subtotals_filters_member_and_groups_by_currency_and_type() {
         UUID otherMemberId = UUID.fromString("00000000-0000-0000-0000-000000000002");

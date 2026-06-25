@@ -63,6 +63,19 @@ class LedgerEntryTest {
         assertThat(createKrwEntry("점심").getMemo()).isEqualTo("점심");
     }
 
+    @Test
+    @DisplayName("import 클라이언트 식별자는 도메인 메서드로 부여한다")
+    void assign_client_entry() {
+        UUID clientEntryId = UUID.fromString("10000000-0000-0000-0000-000000000001");
+        String payloadHash = "a".repeat(64);
+        LedgerEntry entry = createKrwEntry("커피");
+
+        entry.assignClientEntry(clientEntryId, payloadHash);
+
+        assertThat(entry.getClientEntryId()).isEqualTo(clientEntryId);
+        assertThat(entry.getClientPayloadHash()).isEqualTo(payloadHash);
+    }
+
     // 금액이 0 이하일 경우 예외가 발생하는지 확인한다.
     @Test
     @DisplayName("금액이 0 이하일 경우 예외가 발생한다")
@@ -254,6 +267,19 @@ class LedgerEntryTest {
         assertThat(entry.getKrwAmount()).isEqualByComparingTo(new BigDecimal("5000.00"));
         assertThat(entry.getTransactionDate()).isEqualTo(TODAY.plusDays(1));
         assertThat(entry.getMemo()).isNull();
+    }
+
+    @Test
+    @DisplayName("가계부 내역 교체 시 import 클라이언트 식별자를 클리어한다")
+    void replace_clears_client_import_identity() {
+        UUID clientEntryId = UUID.fromString("10000000-0000-0000-0000-000000000002");
+        LedgerEntry entry = createKrwEntry("import 거래");
+        entry.assignClientEntry(clientEntryId, "a".repeat(64));
+
+        entry.replace(category, asset, new BigDecimal("6000.00"), CurrencyCode.KRW, TODAY, "사용자 수정", null, FIXED_CLOCK);
+
+        assertThat(entry.getClientEntryId()).isNull();
+        assertThat(entry.getClientPayloadHash()).isNull();
     }
 
     private LedgerEntry createKrwEntry(String memo) {

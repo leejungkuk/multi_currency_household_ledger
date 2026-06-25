@@ -15,6 +15,8 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, Long> 
 
     Optional<LedgerEntry> findByIdAndMemberId(Long id, UUID memberId);
 
+    Optional<LedgerEntry> findByMemberIdAndClientEntryId(UUID memberId, UUID clientEntryId);
+
     @Query(
             """
             select coalesce(sum(entry.krwAmount), 0)

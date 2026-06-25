@@ -108,6 +108,37 @@ class ExchangeRateRepositoryTest {
     }
 
     @Nested
+    @DisplayName("findTopByCurrencyCodeOrderByBaseDateAsc()")
+    class FindOldest {
+
+        @Test
+        @DisplayName("동일 통화의 가장 오래된 환율을 반환한다")
+        void returns_oldest_rate() {
+            em.persist(ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1290.00"), DATE.minusDays(2)));
+            em.persist(ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), DATE.minusDays(1)));
+            em.persist(ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1310.00"), DATE));
+            em.persist(ExchangeRate.of(CurrencyCode.EUR, new BigDecimal("1500.00"), DATE.minusDays(3)));
+            em.flush();
+
+            Optional<ExchangeRate> result =
+                    exchangeRateRepository.findTopByCurrencyCodeOrderByBaseDateAsc(CurrencyCode.USD);
+
+            assertThat(result).isPresent();
+            assertThat(result.get().getBaseDate()).isEqualTo(DATE.minusDays(2));
+            assertThat(result.get().getTts()).isEqualByComparingTo(new BigDecimal("1290.00"));
+        }
+
+        @Test
+        @DisplayName("데이터가 없으면 빈 Optional을 반환한다")
+        void returns_empty_when_no_data() {
+            Optional<ExchangeRate> result =
+                    exchangeRateRepository.findTopByCurrencyCodeOrderByBaseDateAsc(CurrencyCode.GBP);
+
+            assertThat(result).isEmpty();
+        }
+    }
+
+    @Nested
     @DisplayName("findByBaseDate()")
     class FindByBaseDate {
 

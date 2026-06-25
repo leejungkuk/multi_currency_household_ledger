@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -28,6 +29,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -174,6 +176,119 @@ class ExchangeRateServiceTest {
                     .isInstanceOf(BusinessException.class)
                     .satisfies(
                             ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("EXCHANGE_RATE_NOT_FOUND"));
+        }
+    }
+
+    @Nested
+    @DisplayName("getSnapshot()")
+    class GetSnapshot {
+
+        @Test
+        @DisplayName("통화별 기준일 이전 최신 환율을 통화 순서로 반환하고 없는 통화는 건너뛴다")
+        void returns_on_or_before_rates_and_skips_missing_currencies() {
+            var usd = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), DATE);
+            var jpy = ExchangeRate.of(CurrencyCode.JPY, new BigDecimal("900.00"), DATE.minusDays(1));
+            given(exchangeRateRepository.findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(
+                            CurrencyCode.USD, DATE))
+                    .willReturn(Optional.of(usd));
+            given(exchangeRateRepository.findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(
+                            CurrencyCode.EUR, DATE))
+                    .willReturn(Optional.empty());
+            given(exchangeRateRepository.findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(
+                            CurrencyCode.JPY, DATE))
+                    .willReturn(Optional.of(jpy));
+
+            List<ExchangeRate> result = exchangeRateService.getSnapshot(DATE);
+
+            assertThat(result)
+                    .extracting(ExchangeRate::getCurrencyCode)
+                    .containsExactly(CurrencyCode.USD, CurrencyCode.JPY);
+
+            verify(exchangeRateRepository, never())
+                    .findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(CurrencyCode.KRW, DATE);
+        }
+
+        @Test
+        @DisplayName("미래 날짜 조회 시 BusinessException을 던지고 repository를 호출하지 않는다")
+        void throws_for_future_date() {
+            LocalDate future = DATE.plusDays(4);
+
+            assertThatThrownBy(() -> exchangeRateService.getSnapshot(future))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(
+                            ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("INVALID_DATE"));
+
+            verify(exchangeRateRepository, never())
+                    .findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(any(), any());
+        }
+    }
+
+    @Nested
+    @DisplayName("getRateOnOrBeforeOrOldest()")
+    class GetRateOnOrBeforeOrOldest {
+
+        @Test
+        @DisplayName("기준일 이전 환율이 있으면 해당 환율을 반환한다")
+        void returns_on_or_before_rate_when_exists() {
+            var rate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), DATE.minusDays(1));
+            given(exchangeRateRepository.findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(
+                            CurrencyCode.USD, DATE))
+                    .willReturn(Optional.of(rate));
+
+            ExchangeRate result = exchangeRateService.getRateOnOrBeforeOrOldest(CurrencyCode.USD, DATE);
+
+            assertThat(result).isSameAs(rate);
+            verify(exchangeRateRepository, never()).findTopByCurrencyCodeOrderByBaseDateAsc(any());
+        }
+
+        @Test
+        @DisplayName("기준일 이전 환율이 없으면 가장 오래된 환율로 clamp한다")
+        void falls_back_to_oldest_rate_when_no_on_or_before_rate() {
+            var oldest = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1290.00"), DATE.plusDays(1));
+            given(exchangeRateRepository.findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(
+                            CurrencyCode.USD, DATE))
+                    .willReturn(Optional.empty());
+            given(exchangeRateRepository.findTopByCurrencyCodeOrderByBaseDateAsc(CurrencyCode.USD))
+                    .willReturn(Optional.of(oldest));
+
+            ExchangeRate result = exchangeRateService.getRateOnOrBeforeOrOldest(CurrencyCode.USD, DATE);
+
+            assertThat(result).isSameAs(oldest);
+
+            InOrder inOrder = inOrder(exchangeRateRepository);
+            inOrder.verify(exchangeRateRepository)
+                    .findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(CurrencyCode.USD, DATE);
+            inOrder.verify(exchangeRateRepository).findTopByCurrencyCodeOrderByBaseDateAsc(CurrencyCode.USD);
+        }
+
+        @Test
+        @DisplayName("통화에 환율이 전혀 없으면 BusinessException을 던진다")
+        void throws_when_currency_has_no_rates() {
+            given(exchangeRateRepository.findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(
+                            CurrencyCode.GBP, DATE))
+                    .willReturn(Optional.empty());
+            given(exchangeRateRepository.findTopByCurrencyCodeOrderByBaseDateAsc(CurrencyCode.GBP))
+                    .willReturn(Optional.empty());
+
+            assertThatThrownBy(() -> exchangeRateService.getRateOnOrBeforeOrOldest(CurrencyCode.GBP, DATE))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(
+                            ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("EXCHANGE_RATE_NOT_FOUND"));
+        }
+
+        @Test
+        @DisplayName("미래 날짜 조회 시 BusinessException을 던지고 repository를 호출하지 않는다")
+        void throws_for_future_date() {
+            LocalDate future = DATE.plusDays(4);
+
+            assertThatThrownBy(() -> exchangeRateService.getRateOnOrBeforeOrOldest(CurrencyCode.USD, future))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(
+                            ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("INVALID_DATE"));
+
+            verify(exchangeRateRepository, never())
+                    .findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(any(), any());
+            verify(exchangeRateRepository, never()).findTopByCurrencyCodeOrderByBaseDateAsc(any());
         }
     }
 
