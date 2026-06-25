@@ -3,6 +3,7 @@ package com.self.multi_currency_household_ledger.ledger.controller;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -19,6 +20,8 @@ import com.self.multi_currency_household_ledger.ledger.domain.TransactionType;
 import com.self.multi_currency_household_ledger.ledger.dto.AssetResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.CategoryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.CreateLedgerEntryRequest;
+import com.self.multi_currency_household_ledger.ledger.dto.ImportLedgerEntriesRequest;
+import com.self.multi_currency_household_ledger.ledger.dto.ImportLedgerEntriesResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerEntryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerMonthlySummaryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerReportResponse;
@@ -104,6 +107,84 @@ class LedgerControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+    }
+
+    @Test
+    @DisplayName("게스트 거래 배치를 import하고 clientEntryId별 서버 거래 매핑을 반환한다")
+    void import_ledger_entries_success() throws Exception {
+        UUID clientEntryId = UUID.fromString("10000000-0000-0000-0000-000000000001");
+        LocalDate transactionDate = LocalDate.of(2026, 4, 6);
+        ImportLedgerEntriesRequest request =
+                new ImportLedgerEntriesRequest(List.of(new ImportLedgerEntriesRequest.ImportLedgerEntryItem(
+                        clientEntryId, new BigDecimal("100.00"), CurrencyCode.USD, 1L, 3L, transactionDate, "점심")));
+        CategoryResponse categoryResponse = new CategoryResponse(1L, "FOOD_DINING", "식비", "Food & Dining", "🍽️", 1);
+        AssetResponse assetResponse = new AssetResponse(3L, "CASH", "현금", "Cash", 3);
+        LedgerEntryResponse ledgerEntry = new LedgerEntryResponse(
+                10L,
+                TransactionType.EXPENSE,
+                categoryResponse,
+                assetResponse,
+                new BigDecimal("100.00"),
+                CurrencyCode.USD,
+                new BigDecimal("1300.000000"),
+                new BigDecimal("130000.00"),
+                transactionDate,
+                transactionDate,
+                "점심");
+        ImportLedgerEntriesResponse response = new ImportLedgerEntriesResponse(
+                List.of(new ImportLedgerEntriesResponse.ImportedLedgerEntry(clientEntryId, ledgerEntry)));
+
+        given(ledgerService.importEntries(any(ImportLedgerEntriesRequest.class), eq(MEMBER_ID)))
+                .willReturn(response);
+
+        mockMvc.perform(post("/api/v1/ledgers/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.entries[0].clientEntryId").value(clientEntryId.toString()))
+                .andExpect(jsonPath("$.data.entries[0].ledgerEntry.id").value(10L))
+                .andExpect(
+                        jsonPath("$.data.entries[0].ledgerEntry.currencyCode").value("USD"))
+                .andExpect(jsonPath("$.data.entries[0].ledgerEntry.appliedRate").value(1300.000000))
+                .andExpect(jsonPath("$.data.entries[0].ledgerEntry.krwAmount").value(130000.00));
+    }
+
+    @Test
+    @DisplayName("import 충돌은 409 LEDGER_IMPORT_CONFLICT를 반환한다")
+    void import_ledger_entries_conflict_returns_409() throws Exception {
+        UUID clientEntryId = UUID.fromString("10000000-0000-0000-0000-000000000001");
+        ImportLedgerEntriesRequest request =
+                new ImportLedgerEntriesRequest(List.of(new ImportLedgerEntriesRequest.ImportLedgerEntryItem(
+                        clientEntryId,
+                        new BigDecimal("100.00"),
+                        CurrencyCode.KRW,
+                        1L,
+                        3L,
+                        LocalDate.of(2026, 4, 6),
+                        "커피")));
+        given(ledgerService.importEntries(any(ImportLedgerEntriesRequest.class), eq(MEMBER_ID)))
+                .willThrow(new BusinessException(LedgerErrorCode.LEDGER_IMPORT_CONFLICT));
+
+        mockMvc.perform(post("/api/v1/ledgers/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("LEDGER_IMPORT_CONFLICT"));
+    }
+
+    @Test
+    @DisplayName("인증된 import 요청에 null 항목이 있으면 400 VALIDATION_ERROR를 반환한다")
+    void import_ledger_entries_fails_when_entries_contain_null_item() throws Exception {
+        mockMvc.perform(post("/api/v1/ledgers/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"entries\":[null]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+
+        then(ledgerService).shouldHaveNoInteractions();
     }
 
     @Test

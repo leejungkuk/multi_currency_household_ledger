@@ -20,6 +20,7 @@ import com.self.multi_currency_household_ledger.ledger.domain.LedgerEntryReposit
 import com.self.multi_currency_household_ledger.ledger.domain.TransactionType;
 import com.self.multi_currency_household_ledger.ledger.dto.CategoryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.CreateLedgerEntryRequest;
+import com.self.multi_currency_household_ledger.ledger.dto.ImportLedgerEntriesRequest;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerEntryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerMonthlySummaryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerReportResponse;
@@ -39,6 +40,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Pageable;
 
 @ExtendWith(MockitoExtension.class)
@@ -114,6 +116,30 @@ class LedgerServiceTest {
         assertThat(response.originalAmount()).isEqualByComparingTo(BigDecimal.valueOf(100));
         assertThat(response.krwAmount()).isEqualByComparingTo(BigDecimal.valueOf(130000));
         assertThat(response.appliedRate()).isEqualByComparingTo(BigDecimal.valueOf(1300));
+    }
+
+    @Test
+    @DisplayName("import 저장 중 unique 경합이 발생하면 409 충돌 예외를 던진다")
+    void import_entries_maps_concurrent_unique_conflict_to_business_exception() {
+        UUID clientEntryId = UUID.fromString("10000000-0000-0000-0000-000000000001");
+        ImportLedgerEntriesRequest request =
+                new ImportLedgerEntriesRequest(List.of(new ImportLedgerEntriesRequest.ImportLedgerEntryItem(
+                        clientEntryId, new BigDecimal("100.00"), CurrencyCode.KRW, 1L, 1L, TODAY, "커피")));
+
+        given(ledgerEntryRepository.findByMemberIdAndClientEntryId(MEMBER_ID, clientEntryId))
+                .willReturn(Optional.empty());
+        given(categoryRepository.findById(1L)).willReturn(Optional.of(category));
+        given(assetRepository.findById(1L)).willReturn(Optional.of(asset));
+        given(ledgerEntryRepository.saveAndFlush(any(LedgerEntry.class)))
+                .willThrow(new DataIntegrityViolationException("duplicate client entry"));
+
+        assertThatThrownBy(() -> ledgerService.importEntries(request, MEMBER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getCode())
+                .isEqualTo(LedgerErrorCode.LEDGER_IMPORT_CONFLICT.getCode());
+
+        then(ledgerEntryRepository).should().findByMemberIdAndClientEntryId(MEMBER_ID, clientEntryId);
+        then(ledgerEntryRepository).should().saveAndFlush(any(LedgerEntry.class));
     }
 
     // 외화 거래 시 미래 날짜가 주어지면 에러가 발생하는지 확인한다.

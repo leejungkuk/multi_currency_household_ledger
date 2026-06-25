@@ -43,6 +43,27 @@
                 },
                 "type": "object"
             },
+            "ApiResponseImportLedgerEntriesResponse": {
+                "properties": {
+                    "code": {
+                        "type": "string"
+                    },
+                    "data": {
+                        "$ref": "#/components/schemas/ImportLedgerEntriesResponse"
+                    },
+                    "message": {
+                        "type": "string"
+                    },
+                    "success": {
+                        "type": "boolean"
+                    },
+                    "timestamp": {
+                        "format": "date-time",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
             "ApiResponseLedgerEntryResponse": {
                 "properties": {
                     "code": {
@@ -430,6 +451,95 @@
                 },
                 "type": "object"
             },
+            "ImportLedgerEntriesRequest": {
+                "properties": {
+                    "entries": {
+                        "items": {
+                            "$ref": "#/components/schemas/ImportLedgerEntryItem"
+                        },
+                        "maxItems": 1000,
+                        "minItems": 0,
+                        "type": "array"
+                    }
+                },
+                "required": [
+                    "entries"
+                ],
+                "type": "object"
+            },
+            "ImportLedgerEntriesResponse": {
+                "properties": {
+                    "entries": {
+                        "items": {
+                            "$ref": "#/components/schemas/ImportedLedgerEntry"
+                        },
+                        "type": "array"
+                    }
+                },
+                "type": "object"
+            },
+            "ImportLedgerEntryItem": {
+                "properties": {
+                    "amount": {
+                        "exclusiveMaximum": false,
+                        "maximum": 99999999.0,
+                        "type": "number"
+                    },
+                    "assetId": {
+                        "format": "int64",
+                        "type": "integer"
+                    },
+                    "categoryId": {
+                        "format": "int64",
+                        "type": "integer"
+                    },
+                    "clientEntryId": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "currencyCode": {
+                        "enum": [
+                            "KRW",
+                            "USD",
+                            "EUR",
+                            "JPY",
+                            "CNY",
+                            "GBP"
+                        ],
+                        "type": "string"
+                    },
+                    "memo": {
+                        "maxLength": 255,
+                        "minLength": 0,
+                        "type": "string"
+                    },
+                    "transactionDate": {
+                        "format": "date",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "amount",
+                    "assetId",
+                    "categoryId",
+                    "clientEntryId",
+                    "currencyCode",
+                    "transactionDate"
+                ],
+                "type": "object"
+            },
+            "ImportedLedgerEntry": {
+                "properties": {
+                    "clientEntryId": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "ledgerEntry": {
+                        "$ref": "#/components/schemas/LedgerEntryResponse"
+                    }
+                },
+                "type": "object"
+            },
             "LedgerEntryResponse": {
                 "properties": {
                     "appliedRate": {
@@ -766,6 +876,36 @@
                             "*/*": {
                                 "schema": {
                                     "$ref": "#/components/schemas/ApiResponseLedgerEntryResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    }
+                },
+                "tags": [
+                    "ledger-controller"
+                ]
+            }
+        },
+        "/api/v1/ledgers/import": {
+            "post": {
+                "operationId": "importLedgerEntries",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ImportLedgerEntriesRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiResponseImportLedgerEntriesResponse"
                                 }
                             }
                         },

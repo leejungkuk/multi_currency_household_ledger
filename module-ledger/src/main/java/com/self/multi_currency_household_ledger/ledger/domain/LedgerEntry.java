@@ -76,6 +76,12 @@ public class LedgerEntry extends BaseEntity {
     @Column(length = 255)
     private String memo;
 
+    @Column(name = "client_entry_id")
+    private UUID clientEntryId;
+
+    @Column(name = "client_payload_hash", length = 64)
+    private String clientPayloadHash;
+
     private LedgerEntry(
             UUID memberId,
             Category category,
@@ -150,6 +156,7 @@ public class LedgerEntry extends BaseEntity {
         this.appliedRate = amountSnapshot.appliedRate();
         this.rateBaseDate = amountSnapshot.rateBaseDate();
         this.krwAmount = amountSnapshot.krwAmount();
+        clearClientImportIdentity();
     }
 
     public boolean recalculate(BigDecimal newRate, LocalDate newBaseDate) {
@@ -170,6 +177,22 @@ public class LedgerEntry extends BaseEntity {
         return rateBaseDate == null || rateBaseDate.isBefore(applicableBaseDate);
     }
 
+    public void assignClientEntry(UUID clientEntryId, String clientPayloadHash) {
+        Objects.requireNonNull(clientEntryId, "clientEntryId must not be null");
+        Objects.requireNonNull(clientPayloadHash, "clientPayloadHash must not be null");
+        if (clientPayloadHash.length() != 64) {
+            throw new IllegalArgumentException("clientPayloadHash must be 64 characters");
+        }
+
+        this.clientEntryId = clientEntryId;
+        this.clientPayloadHash = clientPayloadHash;
+    }
+
+    private void clearClientImportIdentity() {
+        this.clientEntryId = null;
+        this.clientPayloadHash = null;
+    }
+
     private static void assertValidOriginalAmount(BigDecimal amount) {
         if (amount == null
                 || amount.compareTo(BigDecimal.ZERO) <= 0
@@ -185,7 +208,7 @@ public class LedgerEntry extends BaseEntity {
         }
     }
 
-    private static String normalizeMemo(String memo) {
+    public static String normalizeMemo(String memo) {
         if (memo == null) {
             return null;
         }

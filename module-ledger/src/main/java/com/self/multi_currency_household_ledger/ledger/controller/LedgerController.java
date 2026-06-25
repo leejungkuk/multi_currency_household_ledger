@@ -3,6 +3,8 @@ package com.self.multi_currency_household_ledger.ledger.controller;
 import com.self.multi_currency_household_ledger.common.annotation.CurrentMemberId;
 import com.self.multi_currency_household_ledger.common.dto.ApiResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.CreateLedgerEntryRequest;
+import com.self.multi_currency_household_ledger.ledger.dto.ImportLedgerEntriesRequest;
+import com.self.multi_currency_household_ledger.ledger.dto.ImportLedgerEntriesResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerEntryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerMonthlySummaryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerReportResponse;
@@ -36,6 +38,13 @@ public class LedgerController {
     public ApiResponse<LedgerEntryResponse> createLedgerEntry(
             @CurrentMemberId UUID memberId, @Valid @RequestBody CreateLedgerEntryRequest request) {
         LedgerEntryResponse response = ledgerService.create(request, memberId);
+        return ApiResponse.success(response);
+    }
+
+    @PostMapping("/import")
+    public ApiResponse<ImportLedgerEntriesResponse> importLedgerEntries(
+            @CurrentMemberId UUID memberId, @Valid @RequestBody ImportLedgerEntriesRequest request) {
+        ImportLedgerEntriesResponse response = ledgerService.importEntries(request, memberId);
         return ApiResponse.success(response);
     }
 
