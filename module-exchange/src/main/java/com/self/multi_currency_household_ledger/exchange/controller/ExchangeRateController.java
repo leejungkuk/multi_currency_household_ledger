@@ -34,6 +34,17 @@ public class ExchangeRateController {
         return ApiResponse.success(responses);
     }
 
+    @GetMapping("/snapshot")
+    public ApiResponse<List<ExchangeRateResponse>> getSnapshot(
+            @RequestParam(value = "date", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+                    LocalDate date) {
+        LocalDate effectiveDate = date != null ? date : LocalDate.now(clock);
+        List<ExchangeRateResponse> responses = exchangeRateService.getSnapshot(effectiveDate).stream()
+                .map(rate -> ExchangeRateResponse.from(rate, effectiveDate))
+                .toList();
+        return ApiResponse.success(responses);
+    }
+
     /** date 지정 시 해당일(없으면 직전 영업일 fallback), 생략 시 최신 — stale 판정 기준일은 생략 시 KST 오늘. */
     @GetMapping("/{currencyCode}")
     public ApiResponse<ExchangeRateResponse> getRate(

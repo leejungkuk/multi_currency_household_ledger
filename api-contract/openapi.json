@@ -607,6 +607,37 @@
                 ]
             }
         },
+        "/api/v1/exchange-rates/snapshot": {
+            "get": {
+                "operationId": "getSnapshot",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "date",
+                        "required": false,
+                        "schema": {
+                            "format": "date",
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiResponseListExchangeRateResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    }
+                },
+                "tags": [
+                    "exchange-rate-controller"
+                ]
+            }
+        },
         "/api/v1/exchange-rates/status": {
             "get": {
                 "operationId": "getStatus",

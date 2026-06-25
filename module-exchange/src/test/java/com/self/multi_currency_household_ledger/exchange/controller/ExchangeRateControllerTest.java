@@ -1,6 +1,7 @@
 package com.self.multi_currency_household_ledger.exchange.controller;
 
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -65,6 +66,57 @@ class ExchangeRateControllerTest {
                 .andExpect(jsonPath("$.data[0].tts").value(1300.00))
                 .andExpect(jsonPath("$.data[0].baseDate").value("2026-04-03"))
                 .andExpect(jsonPath("$.data[0].stale").value(false));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/exchange-rates/snapshot?date= 통화별 기준일 이전 최신 환율을 ApiResponse 봉투로 반환한다")
+    void getSnapshot_returns_on_or_before_rates() throws Exception {
+        LocalDate requestedDate = LocalDate.of(2026, 4, 5);
+        var rates = List.of(
+                ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), DATE),
+                ExchangeRate.of(CurrencyCode.EUR, new BigDecimal("1450.00"), requestedDate));
+        given(exchangeRateService.getSnapshot(requestedDate)).willReturn(rates);
+
+        mockMvc.perform(get("/api/v1/exchange-rates/snapshot").param("date", "2026-04-05"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.timestamp").exists())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].currencyCode").value("USD"))
+                .andExpect(jsonPath("$.data[0].currencyName").value("미 달러"))
+                .andExpect(jsonPath("$.data[0].tts").value(1300.00))
+                .andExpect(jsonPath("$.data[0].baseDate").value("2026-04-03"))
+                .andExpect(jsonPath("$.data[0].stale").value(true))
+                .andExpect(jsonPath("$.data[1].currencyCode").value("EUR"))
+                .andExpect(jsonPath("$.data[1].baseDate").value("2026-04-05"))
+                .andExpect(jsonPath("$.data[1].stale").value(false));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/exchange-rates/snapshot date 생략 시 KST 오늘 기준 snapshot을 반환한다")
+    void getSnapshot_uses_today_when_date_omitted() throws Exception {
+        given(clock.instant()).willReturn(Instant.parse("2026-04-05T15:00:00Z"));
+        given(clock.getZone()).willReturn(KST);
+        var rate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), TODAY);
+        given(exchangeRateService.getSnapshot(TODAY)).willReturn(List.of(rate));
+
+        mockMvc.perform(get("/api/v1/exchange-rates/snapshot"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].currencyCode").value("USD"))
+                .andExpect(jsonPath("$.data[0].stale").value(false));
+
+        verify(exchangeRateService).getSnapshot(TODAY);
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/exchange-rates/snapshot date 형식이 잘못되면 400과 ErrorResponse를 반환한다")
+    void getSnapshot_returns_400_for_invalid_date_format() throws Exception {
+        mockMvc.perform(get("/api/v1/exchange-rates/snapshot").param("date", "20260403"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("INVALID_PARAMETER"));
     }
 
     @Test

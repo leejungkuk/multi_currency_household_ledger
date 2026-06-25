@@ -9,7 +9,9 @@ import com.self.multi_currency_household_ledger.exchange.exception.ExchangeError
 import com.self.multi_currency_household_ledger.exchange.provider.ExchangeRateProvider;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -70,6 +72,27 @@ public class ExchangeRateService {
         ExchangeRate.assertNotFuture(date, clock);
         return exchangeRateRepository
                 .findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(currencyCode, date)
+                .orElseThrow(() -> new BusinessException(ExchangeErrorCode.EXCHANGE_RATE_NOT_FOUND));
+    }
+
+    @Transactional(readOnly = true)
+    public List<ExchangeRate> getSnapshot(LocalDate date) {
+        ExchangeRate.assertNotFuture(date, clock);
+        return Arrays.stream(CurrencyCode.values())
+                .filter(currencyCode -> !currencyCode.isBase())
+                .map(currencyCode ->
+                        exchangeRateRepository.findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(
+                                currencyCode, date))
+                .flatMap(Optional::stream)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public ExchangeRate getRateOnOrBeforeOrOldest(CurrencyCode currencyCode, LocalDate date) {
+        ExchangeRate.assertNotFuture(date, clock);
+        return exchangeRateRepository
+                .findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(currencyCode, date)
+                .or(() -> exchangeRateRepository.findTopByCurrencyCodeOrderByBaseDateAsc(currencyCode))
                 .orElseThrow(() -> new BusinessException(ExchangeErrorCode.EXCHANGE_RATE_NOT_FOUND));
     }
 
