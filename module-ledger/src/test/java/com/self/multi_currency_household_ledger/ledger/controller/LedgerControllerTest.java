@@ -243,6 +243,18 @@ class LedgerControllerTest {
     }
 
     @Test
+    @DisplayName("clientEntryId 기준 sync delete는 성공 응답을 반환한다")
+    void delete_synced_ledger_entry_success() throws Exception {
+        UUID clientEntryId = UUID.fromString("10000000-0000-0000-0000-000000000201");
+
+        mockMvc.perform(delete("/api/v1/ledgers/sync/{clientEntryId}", clientEntryId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        then(ledgerService).should().deleteSyncedEntry(clientEntryId, MEMBER_ID);
+    }
+
+    @Test
     @DisplayName("가계부 내역을 전체 교체로 수정한다")
     void update_ledger_entry_success() throws Exception {
         LocalDate transactionDate = LocalDate.of(2026, 4, 6);

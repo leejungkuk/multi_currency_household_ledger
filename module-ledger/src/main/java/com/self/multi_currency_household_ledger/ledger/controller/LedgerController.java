@@ -57,6 +57,13 @@ public class LedgerController {
         return ApiResponse.success(response);
     }
 
+    @DeleteMapping("/sync/{clientEntryId}")
+    public ApiResponse<Void> deleteSyncedLedgerEntry(
+            @CurrentMemberId UUID memberId, @PathVariable("clientEntryId") UUID clientEntryId) {
+        ledgerService.deleteSyncedEntry(clientEntryId, memberId);
+        return ApiResponse.success(null);
+    }
+
     @PutMapping("/{id}")
     public ApiResponse<LedgerEntryResponse> updateLedgerEntry(
             @CurrentMemberId UUID memberId,

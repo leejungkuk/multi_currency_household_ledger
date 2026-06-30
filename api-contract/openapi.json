@@ -1118,6 +1118,37 @@
                 ]
             }
         },
+        "/api/v1/ledgers/sync/{clientEntryId}": {
+            "delete": {
+                "operationId": "deleteSyncedLedgerEntry",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "clientEntryId",
+                        "required": true,
+                        "schema": {
+                            "format": "uuid",
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiResponseVoid"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    }
+                },
+                "tags": [
+                    "ledger-controller"
+                ]
+            }
+        },
         "/api/v1/ledgers/{id}": {
             "delete": {
                 "operationId": "deleteLedgerEntry",

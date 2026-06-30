@@ -105,6 +105,11 @@ public class LedgerService {
     }
 
     @Transactional
+    public void deleteSyncedEntry(UUID clientEntryId, UUID memberId) {
+        ledgerEntryRepository.deleteByMemberIdAndClientEntryId(memberId, clientEntryId);
+    }
+
+    @Transactional
     public LedgerEntryResponse update(Long id, CreateLedgerEntryRequest request, UUID memberId) {
         LedgerEntry entry = ledgerEntryRepository
                 .findByIdAndMemberId(id, memberId)

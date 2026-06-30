@@ -153,6 +153,51 @@ class LedgerSyncServiceIntegrationTest {
     }
 
     @Test
+    @DisplayName("sync delete는 member_id와 clientEntryId가 일치하는 기존 거래를 hard-delete한다")
+    void delete_synced_entry_removes_existing_entry_scoped_by_member() {
+        UUID clientEntryId = UUID.fromString("10000000-0000-0000-0000-000000000201");
+        ledgerService.sync(
+                request(clientEntryId, new BigDecimal("1000.00"), CurrencyCode.KRW, TODAY, "삭제 대상"), MEMBER_ID);
+        assertThat(ledgerEntryRepository.findByMemberIdAndClientEntryId(MEMBER_ID, clientEntryId))
+                .isPresent();
+
+        ledgerService.deleteSyncedEntry(clientEntryId, MEMBER_ID);
+
+        assertThat(ledgerEntryRepository.findByMemberIdAndClientEntryId(MEMBER_ID, clientEntryId))
+                .isEmpty();
+        assertThat(ledgerEntryRepository.count()).isZero();
+    }
+
+    @Test
+    @DisplayName("sync delete는 대상 clientEntryId가 없어도 멱등 성공한다")
+    void delete_synced_entry_succeeds_when_entry_is_absent() {
+        UUID missingClientEntryId = UUID.fromString("10000000-0000-0000-0000-000000000202");
+
+        ledgerService.deleteSyncedEntry(missingClientEntryId, MEMBER_ID);
+
+        assertThat(ledgerEntryRepository.count()).isZero();
+    }
+
+    @Test
+    @DisplayName("sync delete는 같은 clientEntryId라도 다른 member_id의 거래를 삭제하지 않고 멱등 성공한다")
+    void delete_synced_entry_does_not_delete_other_members_entry() {
+        UUID clientEntryId = UUID.fromString("10000000-0000-0000-0000-000000000203");
+        ledgerService.sync(
+                request(clientEntryId, new BigDecimal("1000.00"), CurrencyCode.KRW, TODAY, "memberA"), MEMBER_ID);
+
+        ledgerService.deleteSyncedEntry(clientEntryId, OTHER_MEMBER_ID);
+
+        assertThat(ledgerEntryRepository.findByMemberIdAndClientEntryId(MEMBER_ID, clientEntryId))
+                .isPresent()
+                .get()
+                .extracting(LedgerEntry::getMemo)
+                .isEqualTo("memberA");
+        assertThat(ledgerEntryRepository.findByMemberIdAndClientEntryId(OTHER_MEMBER_ID, clientEntryId))
+                .isEmpty();
+        assertThat(ledgerEntryRepository.count()).isEqualTo(1);
+    }
+
+    @Test
     @DisplayName("동시 sync insert 경합은 REQUIRES_NEW 격리로 한 행에 수렴하고 500 없이 마지막 교체로 정리된다")
     void sync_concurrent_insert_race_converges_to_single_row_without_leaking_500() throws Exception {
         UUID sharedClientEntryId = UUID.fromString("10000000-0000-0000-0000-000000000104");
