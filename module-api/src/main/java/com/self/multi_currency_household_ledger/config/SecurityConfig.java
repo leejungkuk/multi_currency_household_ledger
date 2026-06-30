@@ -45,7 +45,12 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers(HttpMethod.GET, "/api/v1/exchange-rates", "/api/v1/exchange-rates/**")
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/v1/exchange-rates",
+                                "/api/v1/exchange-rates/**",
+                                "/api/v1/categories",
+                                "/api/v1/assets")
                         .permitAll()
                         .anyRequest()
                         .authenticated())

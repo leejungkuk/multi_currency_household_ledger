@@ -12,7 +12,9 @@ import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
 import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRate;
 import com.self.multi_currency_household_ledger.exchange.service.ExchangeRateService;
 import com.self.multi_currency_household_ledger.ledger.controller.CatalogController;
+import com.self.multi_currency_household_ledger.ledger.domain.TransactionType;
 import com.self.multi_currency_household_ledger.ledger.dto.AssetResponse;
+import com.self.multi_currency_household_ledger.ledger.dto.CategoryResponse;
 import com.self.multi_currency_household_ledger.ledger.service.CatalogService;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -73,7 +75,7 @@ class SecurityConfigTest {
     @Test
     @DisplayName("보호된 /api/v1 엔드포인트는 토큰 없이 401 ErrorResponse를 반환한다")
     void protected_endpoint_without_token_returns_401() throws Exception {
-        mockMvc.perform(get("/api/v1/assets"))
+        mockMvc.perform(get("/api/v1/ledgers/summary"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value("UNAUTHORIZED"))
@@ -132,6 +134,43 @@ class SecurityConfigTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.rates[0].currency_code").value("USD"));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/categories 는 토큰 없이 접근할 수 있다")
+    void categories_without_token_is_public() throws Exception {
+        given(catalogService.getCategories(TransactionType.EXPENSE))
+                .willReturn(List.of(new CategoryResponse(1L, "FOOD", "식비", "Food", "utensils", 1)));
+
+        mockMvc.perform(get("/api/v1/categories").param("transactionType", "EXPENSE"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data[0].code").value("FOOD"));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/assets 는 토큰 없이 접근할 수 있다")
+    void assets_without_token_is_public() throws Exception {
+        given(catalogService.getAssets()).willReturn(List.of(new AssetResponse(3L, "CASH", "현금", "Cash", 3)));
+
+        mockMvc.perform(get("/api/v1/assets"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data[0].code").value("CASH"));
+    }
+
+    @Test
+    @DisplayName("카탈로그 비-GET(POST)은 토큰 없이 401을 반환한다(공개는 GET만)")
+    void catalog_non_get_without_token_returns_401() throws Exception {
+        mockMvc.perform(post("/api/v1/categories"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+        mockMvc.perform(post("/api/v1/assets"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
     }
 
     @Test
