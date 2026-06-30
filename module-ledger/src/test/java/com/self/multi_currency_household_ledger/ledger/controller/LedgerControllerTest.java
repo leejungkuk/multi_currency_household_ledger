@@ -25,6 +25,7 @@ import com.self.multi_currency_household_ledger.ledger.dto.ImportLedgerEntriesRe
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerEntryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerMonthlySummaryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerReportResponse;
+import com.self.multi_currency_household_ledger.ledger.dto.LedgerRestoreResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryRequest;
 import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryResponse;
 import com.self.multi_currency_household_ledger.ledger.exception.LedgerErrorCode;
@@ -368,6 +369,50 @@ class LedgerControllerTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data[0].id").value(1L))
                 .andExpect(jsonPath("$.data[0].memo").value("커피"));
+    }
+
+    @Test
+    @DisplayName("restore는 clientEntryId를 inline으로 포함하고 keyset 커서를 반환한다")
+    void restore_ledger_entries_success() throws Exception {
+        UUID clientEntryId = UUID.fromString("10000000-0000-0000-0000-000000000301");
+        LocalDate transactionDate = LocalDate.of(2026, 4, 5);
+        CategoryResponse categoryResponse = new CategoryResponse(1L, "FOOD_DINING", "식비", "Food & Dining", "🍽️", 1);
+        AssetResponse assetResponse = new AssetResponse(3L, "CASH", "현금", "Cash", 3);
+        LedgerRestoreResponse response = new LedgerRestoreResponse(
+                List.of(new LedgerRestoreResponse.RestoredLedgerEntry(
+                        11L,
+                        clientEntryId,
+                        TransactionType.EXPENSE,
+                        categoryResponse,
+                        assetResponse,
+                        new BigDecimal("100.00"),
+                        CurrencyCode.USD,
+                        new BigDecimal("1320.000000"),
+                        new BigDecimal("132000.00"),
+                        transactionDate,
+                        transactionDate,
+                        "점심")),
+                new LedgerRestoreResponse.RestoreCursor(transactionDate, 11L),
+                true);
+
+        given(ledgerService.restore(MEMBER_ID, LocalDate.of(2026, 4, 6), 12L, 2))
+                .willReturn(response);
+
+        mockMvc.perform(get("/api/v1/ledgers/restore")
+                        .param("cursorDate", "2026-04-06")
+                        .param("cursorId", "12")
+                        .param("size", "2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.entries[0].id").value(11L))
+                .andExpect(jsonPath("$.data.entries[0].clientEntryId").value(clientEntryId.toString()))
+                .andExpect(jsonPath("$.data.entries[0].appliedRate").value(1320.000000))
+                .andExpect(jsonPath("$.data.entries[0].rateBaseDate").value("2026-04-05"))
+                .andExpect(jsonPath("$.data.nextCursor.transactionDate").value("2026-04-05"))
+                .andExpect(jsonPath("$.data.nextCursor.id").value(11L))
+                .andExpect(jsonPath("$.data.hasNext").value(true));
+
+        then(ledgerService).should().restore(MEMBER_ID, LocalDate.of(2026, 4, 6), 12L, 2);
     }
 
     @Test

@@ -16,6 +16,7 @@ import com.self.multi_currency_household_ledger.ledger.dto.ImportLedgerEntriesRe
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerEntryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerMonthlySummaryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerReportResponse;
+import com.self.multi_currency_household_ledger.ledger.dto.LedgerRestoreResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryRequest;
 import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryResponse;
 import com.self.multi_currency_household_ledger.ledger.exception.LedgerErrorCode;
@@ -45,6 +46,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class LedgerService {
 
     private static final int MONTHLY_ENTRY_LIMIT = 500;
+    private static final int RESTORE_PAGE_SIZE_LIMIT = 500;
 
     private final LedgerEntryRepository ledgerEntryRepository;
     private final CategoryRepository categoryRepository;
@@ -172,6 +174,22 @@ public class LedgerService {
     }
 
     @Transactional(readOnly = true)
+    public LedgerRestoreResponse restore(UUID memberId, LocalDate cursorDate, Long cursorId, int size) {
+        validateRestoreCursor(cursorDate, cursorId);
+        int pageSize = Math.max(1, Math.min(size, RESTORE_PAGE_SIZE_LIMIT));
+        // hasNext 판별용 1건 lookahead만 추가로 조회하고 응답은 pageSize 이하로 자른다.
+        PageRequest pageRequest = PageRequest.of(0, pageSize + 1);
+        List<LedgerEntry> entries = cursorDate == null
+                ? ledgerEntryRepository.findRestoreFirstPageByMemberId(memberId, pageRequest)
+                : ledgerEntryRepository.findRestorePageByMemberIdAfterCursor(
+                        memberId, cursorDate, cursorId, pageRequest);
+        boolean hasNext = entries.size() > pageSize;
+        List<LedgerEntry> pageEntries = hasNext ? entries.subList(0, pageSize) : entries;
+
+        return LedgerRestoreResponse.from(pageEntries, hasNext);
+    }
+
+    @Transactional(readOnly = true)
     public LedgerReportResponse getMonthlyReport(UUID memberId, int year, int month) {
         DateRange dateRange = DateRange.of(year, month);
         List<LedgerReportResponse.CurrencySubtotal> currencySubtotals = ledgerEntryRepository
@@ -188,6 +206,12 @@ public class LedgerService {
                 .toList();
 
         return new LedgerReportResponse(currencySubtotals, categorySubtotals);
+    }
+
+    private static void validateRestoreCursor(LocalDate cursorDate, Long cursorId) {
+        if ((cursorDate == null) != (cursorId == null) || (cursorId != null && cursorId <= 0)) {
+            throw new BusinessException(LedgerErrorCode.INVALID_RESTORE_CURSOR);
+        }
     }
 
     private record DateRange(LocalDate startDate, LocalDate endDate) {

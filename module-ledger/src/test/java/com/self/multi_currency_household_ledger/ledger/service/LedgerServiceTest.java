@@ -351,6 +351,49 @@ class LedgerServiceTest {
     }
 
     @Test
+    @DisplayName("restore는 cursorDate와 cursorId가 함께 있는 keyset 커서만 허용한다")
+    void restore_rejects_partial_cursor() {
+        assertThatThrownBy(() -> ledgerService.restore(MEMBER_ID, TODAY, null, 500))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getCode())
+                .isEqualTo(LedgerErrorCode.INVALID_RESTORE_CURSOR.getCode());
+        assertThatThrownBy(() -> ledgerService.restore(MEMBER_ID, null, 1L, 500))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getCode())
+                .isEqualTo(LedgerErrorCode.INVALID_RESTORE_CURSOR.getCode());
+
+        then(ledgerEntryRepository).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("restore는 cursorId가 0 이하인 keyset 커서를 거부한다(서비스 방어 분기)")
+    void restore_rejects_non_positive_cursor_id() {
+        assertThatThrownBy(() -> ledgerService.restore(MEMBER_ID, TODAY, 0L, 500))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getCode())
+                .isEqualTo(LedgerErrorCode.INVALID_RESTORE_CURSOR.getCode());
+        assertThatThrownBy(() -> ledgerService.restore(MEMBER_ID, TODAY, -1L, 500))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getCode())
+                .isEqualTo(LedgerErrorCode.INVALID_RESTORE_CURSOR.getCode());
+
+        then(ledgerEntryRepository).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("restore는 요청 size가 커도 서버 상한 500건까지만 반환하도록 조회한다")
+    void restore_caps_page_size_to_server_limit() {
+        given(ledgerEntryRepository.findRestoreFirstPageByMemberId(eq(MEMBER_ID), any(Pageable.class)))
+                .willReturn(List.of());
+
+        ledgerService.restore(MEMBER_ID, null, null, 1000);
+
+        ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+        then(ledgerEntryRepository).should().findRestoreFirstPageByMemberId(eq(MEMBER_ID), pageableCaptor.capture());
+        assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(501);
+    }
+
+    @Test
     @DisplayName("월 리포트는 member_id와 월 범위로 통화별, 카테고리별 소계를 조회한다")
     void get_monthly_report_uses_member_period_and_maps_subtotals() {
         LocalDate startDate = LocalDate.of(2026, 4, 1);

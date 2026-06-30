@@ -8,15 +8,18 @@ import com.self.multi_currency_household_ledger.ledger.dto.ImportLedgerEntriesRe
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerEntryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerMonthlySummaryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerReportResponse;
+import com.self.multi_currency_household_ledger.ledger.dto.LedgerRestoreResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryRequest;
 import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryResponse;
 import com.self.multi_currency_household_ledger.ledger.service.LedgerService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -94,6 +97,17 @@ public class LedgerController {
             @RequestParam("year") @Min(1900) @Max(9999) int year,
             @RequestParam("month") @Min(1) @Max(12) int month) {
         List<LedgerEntryResponse> response = ledgerService.getMonthlyEntries(memberId, year, month);
+        return ApiResponse.success(response);
+    }
+
+    @GetMapping("/restore")
+    public ApiResponse<LedgerRestoreResponse> restoreLedgerEntries(
+            @CurrentMemberId UUID memberId,
+            @RequestParam(value = "cursorDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+                    LocalDate cursorDate,
+            @RequestParam(value = "cursorId", required = false) @Min(1) Long cursorId,
+            @RequestParam(value = "size", defaultValue = "500") @Min(1) @Max(500) int size) {
+        LedgerRestoreResponse response = ledgerService.restore(memberId, cursorDate, cursorId, size);
         return ApiResponse.success(response);
     }
 

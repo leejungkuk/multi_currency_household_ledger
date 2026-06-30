@@ -95,6 +95,36 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, Long> 
             findByMemberIdAndTransactionDateGreaterThanEqualAndTransactionDateLessThanOrderByTransactionDateDescIdDesc(
                     UUID memberId, LocalDate startDate, LocalDate endDate, Pageable pageable);
 
+    @Query(
+            """
+            select entry
+            from LedgerEntry entry
+            join fetch entry.category
+            join fetch entry.asset
+            where entry.memberId = :memberId
+            order by entry.transactionDate desc, entry.id desc
+            """)
+    List<LedgerEntry> findRestoreFirstPageByMemberId(@Param("memberId") UUID memberId, Pageable pageable);
+
+    @Query(
+            """
+            select entry
+            from LedgerEntry entry
+            join fetch entry.category
+            join fetch entry.asset
+            where entry.memberId = :memberId
+              and (
+                  entry.transactionDate < :cursorDate
+                  or (entry.transactionDate = :cursorDate and entry.id < :cursorId)
+              )
+            order by entry.transactionDate desc, entry.id desc
+            """)
+    List<LedgerEntry> findRestorePageByMemberIdAfterCursor(
+            @Param("memberId") UUID memberId,
+            @Param("cursorDate") LocalDate cursorDate,
+            @Param("cursorId") Long cursorId,
+            Pageable pageable);
+
     List<LedgerEntry> findByCurrencyCodeNotAndTransactionDateGreaterThanEqualOrderByTransactionDateAscIdAsc(
             CurrencyCode currencyCode, LocalDate transactionDate);
 
