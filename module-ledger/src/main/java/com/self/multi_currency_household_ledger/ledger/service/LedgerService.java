@@ -16,6 +16,8 @@ import com.self.multi_currency_household_ledger.ledger.dto.ImportLedgerEntriesRe
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerEntryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerMonthlySummaryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerReportResponse;
+import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryRequest;
+import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryResponse;
 import com.self.multi_currency_household_ledger.ledger.exception.LedgerErrorCode;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -49,6 +51,7 @@ public class LedgerService {
     private final AssetRepository assetRepository;
     private final ExchangeRateService exchangeRateService;
     private final Clock clock;
+    private final LedgerSyncInsertService ledgerSyncInsertService;
 
     @Transactional
     public LedgerEntryResponse create(CreateLedgerEntryRequest request, UUID memberId) {
@@ -90,6 +93,15 @@ public class LedgerService {
             entries.add(importEntry(memberId, item));
         }
         return new ImportLedgerEntriesResponse(entries);
+    }
+
+    @Transactional
+    public SyncLedgerEntryResponse sync(SyncLedgerEntryRequest request, UUID memberId) {
+        LedgerEntry entry = ledgerEntryRepository
+                .findByMemberIdAndClientEntryId(memberId, request.clientEntryId())
+                .map(existing -> replaceSyncedEntry(existing, request))
+                .orElseGet(() -> createSyncedEntry(memberId, request));
+        return SyncLedgerEntryResponse.from(request.clientEntryId(), entry);
     }
 
     @Transactional
@@ -233,6 +245,46 @@ public class LedgerService {
             throwImportConflict();
         }
         return new ImportLedgerEntriesResponse.ImportedLedgerEntry(clientEntryId, LedgerEntryResponse.from(existing));
+    }
+
+    private LedgerEntry createSyncedEntry(UUID memberId, SyncLedgerEntryRequest request) {
+        try {
+            return ledgerSyncInsertService.create(memberId, request);
+        } catch (DataIntegrityViolationException e) {
+            return ledgerEntryRepository
+                    .findByMemberIdAndClientEntryId(memberId, request.clientEntryId())
+                    .map(existing -> replaceSyncedEntry(existing, request))
+                    .orElseThrow(() -> e);
+        }
+    }
+
+    private LedgerEntry replaceSyncedEntry(LedgerEntry entry, SyncLedgerEntryRequest request) {
+        Category category = categoryRepository
+                .findById(request.categoryId())
+                .orElseThrow(() -> new BusinessException(LedgerErrorCode.CATEGORY_NOT_FOUND));
+
+        Asset asset = assetRepository
+                .findById(request.assetId())
+                .orElseThrow(() -> new BusinessException(LedgerErrorCode.ASSET_NOT_FOUND));
+
+        ExchangeRate exchangeRate = null;
+        if (!request.currencyCode().isBase()) {
+            exchangeRate = exchangeRateService.getRateOnOrBefore(request.currencyCode(), request.transactionDate());
+        }
+
+        entry.replace(
+                category,
+                asset,
+                request.amount(),
+                request.currencyCode(),
+                request.transactionDate(),
+                request.memo(),
+                exchangeRate,
+                clock);
+        // replace() 는 import 식별자 오염 방지를 위해 clientEntryId 를 지운다. sync 는 그 식별자로
+        // 행을 찾았으므로 동일 clientEntryId 를 다시 부여해 매핑을 유지한다(payload hash 는 sync 에서 미사용).
+        entry.assignClientEntry(request.clientEntryId());
+        return entry;
     }
 
     private void validateUniqueClientEntryIds(List<ImportLedgerEntriesRequest.ImportLedgerEntryItem> entries) {

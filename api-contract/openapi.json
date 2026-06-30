@@ -223,6 +223,27 @@
                 },
                 "type": "object"
             },
+            "ApiResponseSyncLedgerEntryResponse": {
+                "properties": {
+                    "code": {
+                        "type": "string"
+                    },
+                    "data": {
+                        "$ref": "#/components/schemas/SyncLedgerEntryResponse"
+                    },
+                    "message": {
+                        "type": "string"
+                    },
+                    "success": {
+                        "type": "boolean"
+                    },
+                    "timestamp": {
+                        "format": "date-time",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
             "ApiResponseVoid": {
                 "properties": {
                     "code": {
@@ -623,6 +644,68 @@
                     }
                 },
                 "type": "object"
+            },
+            "SyncLedgerEntryRequest": {
+                "properties": {
+                    "amount": {
+                        "exclusiveMaximum": false,
+                        "maximum": 99999999.0,
+                        "type": "number"
+                    },
+                    "assetId": {
+                        "format": "int64",
+                        "type": "integer"
+                    },
+                    "categoryId": {
+                        "format": "int64",
+                        "type": "integer"
+                    },
+                    "clientEntryId": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "currencyCode": {
+                        "enum": [
+                            "KRW",
+                            "USD",
+                            "EUR",
+                            "JPY",
+                            "CNY",
+                            "GBP"
+                        ],
+                        "type": "string"
+                    },
+                    "memo": {
+                        "maxLength": 255,
+                        "minLength": 0,
+                        "type": "string"
+                    },
+                    "transactionDate": {
+                        "format": "date",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "amount",
+                    "assetId",
+                    "categoryId",
+                    "clientEntryId",
+                    "currencyCode",
+                    "transactionDate"
+                ],
+                "type": "object"
+            },
+            "SyncLedgerEntryResponse": {
+                "properties": {
+                    "clientEntryId": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "ledgerEntry": {
+                        "$ref": "#/components/schemas/LedgerEntryResponse"
+                    }
+                },
+                "type": "object"
             }
         }
     },
@@ -994,6 +1077,36 @@
                             "*/*": {
                                 "schema": {
                                     "$ref": "#/components/schemas/ApiResponseLedgerMonthlySummaryResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    }
+                },
+                "tags": [
+                    "ledger-controller"
+                ]
+            }
+        },
+        "/api/v1/ledgers/sync": {
+            "post": {
+                "operationId": "syncLedgerEntry",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SyncLedgerEntryRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiResponseSyncLedgerEntryResponse"
                                 }
                             }
                         },

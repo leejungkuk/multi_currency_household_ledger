@@ -25,6 +25,8 @@ import com.self.multi_currency_household_ledger.ledger.dto.ImportLedgerEntriesRe
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerEntryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerMonthlySummaryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerReportResponse;
+import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryRequest;
+import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryResponse;
 import com.self.multi_currency_household_ledger.ledger.exception.LedgerErrorCode;
 import com.self.multi_currency_household_ledger.ledger.service.LedgerService;
 import java.math.BigDecimal;
@@ -180,6 +182,59 @@ class LedgerControllerTest {
         mockMvc.perform(post("/api/v1/ledgers/import")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"entries\":[null]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+
+        then(ledgerService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("단건 sync upsert는 clientEntryId별 서버 거래 매핑을 반환한다")
+    void sync_ledger_entry_success() throws Exception {
+        UUID clientEntryId = UUID.fromString("10000000-0000-0000-0000-000000000101");
+        LocalDate transactionDate = LocalDate.of(2026, 4, 6);
+        SyncLedgerEntryRequest request = new SyncLedgerEntryRequest(
+                clientEntryId, new BigDecimal("100.00"), CurrencyCode.USD, 1L, 3L, transactionDate, "점심");
+        CategoryResponse categoryResponse = new CategoryResponse(1L, "FOOD_DINING", "식비", "Food & Dining", "🍽️", 1);
+        AssetResponse assetResponse = new AssetResponse(3L, "CASH", "현금", "Cash", 3);
+        LedgerEntryResponse ledgerEntry = new LedgerEntryResponse(
+                11L,
+                TransactionType.EXPENSE,
+                categoryResponse,
+                assetResponse,
+                new BigDecimal("100.00"),
+                CurrencyCode.USD,
+                new BigDecimal("1320.000000"),
+                new BigDecimal("132000.00"),
+                transactionDate,
+                transactionDate,
+                "점심");
+        SyncLedgerEntryResponse response = new SyncLedgerEntryResponse(clientEntryId, ledgerEntry);
+
+        given(ledgerService.sync(any(SyncLedgerEntryRequest.class), eq(MEMBER_ID)))
+                .willReturn(response);
+
+        mockMvc.perform(post("/api/v1/ledgers/sync")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.clientEntryId").value(clientEntryId.toString()))
+                .andExpect(jsonPath("$.data.ledgerEntry.id").value(11L))
+                .andExpect(jsonPath("$.data.ledgerEntry.currencyCode").value("USD"))
+                .andExpect(jsonPath("$.data.ledgerEntry.appliedRate").value(1320.000000))
+                .andExpect(jsonPath("$.data.ledgerEntry.krwAmount").value(132000.00));
+
+        then(ledgerService).should().sync(any(SyncLedgerEntryRequest.class), eq(MEMBER_ID));
+    }
+
+    @Test
+    @DisplayName("sync upsert 필수값이 누락되면 400 VALIDATION_ERROR를 반환한다")
+    void sync_ledger_entry_fails_when_invalid_request() throws Exception {
+        mockMvc.perform(post("/api/v1/ledgers/sync")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));

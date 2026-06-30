@@ -188,6 +188,11 @@ public class LedgerEntry extends BaseEntity {
         this.clientPayloadHash = clientPayloadHash;
     }
 
+    public void assignClientEntry(UUID clientEntryId) {
+        this.clientEntryId = Objects.requireNonNull(clientEntryId, "clientEntryId must not be null");
+        this.clientPayloadHash = null;
+    }
+
     private void clearClientImportIdentity() {
         this.clientEntryId = null;
         this.clientPayloadHash = null;

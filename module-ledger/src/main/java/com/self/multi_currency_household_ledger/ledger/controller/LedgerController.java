@@ -8,6 +8,8 @@ import com.self.multi_currency_household_ledger.ledger.dto.ImportLedgerEntriesRe
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerEntryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerMonthlySummaryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerReportResponse;
+import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryRequest;
+import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryResponse;
 import com.self.multi_currency_household_ledger.ledger.service.LedgerService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -45,6 +47,13 @@ public class LedgerController {
     public ApiResponse<ImportLedgerEntriesResponse> importLedgerEntries(
             @CurrentMemberId UUID memberId, @Valid @RequestBody ImportLedgerEntriesRequest request) {
         ImportLedgerEntriesResponse response = ledgerService.importEntries(request, memberId);
+        return ApiResponse.success(response);
+    }
+
+    @PostMapping("/sync")
+    public ApiResponse<SyncLedgerEntryResponse> syncLedgerEntry(
+            @CurrentMemberId UUID memberId, @Valid @RequestBody SyncLedgerEntryRequest request) {
+        SyncLedgerEntryResponse response = ledgerService.sync(request, memberId);
         return ApiResponse.success(response);
     }
 
