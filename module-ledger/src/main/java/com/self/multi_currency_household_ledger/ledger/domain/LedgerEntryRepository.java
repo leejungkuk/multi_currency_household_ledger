@@ -3,6 +3,7 @@ package com.self.multi_currency_household_ledger.ledger.domain;
 import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -122,6 +123,36 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, Long> 
     List<LedgerEntry> findRestorePageByMemberIdAfterCursor(
             @Param("memberId") UUID memberId,
             @Param("cursorDate") LocalDate cursorDate,
+            @Param("cursorId") Long cursorId,
+            Pageable pageable);
+
+    @Query(
+            """
+            select entry
+            from LedgerEntry entry
+            join fetch entry.category
+            join fetch entry.asset
+            where entry.memberId = :memberId
+            order by entry.updatedAt asc, entry.id asc
+            """)
+    List<LedgerEntry> findChangesFirstPageByMemberId(@Param("memberId") UUID memberId, Pageable pageable);
+
+    @Query(
+            """
+            select entry
+            from LedgerEntry entry
+            join fetch entry.category
+            join fetch entry.asset
+            where entry.memberId = :memberId
+              and (
+                  entry.updatedAt > :cursorUpdatedAt
+                  or (entry.updatedAt = :cursorUpdatedAt and entry.id > :cursorId)
+              )
+            order by entry.updatedAt asc, entry.id asc
+            """)
+    List<LedgerEntry> findChangesPageByMemberIdAfterCursor(
+            @Param("memberId") UUID memberId,
+            @Param("cursorUpdatedAt") LocalDateTime cursorUpdatedAt,
             @Param("cursorId") Long cursorId,
             Pageable pageable);
 

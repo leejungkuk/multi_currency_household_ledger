@@ -7,11 +7,15 @@ import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
 import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRate;
 import com.self.multi_currency_household_ledger.ledger.TestJpaConfig;
 import com.self.multi_currency_household_ledger.ledger.TestLedgerApplication;
+import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,6 +43,9 @@ class LedgerEntryRepositoryTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private EntityManager entityManager;
 
     @Autowired
     private CategoryRepository categoryRepository;
@@ -310,6 +317,73 @@ class LedgerEntryRepositoryTest {
                 .hasSize(2);
     }
 
+    @Test
+    @DisplayName("changes 첫 페이지와 커서 페이지는 member_id로 격리해 updated_at, id 오름차순으로 전량 회수한다")
+    void find_changes_pages_by_member_id_after_updated_at_id_cursor_without_duplicates_or_omissions() {
+        UUID otherMemberId = UUID.fromString("00000000-0000-0000-0000-000000000002");
+        LocalDateTime firstUpdatedAt = LocalDateTime.of(2026, 4, 6, 9, 0);
+        LocalDateTime secondUpdatedAt = LocalDateTime.of(2026, 4, 6, 9, 1);
+        LocalDateTime thirdUpdatedAt = LocalDateTime.of(2026, 4, 6, 9, 2);
+        LedgerEntry first = krwEntry(MEMBER_ID, category, TODAY, "1000.00", "changes 1");
+        LedgerEntry second = krwEntry(MEMBER_ID, category, TODAY, "2000.00", "changes 2");
+        LedgerEntry third = krwEntry(MEMBER_ID, category, TODAY, "3000.00", "changes 3");
+        LedgerEntry fourth = krwEntry(MEMBER_ID, category, TODAY, "4000.00", "changes 4");
+        LedgerEntry otherMember = krwEntry(otherMemberId, category, TODAY, "90000.00", "other member changes");
+        ledgerEntryRepository.saveAll(List.of(first, second, third, fourth, otherMember));
+        ledgerEntryRepository.flush();
+        setUpdatedAt(first, firstUpdatedAt);
+        setUpdatedAt(second, secondUpdatedAt);
+        setUpdatedAt(third, thirdUpdatedAt);
+        setUpdatedAt(fourth, thirdUpdatedAt.plusMinutes(1));
+        setUpdatedAt(otherMember, secondUpdatedAt);
+        entityManager.clear();
+
+        List<LedgerEntry> firstPage =
+                ledgerEntryRepository.findChangesFirstPageByMemberId(MEMBER_ID, PageRequest.of(0, 2));
+        List<LedgerEntry> recovered = new ArrayList<>(firstPage);
+        while (!firstPage.isEmpty()) {
+            LedgerEntry cursor = firstPage.getLast();
+            firstPage = ledgerEntryRepository.findChangesPageByMemberIdAfterCursor(
+                    MEMBER_ID, cursor.getUpdatedAt(), cursor.getId(), PageRequest.of(0, 2));
+            recovered.addAll(firstPage);
+        }
+        List<LedgerEntry> otherMemberPage =
+                ledgerEntryRepository.findChangesFirstPageByMemberId(otherMemberId, PageRequest.of(0, 10));
+
+        assertThat(recovered)
+                .extracting(LedgerEntry::getId)
+                .containsExactly(first.getId(), second.getId(), third.getId(), fourth.getId());
+        assertThat(recovered).doesNotHaveDuplicates();
+        assertThat(recovered)
+                .isSortedAccordingTo(
+                        Comparator.comparing(LedgerEntry::getUpdatedAt).thenComparing(LedgerEntry::getId));
+        assertThat(otherMemberPage).extracting(LedgerEntry::getId).containsExactly(otherMember.getId());
+    }
+
+    @Test
+    @DisplayName("changes 커서는 동일 updated_at 경계에서도 id 타이브레이커로 중복과 누락 없이 분할한다")
+    void find_changes_page_after_cursor_uses_id_tiebreaker_for_same_updated_at_boundary() {
+        LocalDateTime sameUpdatedAt = LocalDateTime.of(2026, 4, 6, 10, 0);
+        LedgerEntry first = krwEntry(MEMBER_ID, category, TODAY, "1000.00", "same updatedAt 1");
+        LedgerEntry second = krwEntry(MEMBER_ID, category, TODAY, "2000.00", "same updatedAt 2");
+        LedgerEntry third = krwEntry(MEMBER_ID, category, TODAY, "3000.00", "same updatedAt 3");
+        ledgerEntryRepository.saveAll(List.of(first, second, third));
+        ledgerEntryRepository.flush();
+        setUpdatedAt(first, sameUpdatedAt);
+        setUpdatedAt(second, sameUpdatedAt);
+        setUpdatedAt(third, sameUpdatedAt);
+        entityManager.clear();
+
+        List<LedgerEntry> firstPage =
+                ledgerEntryRepository.findChangesFirstPageByMemberId(MEMBER_ID, PageRequest.of(0, 2));
+        LedgerEntry cursor = firstPage.getLast();
+        List<LedgerEntry> nextPage = ledgerEntryRepository.findChangesPageByMemberIdAfterCursor(
+                MEMBER_ID, cursor.getUpdatedAt(), cursor.getId(), PageRequest.of(0, 2));
+
+        assertThat(firstPage).extracting(LedgerEntry::getId).containsExactly(first.getId(), second.getId());
+        assertThat(nextPage).extracting(LedgerEntry::getId).containsExactly(third.getId());
+    }
+
     private LedgerEntry krwEntry(
             UUID memberId, Category entryCategory, LocalDate transactionDate, String amount, String memo) {
         return LedgerEntry.of(
@@ -342,5 +416,9 @@ class LedgerEntryRepositoryTest {
                 memo,
                 exchangeRate,
                 FIXED_CLOCK);
+    }
+
+    private void setUpdatedAt(LedgerEntry entry, LocalDateTime updatedAt) {
+        jdbcTemplate.update("update ledger_entry set updated_at = ? where id = ?", updatedAt, entry.getId());
     }
 }
