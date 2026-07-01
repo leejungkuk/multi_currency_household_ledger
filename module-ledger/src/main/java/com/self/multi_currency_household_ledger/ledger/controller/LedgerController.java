@@ -5,6 +5,7 @@ import com.self.multi_currency_household_ledger.common.dto.ApiResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.CreateLedgerEntryRequest;
 import com.self.multi_currency_household_ledger.ledger.dto.ImportLedgerEntriesRequest;
 import com.self.multi_currency_household_ledger.ledger.dto.ImportLedgerEntriesResponse;
+import com.self.multi_currency_household_ledger.ledger.dto.LedgerChangesResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerEntryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerMonthlySummaryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerReportResponse;
@@ -16,6 +17,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -97,6 +99,18 @@ public class LedgerController {
             @RequestParam("year") @Min(1900) @Max(9999) int year,
             @RequestParam("month") @Min(1) @Max(12) int month) {
         List<LedgerEntryResponse> response = ledgerService.getMonthlyEntries(memberId, year, month);
+        return ApiResponse.success(response);
+    }
+
+    @GetMapping("/changes")
+    public ApiResponse<LedgerChangesResponse> getLedgerChanges(
+            @CurrentMemberId UUID memberId,
+            @RequestParam(value = "cursorUpdatedAt", required = false)
+                    @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
+                    LocalDateTime cursorUpdatedAt,
+            @RequestParam(value = "cursorId", required = false) @Min(1) Long cursorId,
+            @RequestParam(value = "size", defaultValue = "500") @Min(1) @Max(500) int size) {
+        LedgerChangesResponse response = ledgerService.getChanges(memberId, cursorUpdatedAt, cursorId, size);
         return ApiResponse.success(response);
     }
 

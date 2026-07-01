@@ -192,6 +192,15 @@ class SecurityConfigTest {
     }
 
     @Test
+    @DisplayName("GET /api/v1/ledgers/changes 는 토큰 없이는 401을 반환한다")
+    void ledger_changes_without_token_returns_401() throws Exception {
+        mockMvc.perform(get("/api/v1/ledgers/changes"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
     @DisplayName("GET /api/v1/exchange-rates/status 는 유효한 mock JWT가 있으면 접근할 수 있다")
     void exchange_rate_status_with_mock_jwt_passes_authentication() throws Exception {
         given(exchangeRateService.getLatestRatesByCurrency())
