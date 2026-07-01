@@ -127,6 +127,27 @@
                 },
                 "type": "object"
             },
+            "ApiResponseLedgerRestoreResponse": {
+                "properties": {
+                    "code": {
+                        "type": "string"
+                    },
+                    "data": {
+                        "$ref": "#/components/schemas/LedgerRestoreResponse"
+                    },
+                    "message": {
+                        "type": "string"
+                    },
+                    "success": {
+                        "type": "boolean"
+                    },
+                    "timestamp": {
+                        "format": "date-time",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
             "ApiResponseListAssetResponse": {
                 "properties": {
                     "code": {
@@ -209,6 +230,27 @@
                             "$ref": "#/components/schemas/LedgerEntryResponse"
                         },
                         "type": "array"
+                    },
+                    "message": {
+                        "type": "string"
+                    },
+                    "success": {
+                        "type": "boolean"
+                    },
+                    "timestamp": {
+                        "format": "date-time",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "ApiResponseSyncLedgerEntryResponse": {
+                "properties": {
+                    "code": {
+                        "type": "string"
+                    },
+                    "data": {
+                        "$ref": "#/components/schemas/SyncLedgerEntryResponse"
                     },
                     "message": {
                         "type": "string"
@@ -623,6 +665,155 @@
                     }
                 },
                 "type": "object"
+            },
+            "LedgerRestoreResponse": {
+                "properties": {
+                    "entries": {
+                        "items": {
+                            "$ref": "#/components/schemas/RestoredLedgerEntry"
+                        },
+                        "type": "array"
+                    },
+                    "hasNext": {
+                        "type": "boolean"
+                    },
+                    "nextCursor": {
+                        "$ref": "#/components/schemas/RestoreCursor"
+                    }
+                },
+                "type": "object"
+            },
+            "RestoreCursor": {
+                "properties": {
+                    "id": {
+                        "format": "int64",
+                        "type": "integer"
+                    },
+                    "transactionDate": {
+                        "format": "date",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "RestoredLedgerEntry": {
+                "properties": {
+                    "appliedRate": {
+                        "type": "number"
+                    },
+                    "asset": {
+                        "$ref": "#/components/schemas/AssetResponse"
+                    },
+                    "category": {
+                        "$ref": "#/components/schemas/CategoryResponse"
+                    },
+                    "clientEntryId": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "currencyCode": {
+                        "enum": [
+                            "KRW",
+                            "USD",
+                            "EUR",
+                            "JPY",
+                            "CNY",
+                            "GBP"
+                        ],
+                        "type": "string"
+                    },
+                    "id": {
+                        "format": "int64",
+                        "type": "integer"
+                    },
+                    "krwAmount": {
+                        "type": "number"
+                    },
+                    "memo": {
+                        "type": "string"
+                    },
+                    "originalAmount": {
+                        "type": "number"
+                    },
+                    "rateBaseDate": {
+                        "format": "date",
+                        "type": "string"
+                    },
+                    "transactionDate": {
+                        "format": "date",
+                        "type": "string"
+                    },
+                    "transactionType": {
+                        "enum": [
+                            "EXPENSE",
+                            "INCOME"
+                        ],
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "SyncLedgerEntryRequest": {
+                "properties": {
+                    "amount": {
+                        "exclusiveMaximum": false,
+                        "maximum": 99999999.0,
+                        "type": "number"
+                    },
+                    "assetId": {
+                        "format": "int64",
+                        "type": "integer"
+                    },
+                    "categoryId": {
+                        "format": "int64",
+                        "type": "integer"
+                    },
+                    "clientEntryId": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "currencyCode": {
+                        "enum": [
+                            "KRW",
+                            "USD",
+                            "EUR",
+                            "JPY",
+                            "CNY",
+                            "GBP"
+                        ],
+                        "type": "string"
+                    },
+                    "memo": {
+                        "maxLength": 255,
+                        "minLength": 0,
+                        "type": "string"
+                    },
+                    "transactionDate": {
+                        "format": "date",
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "amount",
+                    "assetId",
+                    "categoryId",
+                    "clientEntryId",
+                    "currencyCode",
+                    "transactionDate"
+                ],
+                "type": "object"
+            },
+            "SyncLedgerEntryResponse": {
+                "properties": {
+                    "clientEntryId": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "ledgerEntry": {
+                        "$ref": "#/components/schemas/LedgerEntryResponse"
+                    }
+                },
+                "type": "object"
             }
         }
     },
@@ -961,6 +1152,59 @@
                 ]
             }
         },
+        "/api/v1/ledgers/restore": {
+            "get": {
+                "operationId": "restoreLedgerEntries",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "cursorDate",
+                        "required": false,
+                        "schema": {
+                            "format": "date",
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "in": "query",
+                        "name": "cursorId",
+                        "required": false,
+                        "schema": {
+                            "format": "int64",
+                            "minimum": 1,
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "in": "query",
+                        "name": "size",
+                        "required": false,
+                        "schema": {
+                            "default": 500,
+                            "format": "int32",
+                            "maximum": 500,
+                            "minimum": 1,
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiResponseLedgerRestoreResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    }
+                },
+                "tags": [
+                    "ledger-controller"
+                ]
+            }
+        },
         "/api/v1/ledgers/summary": {
             "get": {
                 "operationId": "getMonthlySummary",
@@ -994,6 +1238,67 @@
                             "*/*": {
                                 "schema": {
                                     "$ref": "#/components/schemas/ApiResponseLedgerMonthlySummaryResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    }
+                },
+                "tags": [
+                    "ledger-controller"
+                ]
+            }
+        },
+        "/api/v1/ledgers/sync": {
+            "post": {
+                "operationId": "syncLedgerEntry",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SyncLedgerEntryRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiResponseSyncLedgerEntryResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    }
+                },
+                "tags": [
+                    "ledger-controller"
+                ]
+            }
+        },
+        "/api/v1/ledgers/sync/{clientEntryId}": {
+            "delete": {
+                "operationId": "deleteSyncedLedgerEntry",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "clientEntryId",
+                        "required": true,
+                        "schema": {
+                            "format": "uuid",
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiResponseVoid"
                                 }
                             }
                         },

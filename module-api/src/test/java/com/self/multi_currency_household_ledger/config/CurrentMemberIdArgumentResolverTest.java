@@ -93,6 +93,27 @@ class CurrentMemberIdArgumentResolverTest {
     }
 
     @Test
+    @DisplayName("Supabase 익명 JWT도 subject UUID를 memberId로 전달한다")
+    void anonymous_jwt_subject_is_propagated_to_ledger_service() throws Exception {
+        UUID anonymousMemberId = UUID.fromString("33333333-3333-3333-3333-333333333333");
+        given(ledgerService.create(any(CreateLedgerEntryRequest.class), eq(anonymousMemberId)))
+                .willReturn(response());
+
+        mockMvc.perform(post("/api/v1/ledgers")
+                        .with(jwt().jwt(token -> token.subject(anonymousMemberId.toString())
+                                .audience(List.of("authenticated"))
+                                .claim("iss", "https://example.supabase.co/auth/v1")
+                                .claim("role", "authenticated")
+                                .claim("is_anonymous", true)))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+
+        then(ledgerService).should().create(any(CreateLedgerEntryRequest.class), eq(anonymousMemberId));
+    }
+
+    @Test
     @DisplayName("서로 다른 JWT subject는 각각 자기 memberId로 전달된다")
     void different_jwt_subjects_are_propagated_independently() throws Exception {
         UUID firstMemberId = UUID.fromString("11111111-1111-1111-1111-111111111111");

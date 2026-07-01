@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.times;
 
 import com.self.multi_currency_household_ledger.common.exception.BusinessException;
 import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
@@ -24,6 +25,8 @@ import com.self.multi_currency_household_ledger.ledger.dto.ImportLedgerEntriesRe
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerEntryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerMonthlySummaryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerReportResponse;
+import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryRequest;
+import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryResponse;
 import com.self.multi_currency_household_ledger.ledger.exception.LedgerErrorCode;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -65,13 +68,21 @@ class LedgerServiceTest {
     @Mock
     private ExchangeRateService exchangeRateService;
 
+    @Mock
+    private LedgerSyncInsertService ledgerSyncInsertService;
+
     private Category category;
     private Asset asset;
 
     @BeforeEach
     void setUp() {
         ledgerService = new LedgerService(
-                ledgerEntryRepository, categoryRepository, assetRepository, exchangeRateService, FIXED_CLOCK);
+                ledgerEntryRepository,
+                categoryRepository,
+                assetRepository,
+                exchangeRateService,
+                FIXED_CLOCK,
+                ledgerSyncInsertService);
         category = new Category(TransactionType.EXPENSE, "FOOD_DINING", "식비", "Food & Dining", "🍽️", 1);
         asset = new Asset("CASH", "현금", "Cash", 3);
     }
@@ -140,6 +151,42 @@ class LedgerServiceTest {
 
         then(ledgerEntryRepository).should().findByMemberIdAndClientEntryId(MEMBER_ID, clientEntryId);
         then(ledgerEntryRepository).should().saveAndFlush(any(LedgerEntry.class));
+    }
+
+    @Test
+    @DisplayName("sync 신규 저장 중 unique 경합이 발생하면 재조회한 기존 거래를 전체 교체한다")
+    void sync_entry_updates_existing_entry_after_concurrent_unique_conflict() {
+        UUID clientEntryId = UUID.fromString("10000000-0000-0000-0000-000000000101");
+        SyncLedgerEntryRequest request = new SyncLedgerEntryRequest(
+                clientEntryId, new BigDecimal("7000.00"), CurrencyCode.KRW, 1L, 1L, TODAY, "경합 후 갱신");
+        LedgerEntry racedEntry = LedgerEntry.of(
+                MEMBER_ID,
+                category,
+                asset,
+                new BigDecimal("1000.00"),
+                CurrencyCode.KRW,
+                TODAY.minusDays(1),
+                "경합 승자",
+                null,
+                FIXED_CLOCK);
+
+        given(ledgerEntryRepository.findByMemberIdAndClientEntryId(MEMBER_ID, clientEntryId))
+                .willReturn(Optional.empty())
+                .willReturn(Optional.of(racedEntry));
+        given(ledgerSyncInsertService.create(MEMBER_ID, request))
+                .willThrow(new DataIntegrityViolationException("duplicate client entry"));
+        given(categoryRepository.findById(1L)).willReturn(Optional.of(category));
+        given(assetRepository.findById(1L)).willReturn(Optional.of(asset));
+
+        SyncLedgerEntryResponse response = ledgerService.sync(request, MEMBER_ID);
+
+        assertThat(response.clientEntryId()).isEqualTo(clientEntryId);
+        assertThat(response.ledgerEntry().originalAmount()).isEqualByComparingTo(new BigDecimal("7000.00"));
+        assertThat(response.ledgerEntry().memo()).isEqualTo("경합 후 갱신");
+        assertThat(racedEntry.getClientEntryId()).isEqualTo(clientEntryId);
+        assertThat(racedEntry.getClientPayloadHash()).isNull();
+        then(ledgerEntryRepository).should(times(2)).findByMemberIdAndClientEntryId(MEMBER_ID, clientEntryId);
+        then(ledgerSyncInsertService).should().create(MEMBER_ID, request);
     }
 
     // 외화 거래 시 미래 날짜가 주어지면 에러가 발생하는지 확인한다.
@@ -301,6 +348,49 @@ class LedgerServiceTest {
                 .findByMemberIdAndTransactionDateGreaterThanEqualAndTransactionDateLessThanOrderByTransactionDateDescIdDesc(
                         eq(MEMBER_ID), eq(startDate), eq(endDate), pageableCaptor.capture());
         assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(500);
+    }
+
+    @Test
+    @DisplayName("restore는 cursorDate와 cursorId가 함께 있는 keyset 커서만 허용한다")
+    void restore_rejects_partial_cursor() {
+        assertThatThrownBy(() -> ledgerService.restore(MEMBER_ID, TODAY, null, 500))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getCode())
+                .isEqualTo(LedgerErrorCode.INVALID_RESTORE_CURSOR.getCode());
+        assertThatThrownBy(() -> ledgerService.restore(MEMBER_ID, null, 1L, 500))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getCode())
+                .isEqualTo(LedgerErrorCode.INVALID_RESTORE_CURSOR.getCode());
+
+        then(ledgerEntryRepository).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("restore는 cursorId가 0 이하인 keyset 커서를 거부한다(서비스 방어 분기)")
+    void restore_rejects_non_positive_cursor_id() {
+        assertThatThrownBy(() -> ledgerService.restore(MEMBER_ID, TODAY, 0L, 500))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getCode())
+                .isEqualTo(LedgerErrorCode.INVALID_RESTORE_CURSOR.getCode());
+        assertThatThrownBy(() -> ledgerService.restore(MEMBER_ID, TODAY, -1L, 500))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getCode())
+                .isEqualTo(LedgerErrorCode.INVALID_RESTORE_CURSOR.getCode());
+
+        then(ledgerEntryRepository).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("restore는 요청 size가 커도 서버 상한 500건까지만 반환하도록 조회한다")
+    void restore_caps_page_size_to_server_limit() {
+        given(ledgerEntryRepository.findRestoreFirstPageByMemberId(eq(MEMBER_ID), any(Pageable.class)))
+                .willReturn(List.of());
+
+        ledgerService.restore(MEMBER_ID, null, null, 1000);
+
+        ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
+        then(ledgerEntryRepository).should().findRestoreFirstPageByMemberId(eq(MEMBER_ID), pageableCaptor.capture());
+        assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(501);
     }
 
     @Test

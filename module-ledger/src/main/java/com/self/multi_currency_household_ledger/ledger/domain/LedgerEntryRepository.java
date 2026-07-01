@@ -8,6 +8,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -16,6 +17,17 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, Long> 
     Optional<LedgerEntry> findByIdAndMemberId(Long id, UUID memberId);
 
     Optional<LedgerEntry> findByMemberIdAndClientEntryId(UUID memberId, UUID clientEntryId);
+
+    // JPQL bulk delete 는 영속성 컨텍스트를 우회하므로, 같은 트랜잭션에 관리 중인 LedgerEntry 가 있으면
+    // flush 로 선반영하고 삭제 후 컨텍스트를 비워 stale 엔티티를 남기지 않는다(향후 재사용 대비 방어).
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(
+            """
+            delete from LedgerEntry entry
+            where entry.memberId = :memberId
+              and entry.clientEntryId = :clientEntryId
+            """)
+    int deleteByMemberIdAndClientEntryId(@Param("memberId") UUID memberId, @Param("clientEntryId") UUID clientEntryId);
 
     @Query(
             """
@@ -82,6 +94,36 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, Long> 
     List<LedgerEntry>
             findByMemberIdAndTransactionDateGreaterThanEqualAndTransactionDateLessThanOrderByTransactionDateDescIdDesc(
                     UUID memberId, LocalDate startDate, LocalDate endDate, Pageable pageable);
+
+    @Query(
+            """
+            select entry
+            from LedgerEntry entry
+            join fetch entry.category
+            join fetch entry.asset
+            where entry.memberId = :memberId
+            order by entry.transactionDate desc, entry.id desc
+            """)
+    List<LedgerEntry> findRestoreFirstPageByMemberId(@Param("memberId") UUID memberId, Pageable pageable);
+
+    @Query(
+            """
+            select entry
+            from LedgerEntry entry
+            join fetch entry.category
+            join fetch entry.asset
+            where entry.memberId = :memberId
+              and (
+                  entry.transactionDate < :cursorDate
+                  or (entry.transactionDate = :cursorDate and entry.id < :cursorId)
+              )
+            order by entry.transactionDate desc, entry.id desc
+            """)
+    List<LedgerEntry> findRestorePageByMemberIdAfterCursor(
+            @Param("memberId") UUID memberId,
+            @Param("cursorDate") LocalDate cursorDate,
+            @Param("cursorId") Long cursorId,
+            Pageable pageable);
 
     List<LedgerEntry> findByCurrencyCodeNotAndTransactionDateGreaterThanEqualOrderByTransactionDateAscIdAsc(
             CurrencyCode currencyCode, LocalDate transactionDate);

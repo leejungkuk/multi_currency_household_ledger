@@ -3,10 +3,12 @@ package com.self.multi_currency_household_ledger.exchange.controller;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.self.multi_currency_household_ledger.common.exception.BusinessException;
+import com.self.multi_currency_household_ledger.common.web.CacheControlHeaders;
 import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
 import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRate;
 import com.self.multi_currency_household_ledger.exchange.exception.ExchangeErrorCode;
@@ -23,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.data.jpa.mapping.JpaMetamodelMappingContext;
+import org.springframework.http.HttpHeaders;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
@@ -58,6 +61,7 @@ class ExchangeRateControllerTest {
 
         mockMvc.perform(get("/api/v1/exchange-rates").param("date", "2026-04-03"))
                 .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, CacheControlHeaders.PUBLIC_READ))
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.timestamp").exists())
                 .andExpect(jsonPath("$.data.length()").value(2))
@@ -79,6 +83,7 @@ class ExchangeRateControllerTest {
 
         mockMvc.perform(get("/api/v1/exchange-rates/snapshot").param("date", "2026-04-05"))
                 .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, CacheControlHeaders.PUBLIC_READ))
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.timestamp").exists())
                 .andExpect(jsonPath("$.data.length()").value(2))
@@ -102,6 +107,7 @@ class ExchangeRateControllerTest {
 
         mockMvc.perform(get("/api/v1/exchange-rates/snapshot"))
                 .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, CacheControlHeaders.PUBLIC_READ))
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.length()").value(1))
                 .andExpect(jsonPath("$.data[0].currencyCode").value("USD"))
@@ -130,6 +136,7 @@ class ExchangeRateControllerTest {
 
         mockMvc.perform(get("/api/v1/exchange-rates/USD"))
                 .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, CacheControlHeaders.PUBLIC_READ))
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.currencyCode").value("USD"))
                 .andExpect(jsonPath("$.data.tts").value(1300.00))
@@ -145,6 +152,7 @@ class ExchangeRateControllerTest {
 
         mockMvc.perform(get("/api/v1/exchange-rates/USD").param("date", "2026-04-05"))
                 .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, CacheControlHeaders.PUBLIC_READ))
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.baseDate").value("2026-04-03"))
                 .andExpect(jsonPath("$.data.stale").value(true));
@@ -159,6 +167,7 @@ class ExchangeRateControllerTest {
 
         mockMvc.perform(get("/api/v1/exchange-rates/status"))
                 .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, CacheControlHeaders.PUBLIC_READ))
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.rates.length()").value(2))
                 .andExpect(jsonPath("$.data.rates[0].currency_code").value("USD"))
