@@ -13,6 +13,7 @@ import com.self.multi_currency_household_ledger.ledger.domain.TransactionType;
 import com.self.multi_currency_household_ledger.ledger.dto.CreateLedgerEntryRequest;
 import com.self.multi_currency_household_ledger.ledger.dto.ImportLedgerEntriesRequest;
 import com.self.multi_currency_household_ledger.ledger.dto.ImportLedgerEntriesResponse;
+import com.self.multi_currency_household_ledger.ledger.dto.LedgerChangesResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerEntryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerMonthlySummaryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerReportResponse;
@@ -27,6 +28,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -47,6 +49,7 @@ public class LedgerService {
 
     private static final int MONTHLY_ENTRY_LIMIT = 500;
     private static final int RESTORE_PAGE_SIZE_LIMIT = 500;
+    private static final int CHANGES_PAGE_SIZE_LIMIT = 500;
 
     private final LedgerEntryRepository ledgerEntryRepository;
     private final CategoryRepository categoryRepository;
@@ -190,6 +193,21 @@ public class LedgerService {
     }
 
     @Transactional(readOnly = true)
+    public LedgerChangesResponse getChanges(UUID memberId, LocalDateTime cursorUpdatedAt, Long cursorId, int size) {
+        validateChangesCursor(cursorUpdatedAt, cursorId);
+        int pageSize = Math.max(1, Math.min(size, CHANGES_PAGE_SIZE_LIMIT));
+        PageRequest pageRequest = PageRequest.of(0, pageSize + 1);
+        List<LedgerEntry> entries = cursorUpdatedAt == null
+                ? ledgerEntryRepository.findChangesFirstPageByMemberId(memberId, pageRequest)
+                : ledgerEntryRepository.findChangesPageByMemberIdAfterCursor(
+                        memberId, cursorUpdatedAt, cursorId, pageRequest);
+        boolean hasMore = entries.size() > pageSize;
+        List<LedgerEntry> pageEntries = hasMore ? entries.subList(0, pageSize) : entries;
+
+        return LedgerChangesResponse.from(pageEntries, hasMore);
+    }
+
+    @Transactional(readOnly = true)
     public LedgerReportResponse getMonthlyReport(UUID memberId, int year, int month) {
         DateRange dateRange = DateRange.of(year, month);
         List<LedgerReportResponse.CurrencySubtotal> currencySubtotals = ledgerEntryRepository
@@ -211,6 +229,12 @@ public class LedgerService {
     private static void validateRestoreCursor(LocalDate cursorDate, Long cursorId) {
         if ((cursorDate == null) != (cursorId == null) || (cursorId != null && cursorId <= 0)) {
             throw new BusinessException(LedgerErrorCode.INVALID_RESTORE_CURSOR);
+        }
+    }
+
+    private static void validateChangesCursor(LocalDateTime cursorUpdatedAt, Long cursorId) {
+        if ((cursorUpdatedAt == null) != (cursorId == null) || (cursorId != null && cursorId <= 0)) {
+            throw new BusinessException(LedgerErrorCode.INVALID_CHANGES_CURSOR);
         }
     }
 

@@ -64,6 +64,27 @@
                 },
                 "type": "object"
             },
+            "ApiResponseLedgerChangesResponse": {
+                "properties": {
+                    "code": {
+                        "type": "string"
+                    },
+                    "data": {
+                        "$ref": "#/components/schemas/LedgerChangesResponse"
+                    },
+                    "message": {
+                        "type": "string"
+                    },
+                    "success": {
+                        "type": "boolean"
+                    },
+                    "timestamp": {
+                        "format": "date-time",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
             "ApiResponseLedgerEntryResponse": {
                 "properties": {
                     "code": {
@@ -351,6 +372,67 @@
                 },
                 "type": "object"
             },
+            "ChangedLedgerEntry": {
+                "properties": {
+                    "appliedRate": {
+                        "type": "number"
+                    },
+                    "asset": {
+                        "$ref": "#/components/schemas/AssetResponse"
+                    },
+                    "category": {
+                        "$ref": "#/components/schemas/CategoryResponse"
+                    },
+                    "clientEntryId": {
+                        "format": "uuid",
+                        "type": "string"
+                    },
+                    "currencyCode": {
+                        "enum": [
+                            "KRW",
+                            "USD",
+                            "EUR",
+                            "JPY",
+                            "CNY",
+                            "GBP"
+                        ],
+                        "type": "string"
+                    },
+                    "id": {
+                        "format": "int64",
+                        "type": "integer"
+                    },
+                    "krwAmount": {
+                        "type": "number"
+                    },
+                    "memo": {
+                        "type": "string"
+                    },
+                    "originalAmount": {
+                        "type": "number"
+                    },
+                    "rateBaseDate": {
+                        "format": "date",
+                        "type": "string"
+                    },
+                    "transactionDate": {
+                        "format": "date",
+                        "type": "string"
+                    },
+                    "transactionType": {
+                        "enum": [
+                            "EXPENSE",
+                            "INCOME"
+                        ],
+                        "type": "string"
+                    },
+                    "updatedAt": {
+                        "format": "date-time",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
             "CreateLedgerEntryRequest": {
                 "properties": {
                     "amount": {
@@ -444,6 +526,19 @@
                             "EXPENSE",
                             "INCOME"
                         ],
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "Cursor": {
+                "properties": {
+                    "id": {
+                        "format": "int64",
+                        "type": "integer"
+                    },
+                    "updatedAt": {
+                        "format": "date-time",
                         "type": "string"
                     }
                 },
@@ -578,6 +673,23 @@
                     },
                     "ledgerEntry": {
                         "$ref": "#/components/schemas/LedgerEntryResponse"
+                    }
+                },
+                "type": "object"
+            },
+            "LedgerChangesResponse": {
+                "properties": {
+                    "entries": {
+                        "items": {
+                            "$ref": "#/components/schemas/ChangedLedgerEntry"
+                        },
+                        "type": "array"
+                    },
+                    "hasMore": {
+                        "type": "boolean"
+                    },
+                    "nextCursor": {
+                        "$ref": "#/components/schemas/Cursor"
                     }
                 },
                 "type": "object"
@@ -1067,6 +1179,59 @@
                             "*/*": {
                                 "schema": {
                                     "$ref": "#/components/schemas/ApiResponseLedgerEntryResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    }
+                },
+                "tags": [
+                    "ledger-controller"
+                ]
+            }
+        },
+        "/api/v1/ledgers/changes": {
+            "get": {
+                "operationId": "getLedgerChanges",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "cursorUpdatedAt",
+                        "required": false,
+                        "schema": {
+                            "format": "date-time",
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "in": "query",
+                        "name": "cursorId",
+                        "required": false,
+                        "schema": {
+                            "format": "int64",
+                            "minimum": 1,
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "in": "query",
+                        "name": "size",
+                        "required": false,
+                        "schema": {
+                            "default": 500,
+                            "format": "int32",
+                            "maximum": 500,
+                            "minimum": 1,
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiResponseLedgerChangesResponse"
                                 }
                             }
                         },
