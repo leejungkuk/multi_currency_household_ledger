@@ -5,8 +5,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 import static org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase.Replace.NONE;
 
+import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
 import com.self.multi_currency_household_ledger.ledger.TestJpaConfig;
 import com.self.multi_currency_household_ledger.ledger.TestLedgerApplication;
+import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -24,11 +31,17 @@ import org.springframework.jdbc.core.JdbcTemplate;
 @Import({TestLedgerApplication.class, TestJpaConfig.class})
 class CatalogSeedMigrationTest {
 
+    private static final Clock FIXED_CLOCK =
+            Clock.fixed(Instant.parse("2026-06-01T00:00:00Z"), ZoneId.of("Asia/Seoul"));
+
     @Autowired
     private CategoryRepository categoryRepository;
 
     @Autowired
     private AssetRepository assetRepository;
+
+    @Autowired
+    private LedgerEntryRepository ledgerEntryRepository;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -129,6 +142,64 @@ class CatalogSeedMigrationTest {
     }
 
     @Test
+    @DisplayName("ledger_entry updated_at은 NOT NULL이고 델타 pull 커버 인덱스를 갖는다")
+    void ledger_entry_schema_has_not_null_updated_at_and_delta_pull_index() {
+        assertThat(columnExists("ledger_entry", "updated_at")).isTrue();
+        assertThat(isNullable("ledger_entry", "updated_at")).isEqualTo("NO");
+
+        String indexDefinition = indexDefinition("idx_ledger_member_updated_at_id");
+        assertThat(indexDefinition).isNotNull();
+        assertThat(indexDefinition.toLowerCase(Locale.ROOT))
+                .contains("create index idx_ledger_member_updated_at_id")
+                .contains("(member_id, updated_at, id)");
+    }
+
+    @Test
+    @DisplayName("ledger_entry는 updated_at NOT NULL 상태에서도 행 저장과 조회가 정상 동작한다")
+    void ledger_entry_insert_and_read_works_with_not_null_updated_at() {
+        UUID memberId = UUID.fromString("00000000-0000-0000-0000-000000000103");
+
+        insertLedgerEntry(memberId, null, null);
+
+        Integer count = ledgerEntryCount(memberId);
+        Boolean hasUpdatedAt = jdbcTemplate.queryForObject(
+                """
+                select updated_at is not null
+                from ledger_entry
+                where member_id = cast(? as uuid)
+                """,
+                Boolean.class,
+                memberId.toString());
+        assertThat(count).isEqualTo(1);
+        assertThat(hasUpdatedAt).isTrue();
+    }
+
+    @Test
+    @DisplayName("LedgerEntryRepository.saveAndFlush는 JPA Auditing으로 updated_at을 채운다")
+    void ledger_entry_save_and_flush_populates_updated_at_via_jpa_auditing() {
+        UUID memberId = UUID.fromString("00000000-0000-0000-0000-000000000104");
+        Category category = categoryRepository.findById(1L).orElseThrow();
+        Asset asset = assetRepository.findById(1L).orElseThrow();
+        LedgerEntry entry = LedgerEntry.of(
+                memberId,
+                category,
+                asset,
+                new BigDecimal("1000.00"),
+                CurrencyCode.KRW,
+                LocalDate.of(2026, 6, 1),
+                "auditing save",
+                null,
+                FIXED_CLOCK);
+
+        LedgerEntry saved = ledgerEntryRepository.saveAndFlush(entry);
+
+        LocalDateTime dbUpdatedAt = jdbcTemplate.queryForObject(
+                "select updated_at from ledger_entry where id = ?", LocalDateTime.class, saved.getId());
+        assertThat(saved.getUpdatedAt()).isNotNull();
+        assertThat(dbUpdatedAt).isNotNull();
+    }
+
+    @Test
     @DisplayName("ledger_entry client_entry_id는 null 다중 저장을 허용하고 회원 내 비-null 중복을 차단한다")
     void ledger_entry_client_entry_id_unique_index_supports_idempotent_import() {
         UUID memberId = UUID.fromString("00000000-0000-0000-0000-000000000101");
@@ -164,6 +235,20 @@ class CatalogSeedMigrationTest {
         return jdbcTemplate.queryForObject(
                 """
                 select data_type
+                from information_schema.columns
+                where table_schema = 'public'
+                  and table_name = ?
+                  and column_name = ?
+                """,
+                String.class,
+                tableName,
+                columnName);
+    }
+
+    private String isNullable(String tableName, String columnName) {
+        return jdbcTemplate.queryForObject(
+                """
+                select is_nullable
                 from information_schema.columns
                 where table_schema = 'public'
                   and table_name = ?
@@ -216,7 +301,8 @@ class CatalogSeedMigrationTest {
                     krw_amount,
                     transaction_date,
                     client_entry_id,
-                    client_payload_hash
+                    client_payload_hash,
+                    updated_at
                 )
                 values (
                     cast(? as uuid),
@@ -230,7 +316,8 @@ class CatalogSeedMigrationTest {
                     1000.00,
                     '2026-06-01',
                     cast(? as uuid),
-                    ?
+                    ?,
+                    now()
                 )
                 """,
                 memberId.toString(),
