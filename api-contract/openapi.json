@@ -394,7 +394,14 @@
                             "EUR",
                             "JPY",
                             "CNY",
-                            "GBP"
+                            "GBP",
+                            "THB",
+                            "HKD",
+                            "SGD",
+                            "IDR",
+                            "MYR",
+                            "AUD",
+                            "NZD"
                         ],
                         "type": "string"
                     },
@@ -455,7 +462,14 @@
                             "EUR",
                             "JPY",
                             "CNY",
-                            "GBP"
+                            "GBP",
+                            "THB",
+                            "HKD",
+                            "SGD",
+                            "IDR",
+                            "MYR",
+                            "AUD",
+                            "NZD"
                         ],
                         "type": "string"
                     },
@@ -491,7 +505,14 @@
                             "EUR",
                             "JPY",
                             "CNY",
-                            "GBP"
+                            "GBP",
+                            "THB",
+                            "HKD",
+                            "SGD",
+                            "IDR",
+                            "MYR",
+                            "AUD",
+                            "NZD"
                         ],
                         "type": "string"
                     },
@@ -511,7 +532,14 @@
                             "EUR",
                             "JPY",
                             "CNY",
-                            "GBP"
+                            "GBP",
+                            "THB",
+                            "HKD",
+                            "SGD",
+                            "IDR",
+                            "MYR",
+                            "AUD",
+                            "NZD"
                         ],
                         "type": "string"
                     },
@@ -557,7 +585,14 @@
                             "EUR",
                             "JPY",
                             "CNY",
-                            "GBP"
+                            "GBP",
+                            "THB",
+                            "HKD",
+                            "SGD",
+                            "IDR",
+                            "MYR",
+                            "AUD",
+                            "NZD"
                         ],
                         "type": "string"
                     },
@@ -641,7 +676,14 @@
                             "EUR",
                             "JPY",
                             "CNY",
-                            "GBP"
+                            "GBP",
+                            "THB",
+                            "HKD",
+                            "SGD",
+                            "IDR",
+                            "MYR",
+                            "AUD",
+                            "NZD"
                         ],
                         "type": "string"
                     },
@@ -712,7 +754,14 @@
                             "EUR",
                             "JPY",
                             "CNY",
-                            "GBP"
+                            "GBP",
+                            "THB",
+                            "HKD",
+                            "SGD",
+                            "IDR",
+                            "MYR",
+                            "AUD",
+                            "NZD"
                         ],
                         "type": "string"
                     },
@@ -830,7 +879,14 @@
                             "EUR",
                             "JPY",
                             "CNY",
-                            "GBP"
+                            "GBP",
+                            "THB",
+                            "HKD",
+                            "SGD",
+                            "IDR",
+                            "MYR",
+                            "AUD",
+                            "NZD"
                         ],
                         "type": "string"
                     },
@@ -891,7 +947,14 @@
                             "EUR",
                             "JPY",
                             "CNY",
-                            "GBP"
+                            "GBP",
+                            "THB",
+                            "HKD",
+                            "SGD",
+                            "IDR",
+                            "MYR",
+                            "AUD",
+                            "NZD"
                         ],
                         "type": "string"
                     },
@@ -1086,7 +1149,14 @@
                                 "EUR",
                                 "JPY",
                                 "CNY",
-                                "GBP"
+                                "GBP",
+                                "THB",
+                                "HKD",
+                                "SGD",
+                                "IDR",
+                                "MYR",
+                                "AUD",
+                                "NZD"
                             ],
                             "type": "string"
                         }

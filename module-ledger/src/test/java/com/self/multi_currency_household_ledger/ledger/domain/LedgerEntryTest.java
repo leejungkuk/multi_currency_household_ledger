@@ -152,6 +152,28 @@ class LedgerEntryTest {
     }
 
     @Test
+    @DisplayName("100단위 통화(IDR) 재계산은 원금을 unit으로 나눈 뒤 환율을 곱한다")
+    void recalculate_hundred_unit_currency_divides_by_unit() {
+        ExchangeRate oldRate = ExchangeRate.of(CurrencyCode.IDR, new BigDecimal("8.000000"), TODAY.minusDays(1));
+        LedgerEntry entry = LedgerEntry.of(
+                MEMBER_ID,
+                category,
+                asset,
+                new BigDecimal("250000"),
+                CurrencyCode.IDR,
+                TODAY,
+                "발리 숙소",
+                oldRate,
+                FIXED_CLOCK);
+
+        boolean recalculated = entry.recalculate(new BigDecimal("8.500000"), TODAY);
+
+        assertThat(recalculated).isTrue();
+        // 250,000 IDR ÷ 100(unit) × 8.5 = 21,250.00 KRW
+        assertThat(entry.getKrwAmount()).isEqualByComparingTo(new BigDecimal("21250.00"));
+    }
+
+    @Test
     @DisplayName("이미 적용 가능한 최신 기준일을 쓰는 외화 거래는 재계산하지 않는다")
     void recalculate_foreign_currency_is_noop_when_base_date_is_current() {
         ExchangeRate currentRate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1320.000000"), TODAY);
