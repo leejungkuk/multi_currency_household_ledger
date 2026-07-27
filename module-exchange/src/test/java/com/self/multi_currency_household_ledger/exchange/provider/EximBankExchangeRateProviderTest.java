@@ -181,6 +181,26 @@ class EximBankExchangeRateProviderTest {
     }
 
     @Test
+    @DisplayName("EximBank cur_unit=CNH 항목을 CNY로 정규화하여 반환한다")
+    void normalizes_cnh_to_cny() {
+        wireMock.stubFor(
+                get(urlPathEqualTo("/exchangeJSON"))
+                        .willReturn(
+                                aResponse()
+                                        .withHeader("Content-Type", "application/json")
+                                        .withBody(
+                                                """
+                                [{"cur_unit":"CNH","cur_nm":"위안화","tts":"190.123456"}]
+                                """)));
+
+        List<FetchedRate> result = provider.getExchangeRates(LocalDate.of(2026, 4, 3));
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).currencyCode()).isEqualTo(CurrencyCode.CNY);
+        assertThat(result.get(0).tts()).isEqualByComparingTo(new BigDecimal("190.123456"));
+    }
+
+    @Test
     @DisplayName("tts가 null인 통화는 건너뛰고 정상 통화만 반환한다")
     void skips_null_tts() {
         wireMock.stubFor(
