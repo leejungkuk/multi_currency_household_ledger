@@ -15,21 +15,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    # 테스트는 인메모리 DB를 쓰지 않는다. @DataJpaTest(replace=NONE)가 실제 MySQL에 붙으므로
-    # 로컬과 동일한 접속 정보(localhost:3306 / exchange_ledger / root:root)로 서비스 컨테이너를 띄운다.
-    services:
-      mysql:
-        image: mysql:8.0
-        env:
-          MYSQL_ROOT_PASSWORD: root
-          MYSQL_DATABASE: exchange_ledger
-        ports:
-          - 3306:3306
-        options: >-
-          --health-cmd="mysqladmin ping -h localhost -uroot -proot"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=20
+    # 테스트 DB는 Testcontainers(postgres:16-alpine, @ServiceConnection)가 테스트 프로세스에서
+    # 직접 띄운다 — ubuntu-latest 러너에 Docker가 내장돼 있어 별도 서비스 컨테이너가 필요 없다.
 
     steps:
       - name: Checkout
@@ -44,7 +31,7 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v6
 
-      # 시크릿(exchange.eximbank.api-key 등)은 불필요하다: 전 컨텍스트를 띄우는 @SpringBootTest가
-      # 없고, 테스트는 module-exchange/src/test/resources/application.yml의 test 값만 쓴다.
+      # 시크릿(exchange.eximbank.api-key 등)은 불필요하다: @SpringBootTest도 테스트 프로퍼티로
+      # 더미 키를 주입하며 외부 API를 호출하지 않는다.
       - name: Build (Spotless + compile + test)
         run: ./gradlew build --no-daemon
