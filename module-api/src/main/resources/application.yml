@@ -27,6 +27,17 @@ spring:
   jackson:
     time-zone: Asia/Seoul
 
+server:
+  compression:
+    enabled: true
+    mime-types: application/json
+    # 주의: min-response-size 는 Content-Length 가 알려진 응답에만 적용된다.
+    # Tomcat CompressionConfig.useCompression() 은 getContentLengthLong() == -1 이면 크기 비교를 건너뛴다.
+    # Spring MVC 의 JSON 은 chunked 로 나가 Content-Length 가 -1 이므로, gzip 을 수락하는 클라이언트에게는
+    # 크기와 무관하게 application/json 응답이 압축된다(Accept-Encoding·기존 Content-Encoding·strong ETag 등
+    # 나머지 제외 조건은 그대로 적용된다). 이 값은 Content-Length 가 실리는 응답의 하한으로만 의미가 있다.
+    min-response-size: 2KB
+
 woni:
   security:
     jwt:
