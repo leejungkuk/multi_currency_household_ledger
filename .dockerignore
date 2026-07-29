@@ -32,3 +32,6 @@ tools/
 Dockerfile
 .dockerignore
 docker-compose.yml
+
+# 모니터링 스택 — 앱과 별개로 뜨므로 이미지에 들어갈 이유가 없다
+monitoring/

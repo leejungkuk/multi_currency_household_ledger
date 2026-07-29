@@ -1,0 +1,13 @@
+apiVersion: 1
+
+providers:
+  - name: woni
+    type: file
+    folder: woni
+    # UI 에서 고친 내용은 재기동 시 파일 정의로 되돌아간다. 계속 쓸 변경은 JSON 을 직접 커밋한다.
+    allowUiUpdates: true
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

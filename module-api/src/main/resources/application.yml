@@ -57,16 +57,34 @@ ledger:
     window-days: ${LEDGER_RECALCULATION_WINDOW_DAYS:7}
 
 management:
+  server:
+    # actuator 를 애플리케이션 포트에서 떼어낸다. prometheus 스크랩 페이로드에는 JVM 상태·엔드포인트별 URI·
+    # DB 풀 수치가 그대로 실리므로, 인터넷에 노출되는 8080 에 두면 안 된다. 이 포트는 컨테이너 밖으로
+    # 매핑하지 않고 docker 내부망의 수집기(Alloy)만 접근한다 — 그래서 SecurityConfig 의 인증 대상이 아니다.
+    # (별도 management context 는 부모의 security filter chain 을 물려받지 않는다. 포트 격리가 방어선이다.)
+    port: ${MANAGEMENT_SERVER_PORT:9091}
+    # 기본값은 전 인터페이스다 — 컨테이너로 띄우면 같은 docker 네트워크의 수집기가 붙어야 하고, 컨테이너
+    # 밖으로는 포트를 매핑하지 않으므로 그 자체로 격리된다. 반면 컨테이너 없이 호스트에서 jar 를 직접 돌리면
+    # 이 포트가 그대로 인터넷에 열리므로, 그때는 MANAGEMENT_SERVER_ADDRESS=127.0.0.1 로 잠근다.
+    address: ${MANAGEMENT_SERVER_ADDRESS:0.0.0.0}
   endpoints:
     web:
       exposure:
-        # health 만 노출한다. 무토큰 공개 경로라 env·beans·metrics 등이 열리면 내부 정보가 샌다.
-        include: health
+        # 내부 전용 포트라도 최소만 연다. env·beans·heapdump 는 계속 닫아 둔다.
+        include: health,prometheus
   endpoint:
     health:
-      # 공개 엔드포인트이므로 {"status":"UP"} 외에는 내보내지 않는다(DB 종류·디스크 용량 등 은닉).
+      # 컨테이너 재시작 판정용이라 {"status":"UP"} 외에는 내보내지 않는다(DB 종류·디스크 용량 등 은닉).
       # DB 연결 상태는 노출되지 않을 뿐 판정에는 그대로 반영된다.
       show-details: never
+  metrics:
+    tags:
+      # 여러 인스턴스·환경의 시계열을 Grafana 에서 구분하는 공통 라벨.
+      application: ${WONI_METRICS_APPLICATION:woni-api}
+    distribution:
+      percentiles-histogram:
+        # p95/p99 지연은 버킷이 있어야 PromQL 로 계산된다(histogram_quantile). 없으면 평균만 보인다.
+        http.server.requests: true
 
 springdoc:
   swagger-ui:

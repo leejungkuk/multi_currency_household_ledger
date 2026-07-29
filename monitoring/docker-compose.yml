@@ -1,0 +1,123 @@
+# woni 모니터링 스택 — Prometheus(메트릭 저장) · Loki(로그 저장) · Alloy(로그 수집) · Grafana(조회).
+# 앱과 분리해 띄우고 스크랩 타깃만 갈아끼우므로, 배포 호스트가 정해지기 전에도 그대로 옮겨진다.
+#
+#   cp .env.example .env && vi .env      # GRAFANA_ADMIN_PASSWORD 설정
+#   docker compose up -d
+#   http://localhost:3000
+#
+# 모든 포트는 127.0.0.1 에만 바인딩한다 — 메트릭·로그는 인증 없이 읽히면 그 자체로 내부 정보다.
+# 원격 호스트에서 볼 때는 포트를 열지 말고 SSH 터널을 쓴다: ssh -L 3000:localhost:3000 <host>
+
+name: woni-monitoring
+
+services:
+  prometheus:
+    image: prom/prometheus:v3.13.1
+    container_name: woni-prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      # 개인 서비스 규모라 15일이면 충분하다. 디스크가 작은 무료 인스턴스를 감안해 용량 상한도 함께 건다
+      # (둘 중 먼저 걸리는 쪽이 적용된다).
+      - --storage.tsdb.retention.time=15d
+      - --storage.tsdb.retention.size=2GB
+      # 타깃 파일을 고친 뒤 재시작 없이 반영하기 위함: curl -X POST localhost:9090/-/reload
+      - --web.enable-lifecycle
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/targets:/etc/prometheus/targets:ro
+      - prometheus-data:/prometheus
+    extra_hosts:
+      # 앱을 컨테이너 밖(호스트의 bootRun·systemd)에서 돌릴 때 host.docker.internal 로 스크랩하기 위한 매핑.
+      # Docker Desktop 은 기본 제공하지만 리눅스 서버에는 이 줄이 있어야 한다.
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:9090:9090"
+    networks: [monitoring]
+
+  node-exporter:
+    image: prom/node-exporter:v1.12.1
+    container_name: woni-node-exporter
+    restart: unless-stopped
+    command:
+      - --path.rootfs=/host
+    # 호스트의 CPU·메모리·디스크를 보려면 네임스페이스와 루트 파일시스템이 필요하다(읽기 전용).
+    # 흔히 쓰는 rslave(마운트 전파)는 macOS Docker Desktop 이 거부하므로 붙이지 않는다 — 마운트 구성이
+    # 고정된 단일 서버에서는 전파 없이도 디스크 지표가 정확하다.
+    pid: host
+    volumes:
+      - /:/host:ro
+    networks: [monitoring]
+
+  loki:
+    image: grafana/loki:3.6.13
+    container_name: woni-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ./loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki-data:/loki
+    networks: [monitoring]
+
+  # docker 소켓을 Alloy 에 직접 물리지 않기 위한 필터. 소켓은 파일이 아니라 양방향 통신이라
+  # `:ro` 로 마운트해도 컨테이너 생성·exec 같은 쓰기 API 가 그대로 통한다(= 호스트 root 등가 권한).
+  # 여기서 조회 API 만 통과시키고, 그 외에는 haproxy 가 403 으로 끊는다.
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy:v0.4.2
+    container_name: woni-docker-socket-proxy
+    restart: unless-stopped
+    environment:
+      # 로그 수집에 필요한 조회만 연다. NETWORKS 는 Alloy 의 discovery.docker 가 네트워크 라벨을
+      # 계산하느라 부르고, 없으면 타깃 발견이 403 으로 실패한다. POST=0 이라 변경 계열은 전부 막힌다.
+      CONTAINERS: 1
+      NETWORKS: 1
+      POST: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [monitoring]
+
+  alloy:
+    image: grafana/alloy:v1.18.0
+    container_name: woni-alloy
+    restart: unless-stopped
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - alloy-data:/var/lib/alloy/data
+    depends_on: [loki, docker-socket-proxy]
+    networks: [monitoring]
+
+  grafana:
+    image: grafana/grafana:13.1.1
+    container_name: woni-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?monitoring/.env 에 GRAFANA_ADMIN_PASSWORD 를 설정하세요}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on: [prometheus, loki]
+    networks: [monitoring]
+
+networks:
+  monitoring:
+    name: woni-monitoring
+
+volumes:
+  prometheus-data:
+  loki-data:
+  grafana-data:
+  alloy-data:
