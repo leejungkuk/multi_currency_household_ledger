@@ -37,6 +37,17 @@ public class ExchangeRateController {
         return publicRead(responses);
     }
 
+    @GetMapping("/range")
+    public ResponseEntity<ApiResponse<List<ExchangeRateResponse>>> getRatesInRange(
+            @RequestParam("from") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam("to") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        List<ExchangeRateResponse> responses = exchangeRateService.getRatesInRange(from, to).stream()
+                // 범위 응답은 폴백이 없는 원본 행이므로 자기 기준일을 넘겨 stale=false로 고정한다.
+                .map(rate -> ExchangeRateResponse.from(rate, rate.getBaseDate()))
+                .toList();
+        return publicRead(responses);
+    }
+
     @GetMapping("/snapshot")
     public ResponseEntity<ApiResponse<List<ExchangeRateResponse>>> getSnapshot(
             @RequestParam(value = "date", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)

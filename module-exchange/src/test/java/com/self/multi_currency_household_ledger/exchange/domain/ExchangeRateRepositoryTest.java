@@ -168,6 +168,34 @@ class ExchangeRateRepositoryTest {
     }
 
     @Nested
+    @DisplayName("findByBaseDateBetweenOrderByBaseDateAscCurrencyCodeAsc()")
+    class FindByBaseDateBetween {
+
+        @Test
+        @DisplayName("양끝 날짜를 포함하고 날짜와 통화 오름차순으로 반환하며 범위 밖 행은 제외한다")
+        void returns_inclusive_range_in_stable_order() {
+            LocalDate from = DATE.minusDays(1);
+            LocalDate to = DATE.plusDays(1);
+            em.persist(ExchangeRate.of(CurrencyCode.GBP, new BigDecimal("1700.00"), from.minusDays(1)));
+            em.persist(ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), from));
+            em.persist(ExchangeRate.of(CurrencyCode.EUR, new BigDecimal("1450.00"), from));
+            em.persist(ExchangeRate.of(CurrencyCode.JPY, new BigDecimal("900.00"), to));
+            em.persist(ExchangeRate.of(CurrencyCode.AUD, new BigDecimal("850.00"), to.plusDays(1)));
+            em.flush();
+
+            List<ExchangeRate> result =
+                    exchangeRateRepository.findByBaseDateBetweenOrderByBaseDateAscCurrencyCodeAsc(from, to);
+
+            assertThat(result)
+                    .extracting(ExchangeRate::getBaseDate, ExchangeRate::getCurrencyCode)
+                    .containsExactly(
+                            org.assertj.core.groups.Tuple.tuple(from, CurrencyCode.EUR),
+                            org.assertj.core.groups.Tuple.tuple(from, CurrencyCode.USD),
+                            org.assertj.core.groups.Tuple.tuple(to, CurrencyCode.JPY));
+        }
+    }
+
+    @Nested
     @DisplayName("BaseEntity 자동 매핑")
     class BaseEntityAuditing {
 

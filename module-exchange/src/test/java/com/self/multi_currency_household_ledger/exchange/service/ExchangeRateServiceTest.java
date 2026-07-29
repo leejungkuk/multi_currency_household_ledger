@@ -322,6 +322,49 @@ class ExchangeRateServiceTest {
     }
 
     @Nested
+    @DisplayName("getRatesInRange()")
+    class GetRatesInRange {
+
+        @Test
+        @DisplayName("유효한 범위는 Repository에 그대로 위임한다")
+        void delegates_valid_range() {
+            LocalDate to = DATE.plusDays(399);
+            var rates = List.of(ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), DATE));
+            given(exchangeRateRepository.findByBaseDateBetweenOrderByBaseDateAscCurrencyCodeAsc(DATE, to))
+                    .willReturn(rates);
+
+            List<ExchangeRate> result = exchangeRateService.getRatesInRange(DATE, to);
+
+            assertThat(result).containsExactlyElementsOf(rates);
+            verify(exchangeRateRepository).findByBaseDateBetweenOrderByBaseDateAscCurrencyCodeAsc(DATE, to);
+        }
+
+        @Test
+        @DisplayName("유효하지 않은 범위는 Repository를 호출하지 않는다")
+        void rejects_invalid_range_before_repository_call() {
+            assertThatThrownBy(() -> exchangeRateService.getRatesInRange(DATE, DATE.minusDays(1)))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(
+                            ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("INVALID_DATE_RANGE"));
+
+            verify(exchangeRateRepository, never())
+                    .findByBaseDateBetweenOrderByBaseDateAscCurrencyCodeAsc(any(), any());
+        }
+
+        @Test
+        @DisplayName("미래 종료일도 가드 없이 Repository에 그대로 위임한다")
+        void delegates_future_to_date() {
+            LocalDate futureTo = LocalDate.of(2026, 4, 7);
+            given(exchangeRateRepository.findByBaseDateBetweenOrderByBaseDateAscCurrencyCodeAsc(DATE, futureTo))
+                    .willReturn(List.of());
+
+            assertThat(exchangeRateService.getRatesInRange(DATE, futureTo)).isEmpty();
+
+            verify(exchangeRateRepository).findByBaseDateBetweenOrderByBaseDateAscCurrencyCodeAsc(DATE, futureTo);
+        }
+    }
+
+    @Nested
     @DisplayName("getLatestRatesByCurrency()")
     class GetLatestRatesByCurrency {
 

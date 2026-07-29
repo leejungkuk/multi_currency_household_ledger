@@ -100,6 +100,42 @@ class ExchangeRateTest {
     }
 
     @Nested
+    @DisplayName("assertValidRange()")
+    class AssertValidRange {
+
+        @Test
+        @DisplayName("시작일과 종료일이 같으면 1일 범위로 통과한다")
+        void passes_for_single_day() {
+            assertThatCode(() -> ExchangeRate.assertValidRange(TODAY, TODAY)).doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("양끝을 포함해 400일인 범위는 통과한다")
+        void passes_for_400_days() {
+            assertThatCode(() -> ExchangeRate.assertValidRange(TODAY, TODAY.plusDays(399)))
+                    .doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("양끝을 포함해 401일인 범위는 INVALID_DATE_RANGE를 던진다")
+        void throws_for_401_days() {
+            assertThatThrownBy(() -> ExchangeRate.assertValidRange(TODAY, TODAY.plusDays(400)))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(
+                            ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("INVALID_DATE_RANGE"));
+        }
+
+        @Test
+        @DisplayName("시작일이 종료일보다 늦으면 INVALID_DATE_RANGE를 던진다")
+        void throws_for_reversed_range() {
+            assertThatThrownBy(() -> ExchangeRate.assertValidRange(TODAY, TODAY.minusDays(1)))
+                    .isInstanceOf(BusinessException.class)
+                    .satisfies(
+                            ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("INVALID_DATE_RANGE"));
+        }
+    }
+
+    @Nested
     @DisplayName("convertFromKrw()")
     class ConvertFromKrw {
 

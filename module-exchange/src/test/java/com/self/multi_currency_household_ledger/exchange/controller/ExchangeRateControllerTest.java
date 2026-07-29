@@ -73,6 +73,73 @@ class ExchangeRateControllerTest {
     }
 
     @Test
+    @DisplayName("GET /api/v1/exchange-rates/range 는 서비스 순서대로 원본 환율을 공개 캐시 응답으로 반환한다")
+    void getRatesInRange_returns_original_rates_in_service_order() throws Exception {
+        LocalDate from = LocalDate.of(2026, 4, 2);
+        LocalDate to = LocalDate.of(2026, 4, 3);
+        var rates = List.of(
+                ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), to),
+                ExchangeRate.of(CurrencyCode.EUR, new BigDecimal("1450.00"), from));
+        given(exchangeRateService.getRatesInRange(from, to)).willReturn(rates);
+
+        mockMvc.perform(get("/api/v1/exchange-rates/range")
+                        .param("from", "2026-04-02")
+                        .param("to", "2026-04-03"))
+                .andExpect(status().isOk())
+                .andExpect(header().string(HttpHeaders.CACHE_CONTROL, CacheControlHeaders.PUBLIC_READ))
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.timestamp").exists())
+                .andExpect(jsonPath("$.data.length()").value(2))
+                .andExpect(jsonPath("$.data[0].currencyCode").value("USD"))
+                .andExpect(jsonPath("$.data[0].baseDate").value("2026-04-03"))
+                .andExpect(jsonPath("$.data[0].stale").value(false))
+                .andExpect(jsonPath("$.data[1].currencyCode").value("EUR"))
+                .andExpect(jsonPath("$.data[1].baseDate").value("2026-04-02"))
+                .andExpect(jsonPath("$.data[1].stale").value(false));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/exchange-rates/range 유효 범위에 데이터가 없으면 200과 빈 배열을 반환한다")
+    void getRatesInRange_returns_empty_array_when_no_data() throws Exception {
+        LocalDate from = LocalDate.of(2026, 4, 2);
+        LocalDate to = LocalDate.of(2026, 4, 3);
+        given(exchangeRateService.getRatesInRange(from, to)).willReturn(List.of());
+
+        mockMvc.perform(get("/api/v1/exchange-rates/range")
+                        .param("from", "2026-04-02")
+                        .param("to", "2026-04-03"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data").isArray())
+                .andExpect(jsonPath("$.data").isEmpty());
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/exchange-rates/range 가드 위반은 400 INVALID_DATE_RANGE로 변환한다")
+    void getRatesInRange_returns_400_for_invalid_range() throws Exception {
+        LocalDate from = LocalDate.of(2026, 4, 3);
+        LocalDate to = LocalDate.of(2026, 4, 2);
+        given(exchangeRateService.getRatesInRange(from, to))
+                .willThrow(new BusinessException(ExchangeErrorCode.INVALID_DATE_RANGE));
+
+        mockMvc.perform(get("/api/v1/exchange-rates/range")
+                        .param("from", "2026-04-03")
+                        .param("to", "2026-04-02"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("INVALID_DATE_RANGE"));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/exchange-rates/range from 누락은 400 INVALID_PARAMETER를 반환한다")
+    void getRatesInRange_returns_400_when_from_is_missing() throws Exception {
+        mockMvc.perform(get("/api/v1/exchange-rates/range").param("to", "2026-04-03"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("INVALID_PARAMETER"));
+    }
+
+    @Test
     @DisplayName("GET /api/v1/exchange-rates/snapshot?date= 통화별 기준일 이전 최신 환율을 ApiResponse 봉투로 반환한다")
     void getSnapshot_returns_on_or_before_rates() throws Exception {
         LocalDate requestedDate = LocalDate.of(2026, 4, 5);

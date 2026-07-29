@@ -103,6 +103,12 @@ public class ExchangeRateService {
     }
 
     @Transactional(readOnly = true)
+    public List<ExchangeRate> getRatesInRange(LocalDate from, LocalDate to) {
+        ExchangeRate.assertValidRange(from, to);
+        return exchangeRateRepository.findByBaseDateBetweenOrderByBaseDateAscCurrencyCodeAsc(from, to);
+    }
+
+    @Transactional(readOnly = true)
     public List<ExchangeRate> getLatestRatesByCurrency() {
         return exchangeRateRepository.findLatestRatesByCurrency();
     }
