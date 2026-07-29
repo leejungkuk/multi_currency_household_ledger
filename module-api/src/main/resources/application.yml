@@ -1,9 +1,10 @@
 spring:
-  profiles:
-    include: secret
-
   datasource:
     driver-class-name: org.postgresql.Driver
+    hikari:
+      # 단일 인스턴스 + 개인 규모 트래픽이라 기본값 10은 과하다. Supabase 무료 티어의 연결 수도 아껴야 한다.
+      maximum-pool-size: ${DB_POOL_SIZE:5}
+      minimum-idle: ${DB_POOL_MIN_IDLE:1}
 
   jpa:
     hibernate:
@@ -11,8 +12,8 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
-        format_sql: true
-    show-sql: true
+    # show-sql / format_sql 은 application-local.yml 에만 둔다 — 운영에서 켜면 모든 쿼리와 파라미터가
+    # 로그로 쏟아져 로그량·성능·정보노출 문제가 된다.
     open-in-view: false
 
   flyway:
@@ -54,6 +55,18 @@ exchange:
 ledger:
   recalculation:
     window-days: ${LEDGER_RECALCULATION_WINDOW_DAYS:7}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # health 만 노출한다. 무토큰 공개 경로라 env·beans·metrics 등이 열리면 내부 정보가 샌다.
+        include: health
+  endpoint:
+    health:
+      # 공개 엔드포인트이므로 {"status":"UP"} 외에는 내보내지 않는다(DB 종류·디스크 용량 등 은닉).
+      # DB 연결 상태는 노출되지 않을 뿐 판정에는 그대로 반영된다.
+      show-details: never
 
 springdoc:
   swagger-ui:

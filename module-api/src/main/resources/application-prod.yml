@@ -1,0 +1,20 @@
+# 운영 전용(Dockerfile 이 SPRING_PROFILES_ACTIVE=prod 를 기본값으로 넣는다).
+#
+# 접속 정보·시크릿은 이 파일에 두지 않는다 — 전부 환경변수로 주입한다(README 참고).
+# 필수: SPRING_DATASOURCE_URL / USERNAME / PASSWORD, SUPABASE_JWT_ISSUER_URI,
+#       EXCHANGE_EXIMBANK_API_KEY, WONI_CORS_ALLOWED_ORIGINS
+
+# API 문서는 운영에 노출하지 않는다. SecurityConfig 가 이미 인증을 요구하지만,
+# 엔드포인트 자체를 끄는 편이 공격 표면이 작다.
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+server:
+  error:
+    # 예외 흐름은 GlobalExceptionHandler 가 ErrorResponse 로 통일한다.
+    # 화이트라벨 경로로 새어도 내부 정보가 나가지 않도록 못박는다.
+    include-stacktrace: never
+    include-message: never
