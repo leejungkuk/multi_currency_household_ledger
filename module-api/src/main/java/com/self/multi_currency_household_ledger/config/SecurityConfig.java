@@ -45,6 +45,10 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .authorizeHttpRequests(authorize -> authorize
+                        // security-ack: 배포 플랫폼·컨테이너 재시작 판정과 외부 모니터링이 토큰 없이 읽어야 하는
+                        // liveness 신호. show-details=never 라 응답은 {"status":"UP"} 뿐이고 GET 만 연다.
+                        .requestMatchers(HttpMethod.GET, "/actuator/health")
+                        .permitAll()
                         .requestMatchers(
                                 HttpMethod.GET,
                                 "/api/v1/exchange-rates",
