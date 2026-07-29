@@ -16,6 +16,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -25,6 +26,8 @@ import lombok.NoArgsConstructor;
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ExchangeRate extends BaseEntity {
+
+    private static final int MAX_RANGE_DAYS = 400;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -54,6 +57,12 @@ public class ExchangeRate extends BaseEntity {
     public static void assertNotFuture(LocalDate date, Clock clock) {
         if (date.isAfter(LocalDate.now(clock))) {
             throw new BusinessException(ExchangeErrorCode.INVALID_DATE);
+        }
+    }
+
+    public static void assertValidRange(LocalDate from, LocalDate to) {
+        if (from.isAfter(to) || ChronoUnit.DAYS.between(from, to) + 1 > MAX_RANGE_DAYS) {
+            throw new BusinessException(ExchangeErrorCode.INVALID_DATE_RANGE);
         }
     }
 

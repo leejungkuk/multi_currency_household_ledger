@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -45,6 +46,13 @@ public class GlobalExceptionHandler {
         String value = e.getValue() != null ? e.getValue().toString() : "null";
         String message = String.format("파라미터 '%s'의 값 '%s'이 올바르지 않습니다.", e.getName(), value);
         log.warn("Type mismatch exception: {}", message);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse.of("INVALID_PARAMETER", message));
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<ErrorResponse> handleMissingParameterException(MissingServletRequestParameterException e) {
+        String message = String.format("필수 파라미터 '%s'이 누락되었습니다.", e.getParameterName());
+        log.warn("Missing parameter exception: {}", message);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse.of("INVALID_PARAMETER", message));
     }
 

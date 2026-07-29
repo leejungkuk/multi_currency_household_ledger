@@ -4,11 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.self.multi_currency_household_ledger.common.dto.ErrorResponse;
 import jakarta.validation.ConstraintViolationException;
+import java.lang.reflect.Method;
 import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.web.method.annotation.ExceptionHandlerMethodResolver;
 
 class GlobalExceptionHandlerTest {
 
@@ -75,5 +78,29 @@ class GlobalExceptionHandlerTest {
         ErrorResponse body = response.getBody();
         assertThat(body).isNotNull();
         assertThat(body.code()).isEqualTo("VALIDATION_ERROR");
+    }
+
+    @Test
+    @DisplayName("필수 요청 파라미터 누락은 400 + INVALID_PARAMETER 봉투로 변환된다")
+    void handleMissingParameterException_returns_400_invalid_parameter() {
+        ResponseEntity<ErrorResponse> response = handler.handleMissingParameterException(
+                new MissingServletRequestParameterException("from", "LocalDate"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        ErrorResponse body = response.getBody();
+        assertThat(body).isNotNull();
+        assertThat(body.code()).isEqualTo("INVALID_PARAMETER");
+        assertThat(body.message()).contains("from");
+    }
+
+    @Test
+    @DisplayName("필수 요청 파라미터 누락은 캐치올보다 구체적인 핸들러로 디스패치된다")
+    void missingParameterException_resolves_specific_handler() {
+        var resolver = new ExceptionHandlerMethodResolver(GlobalExceptionHandler.class);
+
+        Method resolved = resolver.resolveMethod(new MissingServletRequestParameterException("from", "LocalDate"));
+
+        assertThat(resolved).isNotNull();
+        assertThat(resolved.getName()).isEqualTo("handleMissingParameterException");
     }
 }

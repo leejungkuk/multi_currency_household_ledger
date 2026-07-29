@@ -124,6 +124,20 @@ class SecurityConfigTest {
     }
 
     @Test
+    @DisplayName("GET /api/v1/exchange-rates/range 는 토큰 없이 접근할 수 있다")
+    void exchange_rate_range_without_token_is_public() throws Exception {
+        LocalDate from = LocalDate.of(2026, 4, 2);
+        LocalDate to = LocalDate.of(2026, 4, 3);
+        given(exchangeRateService.getRatesInRange(from, to)).willReturn(List.of());
+
+        mockMvc.perform(get("/api/v1/exchange-rates/range")
+                        .param("from", "2026-04-02")
+                        .param("to", "2026-04-03"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true));
+    }
+
+    @Test
     @DisplayName("GET /api/v1/exchange-rates/status 는 토큰 없이 접근할 수 있다")
     void exchange_rate_status_without_token_is_public() throws Exception {
         given(exchangeRateService.getLatestRatesByCurrency())

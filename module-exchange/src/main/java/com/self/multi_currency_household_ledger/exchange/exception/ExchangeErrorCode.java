@@ -13,6 +13,7 @@ public enum ExchangeErrorCode implements ErrorCode {
     EXCHANGE_API_AUTH_ERROR("EXCHANGE_API_AUTH_ERROR", "수출입은행 API 인증키 오류", HttpStatus.INTERNAL_SERVER_ERROR),
     EXCHANGE_API_LIMIT_EXCEEDED("EXCHANGE_API_LIMIT_EXCEEDED", "수출입은행 API 일일 호출 한도 초과", HttpStatus.SERVICE_UNAVAILABLE),
     INVALID_DATE("INVALID_DATE", "미래 날짜의 환율은 조회할 수 없습니다.", HttpStatus.BAD_REQUEST),
+    INVALID_DATE_RANGE("INVALID_DATE_RANGE", "시작일은 종료일보다 늦을 수 없으며 조회 범위는 최대 400일입니다.", HttpStatus.BAD_REQUEST),
     UNSUPPORTED_CURRENCY("UNSUPPORTED_CURRENCY", "지원하지 않는 통화 코드입니다.", HttpStatus.BAD_REQUEST);
 
     private final String code;

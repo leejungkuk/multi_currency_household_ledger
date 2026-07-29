@@ -19,6 +19,8 @@ public interface ExchangeRateRepository extends JpaRepository<ExchangeRate, Long
 
     List<ExchangeRate> findByBaseDate(LocalDate baseDate);
 
+    List<ExchangeRate> findByBaseDateBetweenOrderByBaseDateAscCurrencyCodeAsc(LocalDate from, LocalDate to);
+
     @Query(
             """
             select rate
