@@ -26,6 +26,10 @@ COPY --from=build /workspace/module-api/build/libs/module-api-*-SNAPSHOT.jar app
 USER woni
 EXPOSE 8080
 
+# 운영 프로파일을 기본값으로 못박는다. local 로 덮어쓰면 SQL 로그뿐 아니라 Swagger·수동 수집
+# 엔드포인트까지 무토큰으로 열리므로(LocalSecurityConfig) 배포 환경에서 바꾸지 말 것.
+ENV SPRING_PROFILES_ACTIVE=prod
+
 # 1GB 인스턴스에서도 non-heap(메타스페이스·스레드 스택·코드캐시)이 남도록 60% 로 잡는다.
 # 메모리가 큰 인스턴스로 옮기면 JAVA_OPTS 로 올린다.
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=60.0"
