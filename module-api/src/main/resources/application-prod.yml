@@ -1,8 +1,16 @@
 # 운영 전용(Dockerfile 이 SPRING_PROFILES_ACTIVE=prod 를 기본값으로 넣는다).
 #
-# 접속 정보·시크릿은 이 파일에 두지 않는다 — 전부 환경변수로 주입한다(README 참고).
+# 접속 정보·시크릿은 이 파일에 두지 않는다 — 전부 환경변수로 주입한다(배포 문서 참고).
 # 필수: SPRING_DATASOURCE_URL / USERNAME / PASSWORD, SUPABASE_JWT_ISSUER_URI,
 #       EXCHANGE_EXIMBANK_API_KEY, WONI_CORS_ALLOWED_ORIGINS
+
+# actuator 바인딩을 전 인터페이스로 되돌린다. 기본값(application.yml)은 루프백인데, 컨테이너 안에서
+# 루프백에 묶으면 같은 docker 네트워크의 수집기가 9091 에 붙지 못해 지표 수집이 끊긴다.
+# 노출 위험이 없는 이유는 인증이 아니라 격리다 — 9091 은 호스트로 매핑하지 않으므로(compose 는 8080 만
+# 공개한다) 컨테이너 네트워크 안에서만 도달한다. 이 전제가 깨지면 prometheus 본문이 무인증 노출된다.
+management:
+  server:
+    address: ${MANAGEMENT_SERVER_ADDRESS:0.0.0.0}
 
 # API 문서는 운영에 노출하지 않는다. SecurityConfig 가 이미 인증을 요구하지만,
 # 엔드포인트 자체를 끄는 편이 공격 표면이 작다.

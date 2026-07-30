@@ -20,11 +20,33 @@ class ActuatorPortSeparationTest {
     @Test
     @DisplayName("application.yml 은 actuator 를 애플리케이션 포트에서 분리한다")
     void management_port_is_separated_from_application_port() throws IOException {
-        List<PropertySource<?>> sources =
-                new YamlPropertySourceLoader().load("application", new ClassPathResource("application.yml"));
-
-        assertThat(sources.getFirst().getProperty("management.server.port"))
+        assertThat(property("application.yml", "management.server.port"))
                 .as("management.server.port 가 없으면 actuator 가 공개 API 포트로 돌아와 prometheus 가 무인증 노출된다")
                 .isNotNull();
+    }
+
+    /**
+     * 포트 분리만으로는 호스트에서 jar 를 직접 돌리는 경우(IDE 실행)를 못 막는다. 그때 management 포트가 전 인터페이스에 붙으면 같은 LAN 의 아무
+     * 기기나 /actuator/prometheus 를 무인증으로 읽는다(실측 확인). 그래서 기본값은 루프백이고, 전 인터페이스 바인딩은 9091 을 호스트로 매핑하지
+     * 않는 컨테이너 배포(prod)만 명시적으로 선택한다 — 프로파일을 빼먹으면 안전한 쪽으로 떨어진다.
+     */
+    @Test
+    @DisplayName("management 바인딩 기본값은 루프백이고, 전 인터페이스는 prod 프로파일만 선택한다")
+    void management_binds_to_loopback_by_default_and_all_interfaces_only_in_prod() throws IOException {
+        assertThat(property("application.yml", "management.server.address"))
+                .as("기본값이 전 인터페이스면 IDE 실행만으로 LAN 에 actuator 가 열린다")
+                .asString()
+                .contains("127.0.0.1");
+
+        assertThat(property("application-prod.yml", "management.server.address"))
+                .as("prod 는 컨테이너 안에서 prometheus 가 붙어야 하므로 전 인터페이스 바인딩이 필요하다(9091 은 호스트로 매핑하지 않는다)")
+                .asString()
+                .contains("0.0.0.0");
+    }
+
+    private static Object property(String resource, String key) throws IOException {
+        List<PropertySource<?>> sources =
+                new YamlPropertySourceLoader().load(resource, new ClassPathResource(resource));
+        return sources.getFirst().getProperty(key);
     }
 }
