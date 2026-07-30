@@ -60,13 +60,17 @@ management:
   server:
     # actuator 를 애플리케이션 포트에서 떼어낸다. prometheus 스크랩 페이로드에는 JVM 상태·엔드포인트별 URI·
     # DB 풀 수치가 그대로 실리므로, 인터넷에 노출되는 8080 에 두면 안 된다. 이 포트는 컨테이너 밖으로
-    # 매핑하지 않고 docker 내부망의 수집기(Alloy)만 접근한다 — 그래서 SecurityConfig 의 인증 대상이 아니다.
-    # (별도 management context 는 부모의 security filter chain 을 물려받지 않는다. 포트 격리가 방어선이다.)
+    # 매핑하지 않고 docker 내부망의 수집기만 접근한다 — 그게 /actuator/prometheus 를 permitAll 로 여는 근거다.
+    # (별도 management context 도 security filter chain 을 물려받는다. 그래서 permitAll 이 필요했고,
+    #  인증이 아니라 포트 격리가 실질 방어선이다. ActuatorPortSeparationTest 가 이 전제를 고정한다.)
     port: ${MANAGEMENT_SERVER_PORT:9091}
-    # 기본값은 전 인터페이스다 — 컨테이너로 띄우면 같은 docker 네트워크의 수집기가 붙어야 하고, 컨테이너
-    # 밖으로는 포트를 매핑하지 않으므로 그 자체로 격리된다. 반면 컨테이너 없이 호스트에서 jar 를 직접 돌리면
-    # 이 포트가 그대로 인터넷에 열리므로, 그때는 MANAGEMENT_SERVER_ADDRESS=127.0.0.1 로 잠근다.
-    address: ${MANAGEMENT_SERVER_ADDRESS:0.0.0.0}
+    # 기본값은 루프백이다 — 안전한 쪽이 기본이어야 한다. 호스트에서 jar 를 직접 돌리면(IDE 실행) 전 인터페이스
+    # 바인딩은 같은 LAN 의 아무 기기에나 actuator 를 무인증으로 열어준다. 루프백으로 묶어도 로컬 관측은
+    # 그대로 동작한다 — Docker Desktop 은 host.docker.internal 연결을 호스트 프로세스에서 프록시하므로
+    # 수집기 컨테이너에는 루프백에서 온 연결로 도착한다(실측 확인).
+    # 전 인터페이스 바인딩이 필요한 쪽은 9091 을 호스트로 매핑하지 않는 컨테이너 배포뿐이라,
+    # application-prod.yml 에서만 명시적으로 선택한다(프로파일을 빼먹으면 안전한 쪽으로 떨어진다).
+    address: ${MANAGEMENT_SERVER_ADDRESS:127.0.0.1}
   endpoints:
     web:
       exposure:
