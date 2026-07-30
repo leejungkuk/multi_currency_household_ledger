@@ -38,7 +38,10 @@ import org.testcontainers.containers.PostgreSQLContainer;
 @TestPropertySource(
         properties = {
             "spring.security.oauth2.resourceserver.jwt.issuer-uri=https://example.supabase.co/auth/v1",
-            "exchange.eximbank.api-key=test-api-key"
+            "exchange.eximbank.api-key=test-api-key",
+            // 이 테스트는 actuator 와 무관하다. 운영 기본값(9091)을 그대로 잡으면 로컬에서 앱을 띄워 둔 채로
+            // 돌릴 때나 다른 테스트 컨텍스트가 캐시에 살아 있을 때 포트 충돌로 기동이 깨진다.
+            "management.server.port=0"
         })
 class ResponseCompressionIntegrationTest {
 

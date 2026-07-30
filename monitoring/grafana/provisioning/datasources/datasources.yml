@@ -1,0 +1,19 @@
+apiVersion: 1
+
+# uid 는 대시보드 JSON 이 참조하므로 바꾸지 않는다.
+datasources:
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      # prometheus.yml 의 scrape_interval 과 맞춘다 — 그래야 rate() 구간이 어긋나지 않는다.
+      timeInterval: 15s
+
+  - name: Loki
+    type: loki
+    uid: loki
+    access: proxy
+    url: http://loki:3100

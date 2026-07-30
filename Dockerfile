@@ -24,7 +24,9 @@ WORKDIR /app
 COPY --from=build /workspace/module-api/build/libs/module-api-*-SNAPSHOT.jar app.jar
 
 USER woni
-EXPOSE 8080
+# 8080 = 공개 API. 9091 = actuator(health·prometheus) 전용이며 호스트로 매핑하지 않는다 —
+# docker 내부망의 수집기만 붙어야 한다(application.yml 의 management.server.port 주석 참고).
+EXPOSE 8080 9091
 
 # 운영 프로파일을 기본값으로 못박는다. local 로 덮어쓰면 SQL 로그뿐 아니라 Swagger·수동 수집
 # 엔드포인트까지 무토큰으로 열리므로(LocalSecurityConfig) 배포 환경에서 바꾸지 말 것.
@@ -36,7 +38,8 @@ ENV JAVA_OPTS="-XX:MaxRAMPercentage=60.0"
 
 # start-period 는 1GB E2 의 느린 JVM 기동(1~2분)을 감안한 값이다.
 # status 는 DB 연결까지 반영하므로 Supabase 가 끊기면 unhealthy 로 떨어진다.
+# 컨테이너 내부에서 도는 검사라 내부 전용 management 포트를 그대로 쓴다.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
-    CMD curl -fsS http://localhost:8080/actuator/health | grep -q '"status":"UP"' || exit 1
+    CMD curl -fsS http://localhost:9091/actuator/health | grep -q '"status":"UP"' || exit 1
 
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar app.jar"]

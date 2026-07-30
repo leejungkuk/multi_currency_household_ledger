@@ -1,0 +1,49 @@
+// 컨테이너 로그를 Loki 로 보낸다. 메트릭은 Prometheus 가 직접 스크랩하므로 Alloy 는 로그만 담당한다.
+// (Promtail 은 2026-03 EOL 이라 Grafana 가 지정한 후속인 Alloy 를 쓴다.)
+//
+// docker 소켓을 직접 물리지 않고 socket-proxy 를 거친다 — 소켓을 직접 주면 `:ro` 여도 컨테이너 생성·exec
+// 같은 쓰기 API 가 통해 호스트 root 등가 권한이 된다. 프록시는 조회 API 만 통과시킨다.
+
+discovery.docker "containers" {
+	host             = "tcp://docker-socket-proxy:2375"
+	refresh_interval = "15s"
+}
+
+// docker 가 주는 이름은 "/woni-api" 처럼 슬래시가 앞에 붙어 있어 떼어내고 라벨로 만든다.
+discovery.relabel "containers" {
+	targets = discovery.docker.containers.targets
+
+	rule {
+		source_labels = ["__meta_docker_container_name"]
+		regex         = "/(.*)"
+		target_label  = "container"
+	}
+}
+
+loki.source.docker "containers" {
+	host       = "tcp://docker-socket-proxy:2375"
+	targets    = discovery.relabel.containers.output
+	forward_to = [loki.process.level.receiver]
+}
+
+// 로그 레벨만 라벨로 뽑는다. 레벨은 값 종류가 적어 라벨로 써도 카디널리티가 안전하고, Grafana 에서 ERROR 만
+// 걸러 보는 것이 로그 활용의 대부분이다. 나머지 필드는 조회 시점에 LogQL 로 파싱하는 편이 싸다.
+loki.process "level" {
+	stage.regex {
+		expression = "(?P<level>ERROR|WARN|INFO|DEBUG|TRACE)"
+	}
+
+	stage.labels {
+		values = {
+			level = "",
+		}
+	}
+
+	forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+	endpoint {
+		url = "http://loki:3100/loki/api/v1/push"
+	}
+}

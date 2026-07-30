@@ -8,6 +8,8 @@ dependencies {
 
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    // Prometheus 스크랩 포맷(/actuator/prometheus). 노출은 내부 전용 management 포트에만 열린다.
+    runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
@@ -42,6 +44,7 @@ tasks.register('generateApiSnapshot', Test) {
 
 tasks.named('bootRun') {
     // bootRun 은 로컬 dev 전용 태스크라 local 프로파일을 강제한다.
-    // (default 로 두면 application.yml 의 'spring.profiles.include: secret' 이 active 를 채워 local 이 안 켜진다.)
+    // (개발 DB 접속 정보는 application-local.yml 이 import 하는 application-secret.yml 에만 있어서,
+    //  프로파일 없이 띄우면 DataSource 를 못 만들고 기동에 실패한다. IDE 실행도 local 지정이 필요하다.)
     systemProperty 'spring.profiles.active', 'local'
 }
