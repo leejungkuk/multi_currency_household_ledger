@@ -116,8 +116,16 @@ networks:
   monitoring:
     name: woni-monitoring
 
+# 볼륨 이름을 명시해 프로젝트명 프리픽스를 우회한다. 이 파일은 로컬에서 단독으로도 돌고 배포에서는
+# deploy 쪽 compose 에 include 되는데, 프리픽스에 맡기면 같은 데이터가 프로젝트명에 따라 다른 볼륨에
+# 담긴다(디렉터리명·name 을 바꾸는 순간 지표 히스토리가 사라진 것처럼 보인다). 이름을 박으면 어느
+# 진입점으로 올려도 같은 볼륨을 쓴다.
 volumes:
   prometheus-data:
+    name: woni-prometheus-data
   loki-data:
+    name: woni-loki-data
   grafana-data:
+    name: woni-grafana-data
   alloy-data:
+    name: woni-alloy-data
