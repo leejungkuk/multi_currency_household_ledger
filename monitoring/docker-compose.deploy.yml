@@ -1,0 +1,17 @@
+# 배포 호스트용 override. API 컨테이너가 만든 woni 네트워크에 Prometheus 를 붙여 api:9091 을 스크랩한다.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.deploy.yml up -d
+#
+# 로컬에서는 쓰지 않는다 — woni 네트워크는 배포 스택이 만들므로, 없는 상태에서 이 파일을 주면 기동이 실패한다.
+# (로컬은 base 파일만으로 host.docker.internal:9091 을 스크랩한다.)
+
+services:
+  prometheus:
+    networks: [monitoring, woni]
+    volumes:
+      # 같은 마운트 지점이라 base 의 targets/ 를 이 디렉터리로 갈아끼운다(→ woni-api:9091). 나머지 볼륨은 base 그대로다.
+      - ./prometheus/targets-deploy:/etc/prometheus/targets:ro
+
+networks:
+  woni:
+    external: true

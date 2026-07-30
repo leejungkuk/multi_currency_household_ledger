@@ -1,0 +1,10 @@
+[
+  {
+    "targets": [
+      "woni-api:9091"
+    ],
+    "labels": {
+      "env": "prod"
+    }
+  }
+]
