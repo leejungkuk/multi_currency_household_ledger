@@ -49,6 +49,12 @@ public class SecurityConfig {
                         // liveness 신호. show-details=never 라 응답은 {"status":"UP"} 뿐이고 GET 만 연다.
                         .requestMatchers(HttpMethod.GET, "/actuator/health")
                         .permitAll()
+                        // security-ack: Prometheus 스크랩 경로. 본문에 JVM 상태·DB 풀 수치·엔드포인트별 URI 가
+                        // 그대로 실리므로 공개돼선 안 된다. 방어선은 인증이 아니라 포트 격리다 — actuator 는
+                        // 내부 전용 management 포트(9091)에서만 서비스되고 그 포트는 컨테이너 밖으로 매핑하지
+                        // 않는다. 그 전제는 ActuatorPortSeparationTest 가 설정 파일 수준에서 고정한다.
+                        .requestMatchers(HttpMethod.GET, "/actuator/prometheus")
+                        .permitAll()
                         .requestMatchers(
                                 HttpMethod.GET,
                                 "/api/v1/exchange-rates",

@@ -1,0 +1,32 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # 앱 메트릭. 타깃을 파일로 분리해 두었으므로 배포 호스트가 정해지면 targets/woni-api.json 만 고치면 된다
+  # (Prometheus 재시작 불필요 — refresh_interval 마다 다시 읽는다).
+  - job_name: woni-api
+    metrics_path: /actuator/prometheus
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/targets/*.json
+        refresh_interval: 30s
+
+  # 호스트 CPU·메모리·디스크.
+  - job_name: node
+    static_configs:
+      - targets: ["node-exporter:9100"]
+
+  # 수집 파이프라인 자체의 상태. 이게 없으면 "메트릭이 안 보이는 게 앱이 죽어서인지 수집기가 죽어서인지"를
+  # 구분할 수 없다.
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: alloy
+    static_configs:
+      - targets: ["alloy:12345"]
+
+  - job_name: loki
+    static_configs:
+      - targets: ["loki:3100"]

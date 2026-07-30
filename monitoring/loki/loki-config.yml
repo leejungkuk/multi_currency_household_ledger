@@ -1,0 +1,46 @@
+# 단일 인스턴스(monolithic) 모드 — 개인 서비스 규모라 마이크로서비스 배치나 오브젝트 스토리지가 필요 없다.
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  # info 로 두면 Loki 자신의 요청 로그가 디스크를 잡아먹는다.
+  log_level: warn
+
+common:
+  instance_addr: 127.0.0.1
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  # 14일. 메트릭(15일)과 달리 로그는 용량이 크므로 짧게 잡는다.
+  retention_period: 336h
+  ingestion_rate_mb: 4
+  ingestion_burst_size_mb: 8
+  # 과거 로그를 뒤늦게 밀어 넣는 재기동 상황을 허용한다.
+  reject_old_samples: false
+
+compactor:
+  working_directory: /loki/compactor
+  # 이 두 줄이 없으면 retention_period 가 지나도 청크가 실제로 지워지지 않는다.
+  retention_enabled: true
+  delete_request_store: filesystem
+
+analytics:
+  reporting_enabled: false
