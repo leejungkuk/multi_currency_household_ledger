@@ -10,11 +10,21 @@
 
 name: woni-monitoring
 
+# docker 의 json-file 로그는 기본이 무제한이라 두면 디스크를 채운다. Loki 가 이미 같은 내용을 보존
+# (14일)하므로 json-file 은 전달 버퍼일 뿐이고, 상한을 걸어도 잃는 것이 없다.
+# 앵커는 파일 경계를 넘지 못하므로 배포 진입점(deploy 쪽 compose)에도 같은 정의가 한 벌 있다.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
 services:
   prometheus:
     image: prom/prometheus:v3.13.1
     container_name: woni-prometheus
     restart: unless-stopped
+    logging: *logging
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
@@ -40,6 +50,7 @@ services:
     image: prom/node-exporter:v1.12.1
     container_name: woni-node-exporter
     restart: unless-stopped
+    logging: *logging
     command:
       - --path.rootfs=/host
     # 호스트의 CPU·메모리·디스크를 보려면 네임스페이스와 루트 파일시스템이 필요하다(읽기 전용).
@@ -54,6 +65,7 @@ services:
     image: grafana/loki:3.6.13
     container_name: woni-loki
     restart: unless-stopped
+    logging: *logging
     command: -config.file=/etc/loki/loki-config.yml
     volumes:
       - ./loki/loki-config.yml:/etc/loki/loki-config.yml:ro
@@ -67,6 +79,7 @@ services:
     image: tecnativa/docker-socket-proxy:v0.4.2
     container_name: woni-docker-socket-proxy
     restart: unless-stopped
+    logging: *logging
     environment:
       # 로그 수집에 필요한 조회만 연다. NETWORKS 는 Alloy 의 discovery.docker 가 네트워크 라벨을
       # 계산하느라 부르고, 없으면 타깃 발견이 403 으로 실패한다. POST=0 이라 변경 계열은 전부 막힌다.
@@ -81,6 +94,7 @@ services:
     image: grafana/alloy:v1.18.0
     container_name: woni-alloy
     restart: unless-stopped
+    logging: *logging
     command:
       - run
       - --server.http.listen-addr=0.0.0.0:12345
@@ -96,6 +110,7 @@ services:
     image: grafana/grafana:13.1.1
     container_name: woni-grafana
     restart: unless-stopped
+    logging: *logging
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?monitoring/.env 에 GRAFANA_ADMIN_PASSWORD 를 설정하세요}
