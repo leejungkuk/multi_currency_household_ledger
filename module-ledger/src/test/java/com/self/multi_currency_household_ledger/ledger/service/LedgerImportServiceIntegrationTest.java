@@ -15,8 +15,10 @@ import com.self.multi_currency_household_ledger.ledger.TestJpaConfig;
 import com.self.multi_currency_household_ledger.ledger.TestLedgerApplication;
 import com.self.multi_currency_household_ledger.ledger.domain.LedgerEntry;
 import com.self.multi_currency_household_ledger.ledger.domain.LedgerEntryRepository;
+import com.self.multi_currency_household_ledger.ledger.dto.CreateLedgerEntryRequest;
 import com.self.multi_currency_household_ledger.ledger.dto.ImportLedgerEntriesRequest;
 import com.self.multi_currency_household_ledger.ledger.dto.ImportLedgerEntriesResponse;
+import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryRequest;
 import com.self.multi_currency_household_ledger.ledger.exception.LedgerErrorCode;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -285,6 +287,73 @@ class LedgerImportServiceIntegrationTest {
         assertThat(response.entries().getFirst().ledgerEntry().krwAmount())
                 .isEqualByComparingTo(new BigDecimal("12000.00"));
         then(exchangeRateService).should().getRateOnOrBeforeOrOldest(CurrencyCode.USD, oldTransactionDate);
+    }
+
+    @Test
+    @DisplayName("import한 거래를 PUT으로 수정해도 clientEntryId 매핑이 남아 재sync가 행을 늘리지 않는다")
+    void updating_an_imported_entry_keeps_the_client_entry_mapping_for_later_sync() {
+        UUID clientEntryId = UUID.fromString("10000000-0000-0000-0000-000000000061");
+        ImportLedgerEntriesResponse imported = ledgerService.importEntries(
+                new ImportLedgerEntriesRequest(
+                        List.of(item(clientEntryId, new BigDecimal("1000.00"), CurrencyCode.KRW, TODAY, "게스트 거래"))),
+                MEMBER_ID);
+        Long entryId = imported.entries().getFirst().ledgerEntry().id();
+
+        ledgerService.update(
+                entryId,
+                new CreateLedgerEntryRequest(new BigDecimal("1500.00"), CurrencyCode.KRW, 1L, 3L, TODAY, "앱에서 수정"),
+                MEMBER_ID);
+
+        // 매핑이 끊겼다면 이 sync 가 조회에 실패해 새 행을 만들고 거래가 중복된다.
+        ledgerService.sync(
+                new SyncLedgerEntryRequest(
+                        clientEntryId, new BigDecimal("1800.00"), CurrencyCode.KRW, 1L, 3L, TODAY, "앱에서 재push"),
+                MEMBER_ID);
+
+        assertThat(ledgerEntryRepository.count()).isEqualTo(1);
+        LedgerEntry entry = ledgerEntryRepository
+                .findByMemberIdAndClientEntryId(MEMBER_ID, clientEntryId)
+                .orElseThrow();
+        assertThat(entry.getId()).isEqualTo(entryId);
+        assertThat(entry.getOriginalAmount()).isEqualByComparingTo(new BigDecimal("1800.00"));
+        assertThat(entry.getMemo()).isEqualTo("앱에서 재push");
+
+        // 매핑이 살아 있어도 조회 술어에 member_id 가 있어 타 회원 sync 는 이 행에 닿지 못한다.
+        ledgerService.sync(
+                new SyncLedgerEntryRequest(
+                        clientEntryId, new BigDecimal("9999.00"), CurrencyCode.KRW, 1L, 3L, TODAY, "타 회원"),
+                OTHER_MEMBER_ID);
+
+        assertThat(ledgerEntryRepository.count()).isEqualTo(2);
+        assertThat(ledgerEntryRepository.findById(entryId).orElseThrow().getMemo())
+                .isEqualTo("앱에서 재push");
+    }
+
+    @Test
+    @DisplayName("PUT으로 수정된 import 행은 payload 해시가 비어 옛 payload 재import를 409로 드러낸다")
+    void reimporting_the_stale_payload_after_an_update_conflicts() {
+        UUID clientEntryId = UUID.fromString("10000000-0000-0000-0000-000000000062");
+        ImportLedgerEntriesRequest request = new ImportLedgerEntriesRequest(
+                List.of(item(clientEntryId, new BigDecimal("1000.00"), CurrencyCode.KRW, TODAY, "게스트 거래")));
+        Long entryId = ledgerService
+                .importEntries(request, MEMBER_ID)
+                .entries()
+                .getFirst()
+                .ledgerEntry()
+                .id();
+        ledgerService.update(
+                entryId,
+                new CreateLedgerEntryRequest(new BigDecimal("1500.00"), CurrencyCode.KRW, 1L, 3L, TODAY, "앱에서 수정"),
+                MEMBER_ID);
+
+        assertThatThrownBy(() -> ledgerService.importEntries(request, MEMBER_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getCode())
+                .isEqualTo(LedgerErrorCode.LEDGER_IMPORT_CONFLICT.getCode());
+
+        assertThat(ledgerEntryRepository.count()).isEqualTo(1);
+        assertThat(ledgerEntryRepository.findById(entryId).orElseThrow().getOriginalAmount())
+                .isEqualByComparingTo(new BigDecimal("1500.00"));
     }
 
     private ImportLedgerEntriesRequest.ImportLedgerEntryItem item(

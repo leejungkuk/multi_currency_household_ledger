@@ -16,6 +16,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Clock;
@@ -81,6 +82,11 @@ public class LedgerEntry extends BaseEntity {
 
     @Column(name = "client_payload_hash", length = 64)
     private String clientPayloadHash;
+
+    /** 재계산 배치와 회원 수정이 같은 행을 동시에 고칠 때 나중 커밋이 앞선 수정을 되돌리지 않게 한다. */
+    @Version
+    @Column(nullable = false)
+    private long version;
 
     private LedgerEntry(
             UUID memberId,
@@ -156,7 +162,11 @@ public class LedgerEntry extends BaseEntity {
         this.appliedRate = amountSnapshot.appliedRate();
         this.rateBaseDate = amountSnapshot.rateBaseDate();
         this.krwAmount = amountSnapshot.krwAmount();
-        clearClientImportIdentity();
+        // clientEntryId 는 유지한다 — 끊으면 같은 식별자의 재push 가 새 행을 만들어 거래가 중복된다.
+        // 해시는 지운다 — 서버 값이 클라이언트 payload 와 달라졌으므로 옛 payload 재전송은 충돌로 드러나야 한다.
+        // 단 이 보호는 해시를 선행조건으로 보는 import 경로에만 걸린다. sync 는 요청에 해시가 없어(last-writer-wins)
+        // 스테일 payload 재push 가 여기서 반영한 수정을 조용히 덮어쓴다.
+        this.clientPayloadHash = null;
     }
 
     public boolean recalculate(BigDecimal newRate, LocalDate newBaseDate) {
@@ -190,11 +200,6 @@ public class LedgerEntry extends BaseEntity {
 
     public void assignClientEntry(UUID clientEntryId) {
         this.clientEntryId = Objects.requireNonNull(clientEntryId, "clientEntryId must not be null");
-        this.clientPayloadHash = null;
-    }
-
-    private void clearClientImportIdentity() {
-        this.clientEntryId = null;
         this.clientPayloadHash = null;
     }
 

@@ -348,9 +348,6 @@ public class LedgerService {
                 request.memo(),
                 exchangeRate,
                 clock);
-        // replace() 는 import 식별자 오염 방지를 위해 clientEntryId 를 지운다. sync 는 그 식별자로
-        // 행을 찾았으므로 동일 clientEntryId 를 다시 부여해 매핑을 유지한다(payload hash 는 sync 에서 미사용).
-        entry.assignClientEntry(request.clientEntryId());
         return entry;
     }
 

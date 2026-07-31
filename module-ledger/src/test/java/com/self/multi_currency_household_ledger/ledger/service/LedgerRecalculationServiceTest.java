@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 
 import com.self.multi_currency_household_ledger.ledger.service.LedgerRecalculationChunkProcessor.ChunkResult;
 import java.time.Clock;
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 
 @ExtendWith(MockitoExtension.class)
 class LedgerRecalculationServiceTest {
@@ -80,6 +82,33 @@ class LedgerRecalculationServiceTest {
         assertThatThrownBy(() -> service(2, 100).recalculateRecentForeignEntries())
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("chunk failed");
+    }
+
+    @Test
+    @DisplayName("낙관적 락 충돌은 같은 커서로 한 번 재시도해 이어서 처리한다")
+    void retries_the_same_chunk_once_on_optimistic_lock_conflict() {
+        given(chunkProcessor.recalculateChunk(WINDOW_START, Long.MIN_VALUE, 2))
+                .willThrow(new ObjectOptimisticLockingFailureException("LedgerEntry", 1L))
+                .willReturn(chunk(2, TODAY, 10L));
+        given(chunkProcessor.recalculateChunk(TODAY, 10L, 2)).willReturn(lastChunk(1));
+
+        int recalculated = service(2, 100).recalculateRecentForeignEntries();
+
+        assertThat(recalculated).isEqualTo(3);
+        then(chunkProcessor).should(times(2)).recalculateChunk(WINDOW_START, Long.MIN_VALUE, 2);
+    }
+
+    @Test
+    @DisplayName("재시도도 충돌하면 예외 없이 그 주기를 종료하고 앞 청크 처리분을 보고한다")
+    void ends_the_run_without_failing_when_the_retry_also_conflicts() {
+        given(chunkProcessor.recalculateChunk(WINDOW_START, Long.MIN_VALUE, 2)).willReturn(chunk(2, TODAY, 10L));
+        given(chunkProcessor.recalculateChunk(TODAY, 10L, 2))
+                .willThrow(new ObjectOptimisticLockingFailureException("LedgerEntry", 1L));
+
+        int recalculated = service(2, 100).recalculateRecentForeignEntries();
+
+        assertThat(recalculated).isEqualTo(2);
+        then(chunkProcessor).should(times(2)).recalculateChunk(TODAY, 10L, 2);
     }
 
     @Test

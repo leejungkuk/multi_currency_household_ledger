@@ -21,6 +21,11 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -30,6 +35,7 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -62,7 +68,11 @@ class LedgerRecalculationIntegrationTest {
     @Autowired
     private LedgerRecalculationChunkProcessor chunkProcessor;
 
-    /** 트랜잭션 경계를 보는 테스트만 이 빈을 쓴다 — {@code new} 로 만들면 프록시가 없어 {@code @Transactional} 이 통째로 무력해진다. */
+    /**
+     * 트랜잭션 경계를 보는 테스트만 이 빈을 쓴다. 청크 트랜잭션은 {@code chunkProcessor} 빈에 걸린 프록시가 여는 것이라
+     * {@code service(...)} 가 {@code new} 로 만든 인스턴스도 동작이 같지만, 진입 메서드에 {@code @Transactional} 이
+     * 붙는 회귀는 프로덕션처럼 컨테이너가 만든 이 빈에서만 드러난다({@code new} 인스턴스는 프록시가 없어 그냥 통과한다).
+     */
     @Autowired
     private LedgerRecalculationService proxiedService;
 
@@ -194,6 +204,54 @@ class LedgerRecalculationIntegrationTest {
     }
 
     @Test
+    @DisplayName("배치가 읽어 둔 행을 회원이 먼저 수정하면 배치 커밋이 낙관적 락에 튕기고 회원 수정이 살아남는다")
+    void concurrent_member_edit_wins_over_the_batch_commit() throws Exception {
+        insertRate(CurrencyCode.USD, "1300.000000", TODAY);
+        long id = insertStaleEntry(TODAY, TODAY.minusDays(1));
+        CountDownLatch chunkLoadedEntry = new CountDownLatch(1);
+        CountDownLatch memberEditCommitted = new CountDownLatch(1);
+        // 청크는 대상 행을 읽은 뒤 환율 조회에서 멈춘다 — 그 사이 회원이 같은 행을 고치고 커밋한다.
+        given(exchangeRateService.getRateOnOrBefore(CurrencyCode.USD, TODAY)).willAnswer(invocation -> {
+            chunkLoadedEntry.countDown();
+            assertThat(memberEditCommitted.await(5, TimeUnit.SECONDS)).isTrue();
+            return ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.000000"), TODAY);
+        });
+
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            CompletableFuture<Throwable> chunkResult = CompletableFuture.supplyAsync(
+                    () -> {
+                        try {
+                            chunkProcessor.recalculateChunk(TODAY.minusDays(WINDOW_DAYS), Long.MIN_VALUE, 10);
+                            return null;
+                        } catch (Throwable throwable) {
+                            return throwable;
+                        }
+                    },
+                    executor);
+            assertThat(chunkLoadedEntry.await(5, TimeUnit.SECONDS)).isTrue();
+
+            editEntryLikeMember(id);
+            memberEditCommitted.countDown();
+
+            assertThat(chunkResult.get(5, TimeUnit.SECONDS)).isInstanceOf(OptimisticLockingFailureException.class);
+        } finally {
+            memberEditCommitted.countDown();
+            executor.shutdownNow();
+        }
+
+        // 청크가 통째로 롤백되어 회원 수정이 그대로 남고, 재계산분은 다음 주기가 이어받는다.
+        LedgerEntry entry = ledgerEntryRepository.findById(id).orElseThrow();
+        assertThat(entry.getMemo()).isEqualTo("회원 수정");
+        assertThat(entry.getOriginalAmount()).isEqualByComparingTo(new BigDecimal("250.00"));
+        assertThat(entry.getRateBaseDate()).isEqualTo(TODAY.minusDays(1));
+
+        // 낙관적 락을 흡수하고 주기를 정상 종료해도 되는 근거 — 대상 술어가 상태 기반이라 롤백된 행을 다음 주기가 회수한다.
+        assertThat(service(2, 100).recalculateRecentForeignEntries()).isEqualTo(1);
+        assertThat(rateBaseDateOf(id)).isEqualTo(TODAY);
+    }
+
+    @Test
     @DisplayName("keyset 커서는 반열림이라 커서 행 자체는 다음 페이지에 다시 나오지 않는다")
     void cursor_row_is_excluded_from_the_next_page() {
         insertRate(CurrencyCode.USD, "1300.000000", TODAY);
@@ -253,6 +311,17 @@ class LedgerRecalculationIntegrationTest {
                 rateBaseDate,
                 new BigDecimal(krwAmount),
                 transactionDate);
+    }
+
+    /** 회원 수정이 하는 것과 같은 UPDATE — JPA 가 붙이는 version 증가까지 그대로 흉내 낸다. */
+    private void editEntryLikeMember(long id) {
+        jdbcTemplate.update(
+                """
+                update ledger_entry
+                set memo = '회원 수정', original_amount = 250.00, version = version + 1
+                where id = ?
+                """,
+                id);
     }
 
     private void assertRecalculated(long id, String expectedRate, LocalDate expectedBaseDate) {

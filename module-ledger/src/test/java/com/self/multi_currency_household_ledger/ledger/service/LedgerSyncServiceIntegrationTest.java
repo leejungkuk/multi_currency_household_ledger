@@ -34,6 +34,9 @@ import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Propagation;
@@ -65,6 +68,9 @@ class LedgerSyncServiceIntegrationTest {
 
     @Autowired
     private PlatformTransactionManager transactionManager;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @Autowired
     private LedgerEntryRepository ledgerEntryRepository;
@@ -264,6 +270,56 @@ class LedgerSyncServiceIntegrationTest {
     }
 
     @Test
+    @DisplayName("sync 교체 중 낙관적 락 충돌은 unique 경합 재시도에 가려지지 않고 그대로 올라오며 행을 늘리지 않는다")
+    void sync_replace_conflict_surfaces_as_optimistic_lock_without_duplicating_the_row() throws Exception {
+        UUID clientEntryId = UUID.fromString("10000000-0000-0000-0000-000000000106");
+        Long entryId = ledgerService
+                .sync(request(clientEntryId, new BigDecimal("1000.00"), CurrencyCode.KRW, TODAY, "최초"), MEMBER_ID)
+                .ledgerEntry()
+                .id();
+        CountDownLatch replaceLoadedEntry = new CountDownLatch(1);
+        CountDownLatch concurrentEditCommitted = new CountDownLatch(1);
+        // 교체 대상 행을 읽은 뒤 환율 조회에서 멈춘 사이, 같은 행이 다른 트랜잭션에서 바뀌어 version 이 올라간다.
+        given(exchangeRateService.getRateOnOrBefore(CurrencyCode.USD, TODAY)).willAnswer(invocation -> {
+            replaceLoadedEntry.countDown();
+            assertThat(concurrentEditCommitted.await(5, TimeUnit.SECONDS)).isTrue();
+            return ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.000000"), TODAY);
+        });
+
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            CompletableFuture<Throwable> syncResult = CompletableFuture.supplyAsync(
+                    () -> {
+                        try {
+                            ledgerService.sync(
+                                    request(clientEntryId, new BigDecimal("10.00"), CurrencyCode.USD, TODAY, "교체"),
+                                    MEMBER_ID);
+                            return null;
+                        } catch (Throwable throwable) {
+                            return throwable;
+                        }
+                    },
+                    executor);
+            assertThat(replaceLoadedEntry.await(5, TimeUnit.SECONDS)).isTrue();
+
+            bumpVersion(entryId);
+            concurrentEditCommitted.countDown();
+
+            assertThat(syncResult.get(5, TimeUnit.SECONDS))
+                    .isInstanceOf(OptimisticLockingFailureException.class)
+                    .isNotInstanceOf(DataIntegrityViolationException.class);
+        } finally {
+            concurrentEditCommitted.countDown();
+            executor.shutdownNow();
+        }
+
+        assertThat(ledgerEntryRepository.count()).isEqualTo(1);
+        LedgerEntry entry = ledgerEntryRepository.findById(entryId).orElseThrow();
+        assertThat(entry.getMemo()).isEqualTo("동시 수정");
+        assertThat(entry.getClientEntryId()).isEqualTo(clientEntryId);
+    }
+
+    @Test
     @DisplayName("create()의 REQUIRES_NEW는 외부 트랜잭션 롤백과 독립적으로 커밋된다(별도 트랜잭션 보증)")
     void create_commits_in_separate_transaction_independent_of_outer_rollback() {
         UUID clientEntryId = UUID.fromString("10000000-0000-0000-0000-000000000105");
@@ -276,6 +332,17 @@ class LedgerSyncServiceIntegrationTest {
         });
         assertThat(ledgerEntryRepository.findByMemberIdAndClientEntryId(MEMBER_ID, clientEntryId))
                 .isPresent();
+    }
+
+    /** 다른 트랜잭션의 수정을 흉내 낸다 — JPA 수정이 하는 것과 같이 version 을 올린다. */
+    private void bumpVersion(Long entryId) {
+        jdbcTemplate.update(
+                """
+                update ledger_entry
+                set memo = '동시 수정', version = version + 1
+                where id = ?
+                """,
+                entryId);
     }
 
     private SyncLedgerEntryRequest request(

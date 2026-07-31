@@ -177,6 +177,8 @@ class LedgerServiceTest {
                 "경합 승자",
                 null,
                 FIXED_CLOCK);
+        // 경합 승자 행은 clientEntryId 로 찾아온 행이므로 실DB 행과 같이 식별자·해시를 갖고 있다.
+        racedEntry.assignClientEntry(clientEntryId, "a".repeat(64));
 
         given(ledgerEntryRepository.findByMemberIdAndClientEntryId(MEMBER_ID, clientEntryId))
                 .willReturn(Optional.empty())

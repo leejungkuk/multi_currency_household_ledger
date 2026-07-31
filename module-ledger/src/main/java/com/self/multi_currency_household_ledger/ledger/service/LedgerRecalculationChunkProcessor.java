@@ -17,9 +17,9 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 재계산 배치의 청크 하나를 독립 트랜잭션으로 처리한다.
  *
- * <p>배치 루프({@link LedgerRecalculationService})와 <b>다른 빈</b>이어야 한다 — 같은 빈 안에서 {@code @Transactional}
- * 메서드를 호출하면 프록시를 지나지 않아 전 청크가 한 트랜잭션으로 합쳐진다. 정상 경로는 결과가 같아 드러나지 않고
- * 실패 경로에서만 갈리므로, 부분 커밋을
+ * <p>배치 루프({@link LedgerRecalculationService})와 <b>다른 빈</b>이어야 한다 — 루프 쪽에는 {@code @Transactional} 이
+ * 없으므로, 이 메서드를 그 클래스로 옮겨 자기호출하면 프록시를 지나지 않아 트랜잭션이 합쳐지는 게 아니라 아예
+ * 사라진다. 그러면 조회한 엔티티가 detached 라 재계산이 조용히 유실된다. 청크별 독립 커밋은
  * {@code LedgerRecalculationIntegrationTest#earlier_chunk_stays_committed_when_a_later_chunk_fails} 가 고정한다.
  */
 @Service

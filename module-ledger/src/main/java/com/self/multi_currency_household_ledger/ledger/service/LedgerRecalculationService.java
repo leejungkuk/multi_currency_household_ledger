@@ -3,8 +3,10 @@ package com.self.multi_currency_household_ledger.ledger.service;
 import com.self.multi_currency_household_ledger.ledger.service.LedgerRecalculationChunkProcessor.ChunkResult;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 
 @Slf4j
@@ -50,8 +52,12 @@ public class LedgerRecalculationService {
         int recalculated = 0;
         try {
             while (recalculated < maxEntriesPerRun) {
-                ChunkResult chunk = chunkProcessor.recalculateChunk(
+                Optional<ChunkResult> result = recalculateChunkRetryingOnConflict(
                         cursorDate, cursorId, Math.min(chunkSize, maxEntriesPerRun - recalculated));
+                if (result.isEmpty()) {
+                    return recalculated;
+                }
+                ChunkResult chunk = result.get();
                 recalculated += chunk.recalculated();
                 if (!chunk.hasMore()) {
                     return recalculated;
@@ -84,6 +90,35 @@ public class LedgerRecalculationService {
                 cursorDate,
                 cursorId);
         return recalculated;
+    }
+
+    /**
+     * 낙관적 락 충돌은 회원이 같은 행을 동시에 고친 정상 경합이라 실패로 다루지 않는다. 충돌한 청크는 통째로
+     * 롤백되고 다음 커서도 잃으므로(커서 없이 진행하면 무한 루프) <b>같은 커서로 한 번만</b> 재시도한다.
+     * 재시도도 충돌하면 빈 값을 돌려 이번 주기를 정상 종료한다 — 대상 조건이 상태 기반 술어라 남은 몫은
+     * 다음 주기가 그대로 이어받는다. 낙관적 락 외의 실패는 잡지 않고 호출자로 전파한다.
+     */
+    private Optional<ChunkResult> recalculateChunkRetryingOnConflict(LocalDate cursorDate, Long cursorId, int limit) {
+        try {
+            return Optional.of(chunkProcessor.recalculateChunk(cursorDate, cursorId, limit));
+        } catch (OptimisticLockingFailureException firstConflict) {
+            log.info(
+                    "재계산 청크가 회원 수정과 경합해 같은 커서로 재시도합니다. cursorDate={}, cursorId={}, cause={}",
+                    cursorDate,
+                    cursorId,
+                    firstConflict.getMessage());
+        }
+
+        try {
+            return Optional.of(chunkProcessor.recalculateChunk(cursorDate, cursorId, limit));
+        } catch (OptimisticLockingFailureException retryConflict) {
+            log.warn(
+                    "재계산 청크가 회원 수정과 연속 경합해 이번 주기를 종료합니다(다음 주기가 이어받습니다). cursorDate={}, cursorId={}",
+                    cursorDate,
+                    cursorId,
+                    retryConflict);
+            return Optional.empty();
+        }
     }
 
     private void validateSettings(int correctionWindowDays, int chunkSize, int maxEntriesPerRun) {
