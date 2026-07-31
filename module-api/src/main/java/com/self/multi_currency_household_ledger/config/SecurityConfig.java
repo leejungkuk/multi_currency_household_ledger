@@ -55,10 +55,19 @@ public class SecurityConfig {
                         // 않는다. 그 전제는 ActuatorPortSeparationTest 가 설정 파일 수준에서 고정한다.
                         .requestMatchers(HttpMethod.GET, "/actuator/prometheus")
                         .permitAll()
+                        // security-ack: 공개 조회 경로. 와일드카드(`/exchange-rates/**`)를 쓰지 않고 열거하는 것이
+                        // 요점이다 — 와일드카드면 컨트롤러에 GET 을 하나 더 붙이는 것만으로 이 파일을 건드리지 않고
+                        // 무인증 공개돼 deny-by-default 가 무너진다. 열거해두면 신규 GET 은 기본적으로 401 이 되고,
+                        // 공개하려면 여기에 명시해야 해서 PermitAllSnapshotTest 가 그 판단을 강제한다.
+                        // `{currencyCode}` 도 한 세그먼트 와일드카드라 같은 구멍이 되므로 통화코드 형태로 제약한다
+                        // (소문자는 enum 변환이 어차피 거부하므로 동작하던 요청이 줄지 않는다).
                         .requestMatchers(
                                 HttpMethod.GET,
                                 "/api/v1/exchange-rates",
-                                "/api/v1/exchange-rates/**",
+                                "/api/v1/exchange-rates/range",
+                                "/api/v1/exchange-rates/snapshot",
+                                "/api/v1/exchange-rates/status",
+                                "/api/v1/exchange-rates/{currencyCode:[A-Z]{3}}",
                                 "/api/v1/categories",
                                 "/api/v1/assets")
                         .permitAll()
@@ -101,7 +110,14 @@ public class SecurityConfig {
     JwtDecoder jwtDecoder(
             @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}") String issuerUri,
             @Value("${woni.security.jwt.audience}") String audience) {
-        NimbusJwtDecoder decoder = JwtDecoders.fromIssuerLocation(issuerUri);
+        return configure(JwtDecoders.fromIssuerLocation(issuerUri), issuerUri, audience);
+    }
+
+    /**
+     * 토큰 검증 규칙을 디코더에 배선한다. {@code jwtDecoder()} 는 JWKS 를 받아오느라 네트워크를 타므로, 검증 규칙만
+     * 이 메서드로 떼어 테스트가 로컬 키쌍으로 조립한 디코더에 같은 설정을 적용할 수 있게 한다.
+     */
+    static NimbusJwtDecoder configure(NimbusJwtDecoder decoder, String issuerUri, String audience) {
         decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
                 new JwtTimestampValidator(Duration.ofSeconds(60)),
                 new JwtIssuerValidator(issuerUri),
@@ -124,7 +140,10 @@ public class SecurityConfig {
 
         @Override
         public OAuth2TokenValidatorResult validate(Jwt token) {
-            if (token.getAudience().contains(audience)) {
+            // aud 클레임이 없으면 getAudience() 가 null 이다 — null 검사 없이 contains 를 부르면
+            // 검증 실패가 아니라 NPE 가 필터 밖으로 나가 401 대신 500 이 된다.
+            List<String> tokenAudience = token.getAudience();
+            if (tokenAudience != null && tokenAudience.contains(audience)) {
                 return OAuth2TokenValidatorResult.success();
             }
             return OAuth2TokenValidatorResult.failure(ERROR);
