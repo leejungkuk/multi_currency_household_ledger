@@ -34,6 +34,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -95,12 +96,24 @@ public class LedgerService {
     @Transactional
     public ImportLedgerEntriesResponse importEntries(ImportLedgerEntriesRequest request, UUID memberId) {
         validateUniqueClientEntryIds(request.entries());
-        ledgerQuotaPolicy.assertCanCreate(memberId, countNewEntries(request.entries(), memberId));
+
+        // 기존 행을 한 번에 읽어 두고 그 결과로 쿼터까지 판정한다 — 항목마다 조회하면 요청 1건이 항목 수만큼
+        // 왕복하며 커넥션을 붙잡아, 동시 몇 건만으로 풀이 고갈되고 조회 요청까지 대기에 걸린다.
+        Map<UUID, LedgerEntry> existingEntries = findExistingEntries(request.entries(), memberId);
+        ledgerQuotaPolicy.assertCanCreate(memberId, request.entries().size() - existingEntries.size());
 
         List<ImportLedgerEntriesResponse.ImportedLedgerEntry> entries =
                 new ArrayList<>(request.entries().size());
-        for (ImportLedgerEntriesRequest.ImportLedgerEntryItem item : request.entries()) {
-            entries.add(importEntry(memberId, item));
+        // 항목마다 flush 하면 그때마다 영속성 컨텍스트 전체를 훑는다. 배치 끝에 한 번만 밀어낸다.
+        // id 가 IDENTITY 라 insert 자체는 save() 시점에 나가므로, unique 경합은 루프 안에서도 밖에서도
+        // 터질 수 있다 — 둘을 같은 try 로 묶어 어디서 나든 배치 전체를 롤백하고 409 로 매핑한다.
+        try {
+            for (ImportLedgerEntriesRequest.ImportLedgerEntryItem item : request.entries()) {
+                entries.add(importEntry(memberId, item, existingEntries.get(item.clientEntryId())));
+            }
+            ledgerEntryRepository.flush();
+        } catch (DataIntegrityViolationException e) {
+            throw importConflict();
         }
         return new ImportLedgerEntriesResponse(entries);
     }
@@ -253,12 +266,11 @@ public class LedgerService {
     }
 
     private ImportLedgerEntriesResponse.ImportedLedgerEntry importEntry(
-            UUID memberId, ImportLedgerEntriesRequest.ImportLedgerEntryItem item) {
+            UUID memberId, ImportLedgerEntriesRequest.ImportLedgerEntryItem item, LedgerEntry existing) {
         String payloadHash = calculateClientPayloadHash(item);
-        return ledgerEntryRepository
-                .findByMemberIdAndClientEntryId(memberId, item.clientEntryId())
-                .map(existing -> existingImportResponse(item.clientEntryId(), existing, payloadHash))
-                .orElseGet(() -> createImportedEntry(memberId, item, payloadHash));
+        return existing != null
+                ? existingImportResponse(item.clientEntryId(), existing, payloadHash)
+                : createImportedEntry(memberId, item, payloadHash);
     }
 
     private ImportLedgerEntriesResponse.ImportedLedgerEntry createImportedEntry(
@@ -288,13 +300,9 @@ public class LedgerService {
                 clock);
         entry.assignClientEntry(item.clientEntryId(), payloadHash);
 
-        try {
-            LedgerEntry saved = ledgerEntryRepository.saveAndFlush(entry);
-            return new ImportLedgerEntriesResponse.ImportedLedgerEntry(
-                    item.clientEntryId(), LedgerEntryResponse.from(saved));
-        } catch (DataIntegrityViolationException e) {
-            throw importConflict();
-        }
+        LedgerEntry saved = ledgerEntryRepository.save(entry);
+        return new ImportLedgerEntriesResponse.ImportedLedgerEntry(
+                item.clientEntryId(), LedgerEntryResponse.from(saved));
     }
 
     private ImportLedgerEntriesResponse.ImportedLedgerEntry existingImportResponse(
@@ -346,15 +354,14 @@ public class LedgerService {
         return entry;
     }
 
-    /** 갱신될 항목을 빼고 실제로 새로 생길 행 수를 센다 — 요청 건수를 그대로 쓰면 멱등 재import 가 한도 근처에서 거부된다. */
-    private int countNewEntries(List<ImportLedgerEntriesRequest.ImportLedgerEntryItem> entries, UUID memberId) {
+    /** 요청에 들어온 clientEntryId 중 이미 존재하는 행을 한 번의 쿼리로 모아 온다. 신규 생성분 = 요청 수 − 이 결과 수. */
+    private Map<UUID, LedgerEntry> findExistingEntries(
+            List<ImportLedgerEntriesRequest.ImportLedgerEntryItem> entries, UUID memberId) {
         Set<UUID> requestedIds = entries.stream()
                 .map(ImportLedgerEntriesRequest.ImportLedgerEntryItem::clientEntryId)
                 .collect(Collectors.toSet());
-        return requestedIds.size()
-                - ledgerEntryRepository
-                        .findExistingClientEntryIds(memberId, requestedIds)
-                        .size();
+        return ledgerEntryRepository.findByMemberIdAndClientEntryIdIn(memberId, requestedIds).stream()
+                .collect(Collectors.toMap(LedgerEntry::getClientEntryId, entry -> entry));
     }
 
     private void validateUniqueClientEntryIds(List<ImportLedgerEntriesRequest.ImportLedgerEntryItem> entries) {

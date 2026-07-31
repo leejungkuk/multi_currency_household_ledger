@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
 import com.self.multi_currency_household_ledger.common.exception.BusinessException;
@@ -35,6 +36,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -140,11 +142,12 @@ class LedgerServiceTest {
                 new ImportLedgerEntriesRequest(List.of(new ImportLedgerEntriesRequest.ImportLedgerEntryItem(
                         clientEntryId, new BigDecimal("100.00"), CurrencyCode.KRW, 1L, 1L, TODAY, "커피")));
 
-        given(ledgerEntryRepository.findByMemberIdAndClientEntryId(MEMBER_ID, clientEntryId))
-                .willReturn(Optional.empty());
+        given(ledgerEntryRepository.findByMemberIdAndClientEntryIdIn(MEMBER_ID, Set.of(clientEntryId)))
+                .willReturn(List.of());
+        given(ledgerEntryRepository.countByMemberId(MEMBER_ID)).willReturn(0L);
         given(categoryRepository.findById(1L)).willReturn(Optional.of(category));
         given(assetRepository.findById(1L)).willReturn(Optional.of(asset));
-        given(ledgerEntryRepository.saveAndFlush(any(LedgerEntry.class)))
+        given(ledgerEntryRepository.save(any(LedgerEntry.class)))
                 .willThrow(new DataIntegrityViolationException("duplicate client entry"));
 
         assertThatThrownBy(() -> ledgerService.importEntries(request, MEMBER_ID))
@@ -152,8 +155,10 @@ class LedgerServiceTest {
                 .extracting(e -> ((BusinessException) e).getCode())
                 .isEqualTo(LedgerErrorCode.LEDGER_IMPORT_CONFLICT.getCode());
 
-        then(ledgerEntryRepository).should().findByMemberIdAndClientEntryId(MEMBER_ID, clientEntryId);
-        then(ledgerEntryRepository).should().saveAndFlush(any(LedgerEntry.class));
+        then(ledgerEntryRepository).should().findByMemberIdAndClientEntryIdIn(MEMBER_ID, Set.of(clientEntryId));
+        then(ledgerEntryRepository).should().save(any(LedgerEntry.class));
+        // 항목별 조회로 되돌아가면 요청 1건이 항목 수만큼 왕복해 커넥션을 붙잡는다.
+        then(ledgerEntryRepository).should(never()).findByMemberIdAndClientEntryId(any(), any());
     }
 
     @Test

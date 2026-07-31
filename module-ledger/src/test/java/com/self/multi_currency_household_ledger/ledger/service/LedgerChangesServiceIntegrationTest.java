@@ -43,6 +43,7 @@ import org.springframework.transaction.annotation.Transactional;
     LedgerSyncInsertService.class,
     LedgerQuotaPolicy.class,
     LedgerRecalculationService.class,
+    LedgerRecalculationChunkProcessor.class,
     LedgerChangesServiceIntegrationTest.ClockConfig.class
 })
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -69,6 +70,7 @@ class LedgerChangesServiceIntegrationTest {
     @BeforeEach
     void setUp() {
         ledgerEntryRepository.deleteAll();
+        jdbcTemplate.update("delete from exchange_rate");
     }
 
     @Test
@@ -84,6 +86,9 @@ class LedgerChangesServiceIntegrationTest {
         SyncLedgerEntryResponse synced = ledgerService.sync(
                 request(clientEntryId, new BigDecimal("100.00"), CurrencyCode.USD, TODAY, "확정 전 외화"), MEMBER_ID);
         setUpdatedAt(synced.ledgerEntry().id(), previousCursorUpdatedAt);
+        // 재계산 대상 선정은 실제 exchange_rate 행을 보는 SQL 술어다 — 스텁과 같은 환율을 적재해 둔다.
+        insertRate(staleRate);
+        insertRate(confirmedRate);
 
         int recalculated = ledgerRecalculationService.recalculateRecentForeignEntries();
         LedgerChangesResponse response = ledgerService.getChanges(
@@ -135,6 +140,14 @@ class LedgerChangesServiceIntegrationTest {
 
     private void setUpdatedAt(Long id, LocalDateTime updatedAt) {
         jdbcTemplate.update("update ledger_entry set updated_at = ? where id = ?", updatedAt, id);
+    }
+
+    private void insertRate(ExchangeRate rate) {
+        jdbcTemplate.update(
+                "insert into exchange_rate (currency_code, tts, base_date) values (?, ?, ?)",
+                rate.getCurrencyCode().name(),
+                rate.getTts(),
+                rate.getBaseDate());
     }
 
     @TestConfiguration
