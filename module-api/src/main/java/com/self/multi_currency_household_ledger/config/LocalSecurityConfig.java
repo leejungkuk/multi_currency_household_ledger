@@ -18,12 +18,15 @@ import org.springframework.security.web.util.matcher.OrRequestMatcher;
  *   <li>dev 시드 도구 {@code POST /api/v1/exchange-rates/collect} (시스템 공용 환율, member_id 불요)
  * </ul>
  *
- * <p>{@code @Profile("local")} 이라 배포 프로파일에는 이 빈이 없고, collect 컨트롤러도 local 전용이다. 면제 목록 밖
+ * <p>{@code @Profile("local & !prod")} 이라 배포 프로파일에는 이 빈이 없다. {@code local} 단독 조건이면
+ * {@code SPRING_PROFILES_ACTIVE=prod,local} 같은 설정 실수 하나로 이 체인이 운영에서 살아나 Swagger 와 무인증
+ * {@code POST /collect} 가 열린다 — 두 프로파일은 배타적이지 않기 때문이다. collect 컨트롤러도 <b>같은</b> 표현식을
+ * 써야 한다: 체인만 빠지면 무인증은 막히지만 인증된 아무 회원이나 수집을 트리거할 수 있다. 면제 목록 밖
  * (다른 경로·{@code POST} 외 collect 메서드)은 {@link SecurityConfig} 의 deny-by-default 체인이 그대로 인증을
  * 강제한다({@code @Order(0)} 으로 이 목록만 먼저 가로챈다).
  */
 @Configuration
-@Profile("local")
+@Profile("local & !prod")
 public class LocalSecurityConfig {
 
     static final String COLLECT_PATH = "/api/v1/exchange-rates/collect";

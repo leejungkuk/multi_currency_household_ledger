@@ -17,7 +17,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-@Profile("local")
+// LocalSecurityConfig 와 활성 조건이 같아야 한다 — 체인만 prod 에서 빼고 이 컨트롤러를 두면
+// 인증된 아무 회원이나 수집을 트리거할 수 있다(ArchitectureTest 가 각 빈의 prod 배제를 강제한다).
+@Profile("local & !prod")
 @RestController
 @RequestMapping("/api/v1/exchange-rates")
 @RequiredArgsConstructor
