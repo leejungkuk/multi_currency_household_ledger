@@ -292,15 +292,17 @@ class LedgerEntryTest {
     }
 
     @Test
-    @DisplayName("가계부 내역 교체 시 import 클라이언트 식별자를 클리어한다")
-    void replace_clears_client_import_identity() {
+    @DisplayName("가계부 내역 교체는 clientEntryId 매핑을 유지하고 payload 해시만 지운다")
+    void replace_keeps_client_entry_id_and_clears_payload_hash() {
         UUID clientEntryId = UUID.fromString("10000000-0000-0000-0000-000000000002");
         LedgerEntry entry = createKrwEntry("import 거래");
         entry.assignClientEntry(clientEntryId, "a".repeat(64));
 
         entry.replace(category, asset, new BigDecimal("6000.00"), CurrencyCode.KRW, TODAY, "사용자 수정", null, FIXED_CLOCK);
 
-        assertThat(entry.getClientEntryId()).isNull();
+        // 매핑을 끊으면 같은 clientEntryId 의 재push 가 새 행을 만들어 거래가 중복된다.
+        assertThat(entry.getClientEntryId()).isEqualTo(clientEntryId);
+        // 서버 값이 클라이언트 payload 와 달라졌으므로, 옛 payload 재전송이 "이미 반영됨"으로 오판되면 안 된다.
         assertThat(entry.getClientPayloadHash()).isNull();
     }
 

@@ -104,47 +104,67 @@ class LedgerEntryRepositoryTest {
     }
 
     @Test
-    @DisplayName("보정창 시작일 이후 외화 거래만 조회한다")
-    void find_foreign_entries_on_or_after_correction_window() {
+    @DisplayName("재계산 대상은 보정창 커서 이후의, 적용 가능한 최신 tts보다 오래된 환율을 쓰는 외화 거래뿐이다")
+    void find_stale_foreign_entries_after_cursor() {
         LocalDate cutoff = TODAY.minusDays(7);
-        ExchangeRate usdRate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.000000"), cutoff);
-        LedgerEntry staleForeign = LedgerEntry.of(
-                MEMBER_ID,
-                category,
-                asset,
-                new BigDecimal("100.00"),
-                CurrencyCode.USD,
-                cutoff,
-                "보정창 내 외화",
-                usdRate,
-                FIXED_CLOCK);
-        LedgerEntry krwEntry = LedgerEntry.of(
-                MEMBER_ID,
-                category,
-                asset,
-                new BigDecimal("5000.00"),
-                CurrencyCode.KRW,
-                TODAY,
-                "원화",
-                null,
-                FIXED_CLOCK);
-        LedgerEntry oldForeign = LedgerEntry.of(
-                MEMBER_ID,
-                category,
-                asset,
-                new BigDecimal("100.00"),
-                CurrencyCode.USD,
-                cutoff.minusDays(1),
-                "보정창 밖 외화",
-                usdRate,
-                FIXED_CLOCK);
+        ExchangeRate olderRate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1200.000000"), cutoff.minusDays(2));
+        ExchangeRate applicableRate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.000000"), cutoff);
+        entityManager.persist(olderRate);
+        entityManager.persist(applicableRate);
 
-        ledgerEntryRepository.saveAll(List.of(staleForeign, krwEntry, oldForeign));
+        ledgerEntryRepository.saveAll(List.of(
+                foreignEntry(MEMBER_ID, category, CurrencyCode.USD, "100.00", cutoff, "보정창 내 오래된 외화", olderRate),
+                foreignEntry(MEMBER_ID, category, CurrencyCode.USD, "100.00", cutoff, "보정창 내 최신 외화", applicableRate),
+                foreignEntry(
+                        MEMBER_ID, category, CurrencyCode.USD, "100.00", cutoff.minusDays(1), "보정창 밖 외화", olderRate),
+                krwEntry(MEMBER_ID, category, TODAY, "5000.00", "원화")));
         ledgerEntryRepository.flush();
 
-        List<LedgerEntry> entries = ledgerEntryRepository.findForeignEntriesOnOrAfter(cutoff);
+        List<LedgerEntry> entries =
+                ledgerEntryRepository.findStaleForeignEntriesAfterCursor(cutoff, 0L, PageRequest.of(0, 10));
 
-        assertThat(entries).extracting(LedgerEntry::getMemo).containsExactly("보정창 내 외화");
+        assertThat(entries).extracting(LedgerEntry::getMemo).containsExactly("보정창 내 오래된 외화");
+    }
+
+    @Test
+    @DisplayName("rate_base_date가 비어 있는 외화 거래도 재계산 대상에 들어온다")
+    void find_stale_foreign_entries_includes_null_rate_base_date() {
+        LocalDate cutoff = TODAY.minusDays(7);
+        ExchangeRate applicableRate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.000000"), cutoff);
+        entityManager.persist(applicableRate);
+        LedgerEntry entry = ledgerEntryRepository.save(
+                foreignEntry(MEMBER_ID, category, CurrencyCode.USD, "100.00", cutoff, "기준일 없는 외화", applicableRate));
+        ledgerEntryRepository.flush();
+        clearRateBaseDate(entry);
+        entityManager.clear();
+
+        List<LedgerEntry> entries =
+                ledgerEntryRepository.findStaleForeignEntriesAfterCursor(cutoff, 0L, PageRequest.of(0, 10));
+
+        assertThat(entries).extracting(LedgerEntry::getMemo).containsExactly("기준일 없는 외화");
+    }
+
+    // 거래일 이전 환율이 아예 없는 행(가장 오래된 환율로 clamp 해 import 한 과거 거래)은 갱신할 최신 환율이 없다.
+    // 대상에 들어오면 청크 처리 중 getRateOnOrBefore 가 던져 배치 전체가 죽으므로 rate_base_date 유무와 무관하게 빠져야 한다.
+    @Test
+    @DisplayName("거래일 이전 환율이 없는 외화 거래는 rate_base_date 유무와 무관하게 재계산 대상에서 빠진다")
+    void find_stale_foreign_entries_excludes_entries_without_applicable_rate() {
+        LocalDate cutoff = TODAY.minusDays(7);
+        ExchangeRate laterRate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.000000"), cutoff.plusDays(1));
+        entityManager.persist(laterRate);
+        LedgerEntry clamped =
+                foreignEntry(MEMBER_ID, category, CurrencyCode.USD, "100.00", cutoff, "clamp 기준일 외화", laterRate);
+        LedgerEntry withoutBaseDate =
+                foreignEntry(MEMBER_ID, category, CurrencyCode.USD, "100.00", cutoff, "기준일 없는 외화", laterRate);
+        ledgerEntryRepository.saveAll(List.of(clamped, withoutBaseDate));
+        ledgerEntryRepository.flush();
+        clearRateBaseDate(withoutBaseDate);
+        entityManager.clear();
+
+        List<LedgerEntry> entries =
+                ledgerEntryRepository.findStaleForeignEntriesAfterCursor(cutoff, 0L, PageRequest.of(0, 10));
+
+        assertThat(entries).isEmpty();
     }
 
     @Test
@@ -416,6 +436,10 @@ class LedgerEntryRepositoryTest {
                 memo,
                 exchangeRate,
                 FIXED_CLOCK);
+    }
+
+    private void clearRateBaseDate(LedgerEntry entry) {
+        jdbcTemplate.update("update ledger_entry set rate_base_date = null where id = ?", entry.getId());
     }
 
     private void setUpdatedAt(LedgerEntry entry, LocalDateTime updatedAt) {

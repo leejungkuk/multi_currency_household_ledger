@@ -10,6 +10,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.method.annotation.ExceptionHandlerMethodResolver;
 
@@ -102,5 +103,29 @@ class GlobalExceptionHandlerTest {
 
         assertThat(resolved).isNotNull();
         assertThat(resolved.getName()).isEqualTo("handleMissingParameterException");
+    }
+
+    @Test
+    @DisplayName("낙관적 락 충돌은 500이 아니라 409 + CONCURRENT_MODIFICATION 봉투로 변환된다")
+    void handleOptimisticLockingFailure_returns_409_envelope() {
+        ResponseEntity<ErrorResponse> response =
+                handler.handleOptimisticLockingFailure(new ObjectOptimisticLockingFailureException("LedgerEntry", 1L));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        ErrorResponse body = response.getBody();
+        assertThat(body).isNotNull();
+        assertThat(body.code()).isEqualTo("CONCURRENT_MODIFICATION");
+        assertThat(body.message()).isNotBlank();
+    }
+
+    @Test
+    @DisplayName("낙관적 락 충돌은 캐치올(500)이 아니라 전용 핸들러로 디스패치된다")
+    void optimisticLockingFailure_resolves_specific_handler() {
+        var resolver = new ExceptionHandlerMethodResolver(GlobalExceptionHandler.class);
+
+        Method resolved = resolver.resolveMethod(new ObjectOptimisticLockingFailureException("LedgerEntry", 1L));
+
+        assertThat(resolved).isNotNull();
+        assertThat(resolved.getName()).isEqualTo("handleOptimisticLockingFailure");
     }
 }

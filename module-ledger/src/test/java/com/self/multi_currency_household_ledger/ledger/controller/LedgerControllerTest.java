@@ -43,6 +43,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Import;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.MediaType;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.context.request.NativeWebRequest;
@@ -305,6 +306,44 @@ class LedgerControllerTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.success").value(false))
                 .andExpect(jsonPath("$.code").value("LEDGER_ENTRY_NOT_FOUND"));
+    }
+
+    @Test
+    @DisplayName("수정 중 낙관적 락 충돌은 500이 아니라 409 CONCURRENT_MODIFICATION을 반환한다")
+    void update_ledger_entry_optimistic_lock_conflict_returns_409() throws Exception {
+        CreateLedgerEntryRequest request = new CreateLedgerEntryRequest(
+                BigDecimal.valueOf(5000), CurrencyCode.KRW, 1L, 1L, LocalDate.of(2026, 4, 6), "커피");
+        given(ledgerService.update(eq(1L), any(CreateLedgerEntryRequest.class), eq(MEMBER_ID)))
+                .willThrow(new ObjectOptimisticLockingFailureException("LedgerEntry", 1L));
+
+        mockMvc.perform(put("/api/v1/ledgers/{id}", 1L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("CONCURRENT_MODIFICATION"));
+    }
+
+    @Test
+    @DisplayName("import 경로의 낙관적 락 충돌은 unique 경합(LEDGER_IMPORT_CONFLICT)과 다른 코드·메시지로 나간다")
+    void import_optimistic_lock_conflict_is_distinct_from_import_conflict() throws Exception {
+        ImportLedgerEntriesRequest request =
+                new ImportLedgerEntriesRequest(List.of(new ImportLedgerEntriesRequest.ImportLedgerEntryItem(
+                        UUID.fromString("10000000-0000-0000-0000-000000000001"),
+                        new BigDecimal("100.00"),
+                        CurrencyCode.KRW,
+                        1L,
+                        3L,
+                        LocalDate.of(2026, 4, 6),
+                        "커피")));
+        given(ledgerService.importEntries(any(ImportLedgerEntriesRequest.class), eq(MEMBER_ID)))
+                .willThrow(new ObjectOptimisticLockingFailureException("LedgerEntry", 1L));
+
+        mockMvc.perform(post("/api/v1/ledgers/import")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CONCURRENT_MODIFICATION"));
     }
 
     @Test

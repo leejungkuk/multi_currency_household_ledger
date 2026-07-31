@@ -1,163 +1,132 @@
 package com.self.multi_currency_household_ledger.ledger.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.times;
 
-import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
-import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRate;
-import com.self.multi_currency_household_ledger.exchange.service.ExchangeRateService;
-import com.self.multi_currency_household_ledger.ledger.domain.Asset;
-import com.self.multi_currency_household_ledger.ledger.domain.Category;
-import com.self.multi_currency_household_ledger.ledger.domain.LedgerEntry;
-import com.self.multi_currency_household_ledger.ledger.domain.LedgerEntryRepository;
-import com.self.multi_currency_household_ledger.ledger.domain.TransactionType;
-import java.math.BigDecimal;
+import com.self.multi_currency_household_ledger.ledger.service.LedgerRecalculationChunkProcessor.ChunkResult;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.util.List;
-import java.util.UUID;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 
 @ExtendWith(MockitoExtension.class)
 class LedgerRecalculationServiceTest {
 
-    private static final UUID MEMBER_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
     private static final LocalDate TODAY = LocalDate.of(2026, 4, 6);
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
     private static final Clock FIXED_CLOCK = Clock.fixed(Instant.parse("2026-04-05T15:00:00Z"), KST);
     private static final int WINDOW_DAYS = 7;
+    private static final LocalDate WINDOW_START = TODAY.minusDays(WINDOW_DAYS);
 
     @Mock
-    private LedgerEntryRepository ledgerEntryRepository;
-
-    @Mock
-    private ExchangeRateService exchangeRateService;
-
-    private LedgerRecalculationService service;
-    private Category category;
-    private Asset asset;
-
-    @BeforeEach
-    void setUp() {
-        service = new LedgerRecalculationService(ledgerEntryRepository, exchangeRateService, FIXED_CLOCK, WINDOW_DAYS);
-        category = new Category(TransactionType.EXPENSE, "FOOD_DINING", "식비", "Food & Dining", "🍽️", 1);
-        asset = new Asset("CASH", "현금", "Cash", 3);
-    }
+    private LedgerRecalculationChunkProcessor chunkProcessor;
 
     @Test
-    @DisplayName("보정창 내 오래된 외화 거래를 적용 가능한 최신 tts로 재계산한다")
-    void recalculates_stale_foreign_entries_inside_window() {
-        LocalDate transactionDate = TODAY;
-        LedgerEntry entry = foreignEntry(transactionDate, TODAY.minusDays(1), "1300.000000");
-        ExchangeRate applicableRate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1320.000000"), TODAY);
-        given(ledgerEntryRepository.findForeignEntriesOnOrAfter(TODAY.minusDays(WINDOW_DAYS)))
-                .willReturn(List.of(entry));
-        given(exchangeRateService.getRateOnOrBefore(CurrencyCode.USD, transactionDate))
-                .willReturn(applicableRate);
+    @DisplayName("첫 청크는 보정창 시작일 커서에서 연다")
+    void first_chunk_opens_at_correction_window_start() {
+        given(chunkProcessor.recalculateChunk(WINDOW_START, Long.MIN_VALUE, 2)).willReturn(lastChunk(1));
 
-        int recalculated = service.recalculateRecentForeignEntries();
+        int recalculated = service(2, 100).recalculateRecentForeignEntries();
 
         assertThat(recalculated).isEqualTo(1);
-        assertThat(entry.getAppliedRate()).isEqualByComparingTo(new BigDecimal("1320.000000"));
-        assertThat(entry.getRateBaseDate()).isEqualTo(TODAY);
-        assertThat(entry.getKrwAmount()).isEqualByComparingTo(new BigDecimal("132000.00"));
+        then(chunkProcessor).should().recalculateChunk(WINDOW_START, Long.MIN_VALUE, 2);
     }
 
     @Test
-    @DisplayName("한 번 재계산된 거래는 두 번째 실행에서 no-op이 되어 멱등·수렴한다")
-    void second_run_is_noop_after_rate_base_date_converges() {
-        LedgerEntry entry = foreignEntry(TODAY, TODAY.minusDays(1), "1300.000000");
-        ExchangeRate applicableRate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1320.000000"), TODAY);
-        given(ledgerEntryRepository.findForeignEntriesOnOrAfter(TODAY.minusDays(WINDOW_DAYS)))
-                .willReturn(List.of(entry));
-        given(exchangeRateService.getRateOnOrBefore(CurrencyCode.USD, TODAY)).willReturn(applicableRate);
+    @DisplayName("청크가 가득 차면 마지막 커서에서 다음 청크를 이어 처리한다")
+    void continues_from_next_cursor_until_last_chunk() {
+        given(chunkProcessor.recalculateChunk(WINDOW_START, Long.MIN_VALUE, 2))
+                .willReturn(chunk(2, TODAY.minusDays(1), 10L));
+        given(chunkProcessor.recalculateChunk(TODAY.minusDays(1), 10L, 2)).willReturn(chunk(2, TODAY, 20L));
+        given(chunkProcessor.recalculateChunk(TODAY, 20L, 2)).willReturn(lastChunk(1));
 
-        int first = service.recalculateRecentForeignEntries();
-        int second = service.recalculateRecentForeignEntries();
+        int recalculated = service(2, 100).recalculateRecentForeignEntries();
 
-        assertThat(first).isEqualTo(1);
-        assertThat(second).isZero();
-        assertThat(entry.getRateBaseDate()).isEqualTo(TODAY);
-        assertThat(entry.getKrwAmount()).isEqualByComparingTo(new BigDecimal("132000.00"));
+        assertThat(recalculated).isEqualTo(5);
     }
 
     @Test
-    @DisplayName("공휴일·주말 fallback 환율이 적용 가능한 최신 기준일이면 재계산하지 않는다")
-    void holiday_fallback_entry_is_noop_when_previous_business_rate_is_applicable_latest() {
-        LocalDate saturday = LocalDate.of(2026, 4, 4);
-        LocalDate friday = LocalDate.of(2026, 4, 3);
-        LedgerEntry entry = foreignEntry(saturday, friday, "1300.000000");
-        ExchangeRate applicableRate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.000000"), friday);
-        given(ledgerEntryRepository.findForeignEntriesOnOrAfter(TODAY.minusDays(WINDOW_DAYS)))
-                .willReturn(List.of(entry));
-        given(exchangeRateService.getRateOnOrBefore(CurrencyCode.USD, saturday)).willReturn(applicableRate);
+    @DisplayName("상한에 도달하면 그 주기를 정상 종료하고, 다음 주기가 보정창 처음부터 나머지를 이어받는다")
+    void stops_at_max_entries_per_run_and_next_run_picks_up_the_rest() {
+        LedgerRecalculationService service = service(2, 3);
+        given(chunkProcessor.recalculateChunk(WINDOW_START, Long.MIN_VALUE, 2)).willReturn(chunk(2, TODAY, 10L));
+        given(chunkProcessor.recalculateChunk(TODAY, 10L, 1)).willReturn(chunk(1, TODAY, 11L));
 
-        int recalculated = service.recalculateRecentForeignEntries();
+        int firstRun = service.recalculateRecentForeignEntries();
 
-        assertThat(recalculated).isZero();
-        assertThat(entry.getRateBaseDate()).isEqualTo(friday);
-        assertThat(entry.getKrwAmount()).isEqualByComparingTo(new BigDecimal("130000.00"));
+        assertThat(firstRun).isEqualTo(3);
+        then(chunkProcessor).should(never()).recalculateChunk(TODAY, 11L, 2);
+
+        // 갱신된 행은 대상 술어에서 빠지므로, 다음 주기도 같은 커서(보정창 시작)에서 남은 몫을 잡는다.
+        given(chunkProcessor.recalculateChunk(WINDOW_START, Long.MIN_VALUE, 2)).willReturn(lastChunk(2));
+
+        assertThat(service.recalculateRecentForeignEntries()).isEqualTo(2);
     }
 
     @Test
-    @DisplayName("보정창 밖 거래는 조회 대상이 아니므로 불변이다")
-    void entries_before_window_are_not_recalculated() {
-        LocalDate cutoff = TODAY.minusDays(WINDOW_DAYS);
-        given(ledgerEntryRepository.findForeignEntriesOnOrAfter(cutoff)).willReturn(List.of());
+    @DisplayName("청크 처리가 실패하면 예외를 삼키지 않고 그대로 전파한다")
+    void propagates_chunk_failure() {
+        given(chunkProcessor.recalculateChunk(WINDOW_START, Long.MIN_VALUE, 2)).willReturn(chunk(2, TODAY, 10L));
+        given(chunkProcessor.recalculateChunk(TODAY, 10L, 2)).willThrow(new IllegalStateException("chunk failed"));
 
-        int recalculated = service.recalculateRecentForeignEntries();
-
-        assertThat(recalculated).isZero();
-        verify(exchangeRateService, never())
-                .getRateOnOrBefore(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+        assertThatThrownBy(() -> service(2, 100).recalculateRecentForeignEntries())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("chunk failed");
     }
 
     @Test
-    @DisplayName("KRW 거래가 잘못 전달되어도 도메인 재계산은 불변이다")
-    void krw_entries_remain_unchanged_even_if_returned_by_repository() {
-        LedgerEntry entry = LedgerEntry.of(
-                MEMBER_ID,
-                category,
-                asset,
-                new BigDecimal("5000.00"),
-                CurrencyCode.KRW,
-                TODAY,
-                "원화",
-                null,
-                FIXED_CLOCK);
-        given(ledgerEntryRepository.findForeignEntriesOnOrAfter(TODAY.minusDays(WINDOW_DAYS)))
-                .willReturn(List.of(entry));
+    @DisplayName("낙관적 락 충돌은 같은 커서로 한 번 재시도해 이어서 처리한다")
+    void retries_the_same_chunk_once_on_optimistic_lock_conflict() {
+        given(chunkProcessor.recalculateChunk(WINDOW_START, Long.MIN_VALUE, 2))
+                .willThrow(new ObjectOptimisticLockingFailureException("LedgerEntry", 1L))
+                .willReturn(chunk(2, TODAY, 10L));
+        given(chunkProcessor.recalculateChunk(TODAY, 10L, 2)).willReturn(lastChunk(1));
 
-        int recalculated = service.recalculateRecentForeignEntries();
+        int recalculated = service(2, 100).recalculateRecentForeignEntries();
 
-        assertThat(recalculated).isZero();
-        assertThat(entry.getAppliedRate()).isEqualByComparingTo(BigDecimal.ONE);
-        assertThat(entry.getRateBaseDate()).isNull();
-        assertThat(entry.getKrwAmount()).isEqualByComparingTo(new BigDecimal("5000.00"));
-        verify(exchangeRateService, never())
-                .getRateOnOrBefore(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+        assertThat(recalculated).isEqualTo(3);
+        then(chunkProcessor).should(times(2)).recalculateChunk(WINDOW_START, Long.MIN_VALUE, 2);
     }
 
-    private LedgerEntry foreignEntry(LocalDate transactionDate, LocalDate rateBaseDate, String tts) {
-        ExchangeRate rate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal(tts), rateBaseDate);
-        return LedgerEntry.of(
-                MEMBER_ID,
-                category,
-                asset,
-                new BigDecimal("100.00"),
-                CurrencyCode.USD,
-                transactionDate,
-                "외화",
-                rate,
-                FIXED_CLOCK);
+    @Test
+    @DisplayName("재시도도 충돌하면 예외 없이 그 주기를 종료하고 앞 청크 처리분을 보고한다")
+    void ends_the_run_without_failing_when_the_retry_also_conflicts() {
+        given(chunkProcessor.recalculateChunk(WINDOW_START, Long.MIN_VALUE, 2)).willReturn(chunk(2, TODAY, 10L));
+        given(chunkProcessor.recalculateChunk(TODAY, 10L, 2))
+                .willThrow(new ObjectOptimisticLockingFailureException("LedgerEntry", 1L));
+
+        int recalculated = service(2, 100).recalculateRecentForeignEntries();
+
+        assertThat(recalculated).isEqualTo(2);
+        then(chunkProcessor).should(times(2)).recalculateChunk(TODAY, 10L, 2);
+    }
+
+    @Test
+    @DisplayName("청크 크기·주기 상한이 1 미만이면 배치가 조용히 죽지 않도록 기동에서 막는다")
+    void rejects_non_positive_chunk_settings() {
+        assertThatThrownBy(() -> service(0, 100)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> service(2, 0)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    private LedgerRecalculationService service(int chunkSize, int maxEntriesPerRun) {
+        return new LedgerRecalculationService(chunkProcessor, FIXED_CLOCK, WINDOW_DAYS, chunkSize, maxEntriesPerRun);
+    }
+
+    private ChunkResult chunk(int recalculated, LocalDate nextCursorDate, Long nextCursorId) {
+        return new ChunkResult(recalculated, nextCursorDate, nextCursorId);
+    }
+
+    private ChunkResult lastChunk(int recalculated) {
+        return new ChunkResult(recalculated, null, null);
     }
 }

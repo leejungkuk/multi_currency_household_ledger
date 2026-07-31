@@ -55,6 +55,14 @@ exchange:
 ledger:
   recalculation:
     window-days: ${LEDGER_RECALCULATION_WINDOW_DAYS:7}
+    # 재계산 배치가 한 번에 붙잡는 트랜잭션·힙·커넥션의 상한. 청크마다 트랜잭션을 끊고(chunk-size),
+    # 한 주기 처리량도 막는다(max-entries-per-run). 상한에 걸린 나머지는 대상 술어에 그대로 남아
+    # 다음 주기가 이어받는다 — 초과분이 영구 동결되지 않는다.
+    chunk-size: ${LEDGER_RECALCULATION_CHUNK_SIZE:200}
+    max-entries-per-run: ${LEDGER_RECALCULATION_MAX_ENTRIES_PER_RUN:5000}
+  quota:
+    # 회원당 저장 행수 상한. 익명 가입이 무료라 레이트 리밋으로는 저장 소진을 막을 수 없어 이 축이 따로 필요하다.
+    max-entries-per-member: ${LEDGER_QUOTA_MAX_ENTRIES_PER_MEMBER:100000}
 
 management:
   server:
