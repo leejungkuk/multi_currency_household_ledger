@@ -29,6 +29,19 @@ spring:
     time-zone: Asia/Seoul
 
 server:
+  # 앱은 Caddy 뒤에서만 서비스된다(컨테이너가 8080 을 호스트로 퍼블리시하지 않는다). 이게 없으면 모든 요청의
+  # remote address 가 Caddy 컨테이너 IP 로, 스킴이 http 로 보인다 — 접속 IP 로 판단하는 것(레이트 리밋·차단·감사)이
+  # 전 사용자를 한 덩어리로 묶어 통째로 무력화된다.
+  #
+  # framework 가 아니라 native(Tomcat RemoteIpValve)인 이유는 신뢰 경계다. Caddy 실측 결과
+  # X-Forwarded-For/Proto/Host 는 클라이언트가 보내도 Caddy 가 자기 값으로 교체하지만,
+  # RFC 7239 Forwarded 헤더는 손대지 않고 그대로 통과시킨다. framework(ForwardedHeaderFilter)는
+  # Forwarded 를 X-Forwarded-* 보다 우선하므로, 그 조합은 클라이언트가 IP·스킴·호스트를 마음대로
+  # 주장하게 만든다 — 설정을 안 넣느니만 못하다. native 는 Forwarded 를 아예 보지 않고 X-Forwarded-* 만
+  # 읽으며, 그마저도 요청이 사설대역(internalProxies 기본값 = docker 네트워크)에서 왔을 때만 신뢰한다.
+  # ForwardedHeaderSecurityIntegrationTest 가 위조 차단을 실제 Tomcat 으로 고정한다.
+  forward-headers-strategy: native
+
   compression:
     enabled: true
     mime-types: application/json
