@@ -37,6 +37,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
@@ -57,9 +58,12 @@ public class LedgerService {
     private final ExchangeRateService exchangeRateService;
     private final Clock clock;
     private final LedgerSyncInsertService ledgerSyncInsertService;
+    private final LedgerQuotaPolicy ledgerQuotaPolicy;
 
     @Transactional
     public LedgerEntryResponse create(CreateLedgerEntryRequest request, UUID memberId) {
+        ledgerQuotaPolicy.assertCanCreate(memberId, 1);
+
         Category category = categoryRepository
                 .findById(request.categoryId())
                 .orElseThrow(() -> new BusinessException(LedgerErrorCode.CATEGORY_NOT_FOUND));
@@ -91,6 +95,7 @@ public class LedgerService {
     @Transactional
     public ImportLedgerEntriesResponse importEntries(ImportLedgerEntriesRequest request, UUID memberId) {
         validateUniqueClientEntryIds(request.entries());
+        ledgerQuotaPolicy.assertCanCreate(memberId, countNewEntries(request.entries(), memberId));
 
         List<ImportLedgerEntriesResponse.ImportedLedgerEntry> entries =
                 new ArrayList<>(request.entries().size());
@@ -301,6 +306,7 @@ public class LedgerService {
     }
 
     private LedgerEntry createSyncedEntry(UUID memberId, SyncLedgerEntryRequest request) {
+        ledgerQuotaPolicy.assertCanCreate(memberId, 1);
         try {
             return ledgerSyncInsertService.create(memberId, request);
         } catch (DataIntegrityViolationException e) {
@@ -338,6 +344,17 @@ public class LedgerService {
         // 행을 찾았으므로 동일 clientEntryId 를 다시 부여해 매핑을 유지한다(payload hash 는 sync 에서 미사용).
         entry.assignClientEntry(request.clientEntryId());
         return entry;
+    }
+
+    /** 갱신될 항목을 빼고 실제로 새로 생길 행 수를 센다 — 요청 건수를 그대로 쓰면 멱등 재import 가 한도 근처에서 거부된다. */
+    private int countNewEntries(List<ImportLedgerEntriesRequest.ImportLedgerEntryItem> entries, UUID memberId) {
+        Set<UUID> requestedIds = entries.stream()
+                .map(ImportLedgerEntriesRequest.ImportLedgerEntryItem::clientEntryId)
+                .collect(Collectors.toSet());
+        return requestedIds.size()
+                - ledgerEntryRepository
+                        .findExistingClientEntryIds(memberId, requestedIds)
+                        .size();
     }
 
     private void validateUniqueClientEntryIds(List<ImportLedgerEntriesRequest.ImportLedgerEntryItem> entries) {

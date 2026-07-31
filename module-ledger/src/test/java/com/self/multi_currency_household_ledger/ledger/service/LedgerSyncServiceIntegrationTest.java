@@ -47,6 +47,7 @@ import org.springframework.transaction.support.TransactionTemplate;
     TestJpaConfig.class,
     LedgerService.class,
     LedgerSyncInsertService.class,
+    LedgerQuotaPolicy.class,
     LedgerSyncServiceIntegrationTest.ClockConfig.class
 })
 @Transactional(propagation = Propagation.NOT_SUPPORTED)

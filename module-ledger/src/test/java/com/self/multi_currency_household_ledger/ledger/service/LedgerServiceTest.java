@@ -54,6 +54,8 @@ class LedgerServiceTest {
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
     private static final Clock FIXED_CLOCK = Clock.fixed(Instant.parse("2026-04-05T15:00:00Z"), KST);
 
+    private static final int QUOTA_LIMIT = 100_000;
+
     private LedgerService ledgerService;
 
     @Mock
@@ -82,7 +84,8 @@ class LedgerServiceTest {
                 assetRepository,
                 exchangeRateService,
                 FIXED_CLOCK,
-                ledgerSyncInsertService);
+                ledgerSyncInsertService,
+                new LedgerQuotaPolicy(ledgerEntryRepository, QUOTA_LIMIT));
         category = new Category(TransactionType.EXPENSE, "FOOD_DINING", "식비", "Food & Dining", "🍽️", 1);
         asset = new Asset("CASH", "현금", "Cash", 3);
     }

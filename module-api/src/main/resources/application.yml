@@ -55,6 +55,9 @@ exchange:
 ledger:
   recalculation:
     window-days: ${LEDGER_RECALCULATION_WINDOW_DAYS:7}
+  quota:
+    # 회원당 저장 행수 상한. 익명 가입이 무료라 레이트 리밋으로는 저장 소진을 막을 수 없어 이 축이 따로 필요하다.
+    max-entries-per-member: ${LEDGER_QUOTA_MAX_ENTRIES_PER_MEMBER:100000}
 
 management:
   server:

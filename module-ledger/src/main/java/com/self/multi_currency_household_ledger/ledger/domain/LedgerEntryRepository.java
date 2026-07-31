@@ -4,6 +4,7 @@ import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -17,7 +18,20 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, Long> 
 
     Optional<LedgerEntry> findByIdAndMemberId(Long id, UUID memberId);
 
+    long countByMemberId(UUID memberId);
+
     Optional<LedgerEntry> findByMemberIdAndClientEntryId(UUID memberId, UUID clientEntryId);
+
+    // 쿼터 판정에 필요한 "이 요청에서 새로 생길 행 수"를 한 번의 쿼리로 얻는다. 항목마다 세면 왕복이 항목 수만큼 늘고,
+    // 요청 건수를 그대로 신규분으로 치면 한도 근처에서 멱등 재import 가 거부된다.
+    @Query(
+            """
+            select entry.clientEntryId from LedgerEntry entry
+            where entry.memberId = :memberId
+              and entry.clientEntryId in :clientEntryIds
+            """)
+    List<UUID> findExistingClientEntryIds(
+            @Param("memberId") UUID memberId, @Param("clientEntryIds") Collection<UUID> clientEntryIds);
 
     // JPQL bulk delete 는 영속성 컨텍스트를 우회하므로, 같은 트랜잭션에 관리 중인 LedgerEntry 가 있으면
     // flush 로 선반영하고 삭제 후 컨텍스트를 비워 stale 엔티티를 남기지 않는다(향후 재사용 대비 방어).
