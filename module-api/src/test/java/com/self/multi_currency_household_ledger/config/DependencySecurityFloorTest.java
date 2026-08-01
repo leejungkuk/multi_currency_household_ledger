@@ -25,13 +25,13 @@ import org.springframework.security.web.SecurityFilterChain;
 class DependencySecurityFloorTest {
 
     /**
-     * 현재 BOM 이 관리하는 값. CVE-2026-22732(Critical) 는 7.0.4 에서 고쳐졌지만 바닥선은 그보다 높은 BOM 값으로
-     * 잡는다 — 7.0.4 로 잡으면 누가 7.0.5 로 하드 오버라이드해도 통과해 다운그레이드를 놓친다. BOM 을 올릴 때
-     * 이 값도 같이 올린다.
+     * 현재 BOM(Boot 4.1.0)이 관리하는 값. CVE-2026-22732(Critical) 는 7.0.4 에서 고쳐졌지만 바닥선은 그보다 높은
+     * BOM 값으로 잡는다 — 7.0.4 로 잡으면 누가 7.0.5 로 하드 오버라이드해도 통과해 다운그레이드를 놓친다.
+     * BOM 을 올릴 때 이 값도 같이 올린다.
      */
-    private static final String SPRING_SECURITY_FLOOR = "7.0.6";
+    private static final String SPRING_SECURITY_FLOOR = "7.1.0";
 
-    /** 현재 BOM 이 관리하는 값. Servlet 6.1(Tomcat 11) 라인이라 10.1.x 대의 패치는 모두 포함한다. */
+    /** 현재 BOM(Boot 4.1.0)이 관리하는 값. Servlet 6.1(Tomcat 11) 라인이라 10.1.x 대의 패치는 모두 포함한다. */
     private static final String TOMCAT_FLOOR = "11.0.22";
 
     @Test
