@@ -62,6 +62,10 @@ server:
 
 woni:
   security:
+    rate-limit:
+      enabled: ${WONI_RATE_LIMIT_ENABLED:true}
+      read-limit: ${WONI_RATE_LIMIT_READ:120}
+      write-limit: ${WONI_RATE_LIMIT_WRITE:60}
     jwt:
       audience: ${SUPABASE_JWT_AUDIENCE:authenticated}
     cors:
