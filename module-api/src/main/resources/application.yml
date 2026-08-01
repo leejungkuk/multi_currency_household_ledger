@@ -27,6 +27,14 @@ spring:
 
   jackson:
     time-zone: Asia/Seoul
+    # Jackson 3 는 프로퍼티를 알파벳순으로 정렬하는 등 기본값이 2.x 와 다르다. iOS 가 이미 받고 있는
+    # 응답 형태를 유지하려고 2.x 기본값을 되살린다.
+    use-jackson2-defaults: true
+    deserialization:
+      # 위 플래그(configureForJackson2)가 FAIL_ON_UNKNOWN_PROPERTIES 를 켜는데, Boot 3 는 이걸 false 로
+      # 강제했었다. 세트로 두지 않으면 여분 필드가 섞인 요청이 200 에서 400 으로 뒤집힌다 — 구버전 앱과
+      # 필드가 추가된 신버전 앱이 같은 서버를 쓰는 상황에서 그대로 장애다. 이 줄이 뒤에 적용돼 그것만 되돌린다.
+      fail-on-unknown-properties: false
 
 server:
   # 앱은 Caddy 뒤에서만 서비스된다(컨테이너가 8080 을 호스트로 퍼블리시하지 않는다). 이게 없으면 모든 요청의
@@ -102,6 +110,14 @@ management:
       # 컨테이너 재시작 판정용이라 {"status":"UP"} 외에는 내보내지 않는다(DB 종류·디스크 용량 등 은닉).
       # DB 연결 상태는 노출되지 않을 뿐 판정에는 그대로 반영된다.
       show-details: never
+      probes:
+        # Boot 4 가 이 기본값을 false→true 로 뒤집었다. 켜지면 응답에 groups:["liveness","readiness"] 가
+        # 실려 show-details=never 인데도 status 외 필드가 무토큰 permitAll 경로로 나간다.
+        # 지금은 단일 컨테이너 배포라 liveness/readiness 를 읽는 오케스트레이터가 없으므로 꺼서
+        # Boot 3 와 같은 {"status":"UP"} 을 유지한다.
+        # k8s 등으로 옮겨 프로브가 필요해지면 이 줄을 지워 되살리고, 그때 늘어나는 응답 필드를
+        # ActuatorEndpointIntegrationTest 의 기대값과 함께 의도적으로 갱신한다.
+        enabled: false
   metrics:
     tags:
       # 여러 인스턴스·환경의 시계열을 Grafana 에서 구분하는 공통 라벨.
@@ -116,3 +132,7 @@ springdoc:
     path: /swagger-ui.html
   api-docs:
     path: /v3/api-docs
+    # springdoc 3.x 는 기본을 OpenAPI 3.1 로 바꿨다. api-contract/openapi.json 은 iOS 와의 계약 SSOT 라
+    # 프레임워크 업그레이드가 스펙 방언을 바꾸면 안 된다(3.1 은 3.0 전용 코드 생성기가 못 읽는다).
+    # 3.1 로 가는 것은 계약 변경이므로 별도 판단으로 한다.
+    version: openapi_3_0

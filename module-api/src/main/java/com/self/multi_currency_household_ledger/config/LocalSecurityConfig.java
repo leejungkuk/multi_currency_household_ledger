@@ -7,7 +7,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 import org.springframework.security.web.util.matcher.OrRequestMatcher;
 
 /**
@@ -34,11 +34,12 @@ public class LocalSecurityConfig {
     @Bean
     @Order(0)
     SecurityFilterChain localDevSecurityFilterChain(HttpSecurity http) throws Exception {
+        PathPatternRequestMatcher.Builder matchers = PathPatternRequestMatcher.withDefaults();
         http.securityMatcher(new OrRequestMatcher(
-                        AntPathRequestMatcher.antMatcher("/swagger-ui.html"),
-                        AntPathRequestMatcher.antMatcher("/swagger-ui/**"),
-                        AntPathRequestMatcher.antMatcher("/v3/api-docs/**"),
-                        AntPathRequestMatcher.antMatcher(HttpMethod.POST, COLLECT_PATH)))
+                        matchers.matcher("/swagger-ui.html"),
+                        matchers.matcher("/swagger-ui/**"),
+                        matchers.matcher("/v3/api-docs/**"),
+                        matchers.matcher(HttpMethod.POST, COLLECT_PATH)))
                 // security-ack: local 전용(@Profile) dev 접근만 개방 — Swagger UI/OpenAPI 문서 + 시스템 공용 환율
                 // 시드(POST collect, member_id 불요). 배포 프로파일엔 이 빈 없음. 그 외는 deny-by-default 유지.
                 .authorizeHttpRequests(authorize -> authorize.anyRequest().permitAll())

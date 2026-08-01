@@ -26,7 +26,7 @@ import org.springframework.core.io.ClassPathResource;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
  * 프록시 전달 헤더의 <b>신뢰 경계</b>를 실제 Tomcat 으로 고정한다.
@@ -130,8 +130,8 @@ class ForwardedHeaderSecurityIntegrationTest {
 
         @Bean
         @ServiceConnection
-        PostgreSQLContainer<?> postgresContainer() {
-            return new PostgreSQLContainer<>("postgres:16-alpine");
+        PostgreSQLContainer postgresContainer() {
+            return new PostgreSQLContainer("postgres:16-alpine");
         }
 
         /**

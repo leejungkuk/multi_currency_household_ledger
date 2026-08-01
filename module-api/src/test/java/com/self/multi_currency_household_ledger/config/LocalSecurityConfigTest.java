@@ -16,7 +16,7 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.jpa.mapping.JpaMetamodelMappingContext;
 import org.springframework.http.HttpStatus;
@@ -86,6 +86,25 @@ class LocalSecurityConfigTest {
         // 메인 체인의 GET permitAll 이 local 에도 적용됨). 200 OK 강검증은 ExchangeRateController 를
         // 로드하는 SecurityConfigTest 가 담당한다.
         mockMvc.perform(get("/api/v1/exchange-rates/status"))
+                .andExpect(status().is(not(HttpStatus.UNAUTHORIZED.value())))
+                .andExpect(status().is(not(HttpStatus.FORBIDDEN.value())));
+    }
+
+    @Test
+    @DisplayName("local 의 collect 면제는 POST 한정이라 같은 경로의 GET 은 메인 체인으로 떨어져 401 이다")
+    void collect_get_is_not_covered_by_local_exemption() throws Exception {
+        // 면제 매처에서 메서드 제약이 빠지면 이 경로가 메서드 무관 공개가 된다. 그걸 보는 유일한 눈이다.
+        mockMvc.perform(get("/api/v1/exchange-rates/collect"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    @DisplayName("local 에서 Swagger UI 정적 리소스 경로는 토큰 없이 보안 체인을 통과한다")
+    void swagger_ui_path_is_permitted_without_token_in_local() throws Exception {
+        // /v3/api-docs/** 와는 별개 매처(/swagger-ui/**)라 아래 케이스가 대신 커버하지 못한다.
+        // 슬라이스에 springdoc 핸들러가 없어 downstream 상태는 의미 없다 — 401/403 이 아니라는 것이 핵심.
+        mockMvc.perform(get("/swagger-ui/index.html"))
                 .andExpect(status().is(not(HttpStatus.UNAUTHORIZED.value())))
                 .andExpect(status().is(not(HttpStatus.FORBIDDEN.value())));
     }

@@ -13,19 +13,26 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
-    implementation 'org.flywaydb:flyway-core'
+    // Boot 4 는 autoconfiguration 을 기술별 모듈로 쪼갰다 — flyway-core 만 선언하면 FlywayAutoConfiguration 이
+    // 클래스패스에 없어 마이그레이션이 조용히 안 돌고 ddl-auto=validate 에서 죽는다. starter 가 flyway-core 를 끌어온다.
+    implementation 'org.springframework.boot:spring-boot-starter-flyway'
     implementation 'org.flywaydb:flyway-database-postgresql'
 
     runtimeOnly 'org.postgresql:postgresql'
 
-    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.7.0'
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
 
     testImplementation 'org.springframework.security:spring-security-test'
     testImplementation 'org.springframework.boot:spring-boot-testcontainers'
-    testImplementation 'org.testcontainers:postgresql'
-    testImplementation 'org.testcontainers:junit-jupiter'
-    // 모듈 의존 방향·계층 규칙(CLAUDE.md)을 빌드 게이트로 강제 — api 는 전 모듈을 보므로 여기서 검사
-    testImplementation 'com.tngtech.archunit:archunit-junit5:1.3.0'
+    testImplementation 'org.testcontainers:testcontainers-postgresql'
+    testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
+    // spring-boot-starter-test 4.x 는 슬라이스 어노테이션을 더 이상 포함하지 않는다 — 쓰는 것만 명시한다.
+    testImplementation 'org.springframework.boot:spring-boot-webmvc-test'
+    // @AutoConfigureMetrics — 테스트에서 꺼지는 metrics export 를 되살린다(ActuatorEndpointIntegrationTest)
+    testImplementation 'org.springframework.boot:spring-boot-micrometer-metrics-test'
+    // 모듈 의존 방향·계층 규칙(CLAUDE.md)을 빌드 게이트로 강제 — api 는 전 모듈을 보므로 여기서 검사.
+    // archunit-junit5 는 JUnit Platform 6 에서 TestEngine 이 로드되지 않아(=규칙 0건 실행) core 로 직접 돌린다.
+    testImplementation 'com.tngtech.archunit:archunit:1.3.0'
 }
 
 // API 계약 스냅샷 생성 — 전체 컨텍스트(Testcontainers)를 부팅해 /v3/api-docs raw 스펙을

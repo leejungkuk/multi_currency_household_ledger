@@ -20,9 +20,14 @@ springdoc:
   swagger-ui:
     enabled: false
 
-server:
-  error:
-    # 예외 흐름은 GlobalExceptionHandler 가 ErrorResponse 로 통일한다.
-    # 화이트라벨 경로로 새어도 내부 정보가 나가지 않도록 못박는다.
-    include-stacktrace: never
-    include-message: never
+spring:
+  web:
+    error:
+      # 예외 흐름은 GlobalExceptionHandler 가 ErrorResponse 로 통일한다.
+      # 화이트라벨 경로로 새어도 내부 정보가 나가지 않도록 못박는다.
+      #
+      # Boot 4.0 이 이 키를 server.error.* 에서 spring.web.error.* 로 옮겼다(deprecation level=error).
+      # ServerProperties 에는 대응 멤버가 아예 없어 옛 이름은 기동 실패도 경고도 없이 무시된다 —
+      # 지금은 새 키의 기본값도 never 라 결과가 같지만, 못박아 둔 의미가 사라진 상태였다.
+      include-stacktrace: never
+      include-message: never

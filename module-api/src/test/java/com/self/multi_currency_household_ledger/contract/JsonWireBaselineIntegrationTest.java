@@ -14,10 +14,10 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.MediaType;
@@ -29,7 +29,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 /**
  * 응답 <b>원문 바디</b>와 요청 본문 관용성을 3.4.1 기준선으로 고정한다.
@@ -210,8 +210,8 @@ class JsonWireBaselineIntegrationTest {
 
         @Bean
         @ServiceConnection
-        PostgreSQLContainer<?> postgresContainer() {
-            return new PostgreSQLContainer<>("postgres:16-alpine");
+        PostgreSQLContainer postgresContainer() {
+            return new PostgreSQLContainer("postgres:16-alpine");
         }
     }
 }

@@ -12,7 +12,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.self.multi_currency_household_ledger.common.annotation.CurrentMemberId;
 import com.self.multi_currency_household_ledger.common.exception.BusinessException;
 import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
@@ -38,8 +37,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.MediaType;
@@ -50,6 +49,7 @@ import org.springframework.web.context.request.NativeWebRequest;
 import org.springframework.web.method.support.HandlerMethodArgumentResolver;
 import org.springframework.web.method.support.ModelAndViewContainer;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+import tools.jackson.databind.ObjectMapper;
 
 @WebMvcTest(controllers = LedgerController.class)
 @Import(LedgerControllerTest.CurrentMemberIdResolverConfig.class)

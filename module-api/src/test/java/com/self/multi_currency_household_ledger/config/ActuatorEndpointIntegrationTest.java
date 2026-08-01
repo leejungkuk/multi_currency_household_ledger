@@ -2,8 +2,6 @@ package com.self.multi_currency_household_ledger.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -11,8 +9,8 @@ import java.net.http.HttpResponse;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.actuate.health.HealthContributorRegistry;
-import org.springframework.boot.test.autoconfigure.actuate.observability.AutoConfigureObservability;
+import org.springframework.boot.health.registry.HealthContributorRegistry;
+import org.springframework.boot.micrometer.metrics.test.autoconfigure.AutoConfigureMetrics;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalManagementPort;
@@ -22,7 +20,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * actuator 는 애플리케이션 포트가 아니라 내부 전용 management 포트에서만 서비스된다. prometheus 스크랩 본문에는 JVM 상태·엔드포인트별 URI·DB 풀
@@ -32,7 +32,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 // Spring Boot 는 테스트에서 metrics export 를 기본으로 끈다(management.defaults.metrics.export.enabled=false).
 // 이 어노테이션이 없으면 PrometheusMeterRegistry 빈 자체가 만들어지지 않아 /actuator/prometheus 가 아예 없는
 // 경로가 된다 — 운영 설정과는 무관한 테스트 전용 함정이라 여기서만 되살린다.
-@AutoConfigureObservability
+@AutoConfigureMetrics
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestPropertySource(
         properties = {
@@ -65,7 +65,7 @@ class ActuatorEndpointIntegrationTest {
         HttpResponse<String> response = get(managementPort, "/actuator/health");
 
         assertThat(response.statusCode()).isEqualTo(200);
-        assertThat(objectMapper.readTree(response.body()).path("status").asText())
+        assertThat(objectMapper.readTree(response.body()).path("status").asString())
                 .isEqualTo("UP");
     }
 
@@ -134,8 +134,8 @@ class ActuatorEndpointIntegrationTest {
 
         @Bean
         @ServiceConnection
-        PostgreSQLContainer<?> postgresContainer() {
-            return new PostgreSQLContainer<>("postgres:16-alpine");
+        PostgreSQLContainer postgresContainer() {
+            return new PostgreSQLContainer("postgres:16-alpine");
         }
     }
 }

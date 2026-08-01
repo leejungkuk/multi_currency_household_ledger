@@ -2,8 +2,6 @@ package com.self.multi_currency_household_ledger.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
 import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRate;
 import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRateRepository;
@@ -21,18 +19,20 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.web.ServerProperties;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.web.server.Compression;
+import org.springframework.boot.web.server.autoconfigure.ServerProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.util.unit.DataSize;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @TestPropertySource(
@@ -138,8 +138,8 @@ class ResponseCompressionIntegrationTest {
 
         @Bean
         @ServiceConnection
-        PostgreSQLContainer<?> postgresContainer() {
-            return new PostgreSQLContainer<>("postgres:16-alpine");
+        PostgreSQLContainer postgresContainer() {
+            return new PostgreSQLContainer("postgres:16-alpine");
         }
     }
 }

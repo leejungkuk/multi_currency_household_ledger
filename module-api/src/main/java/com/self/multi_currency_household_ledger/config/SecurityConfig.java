@@ -1,6 +1,5 @@
 package com.self.multi_currency_household_ledger.config;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.self.multi_currency_household_ledger.common.dto.ErrorResponse;
 import com.self.multi_currency_household_ledger.common.exception.ErrorCode;
 import jakarta.servlet.http.HttpServletResponse;
@@ -31,6 +30,7 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import tools.jackson.databind.ObjectMapper;
 
 @Configuration
 @EnableWebSecurity

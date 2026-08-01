@@ -13,9 +13,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
-import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 @Testcontainers
 class LedgerUpdatedAtMigrationTest {
@@ -23,7 +23,7 @@ class LedgerUpdatedAtMigrationTest {
     private static final String MIGRATION_LOCATION = "classpath:db/migration";
 
     @Container
-    private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
+    private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine");
 
     @Test
     @DisplayName("V8은 legacy NULL updated_at을 백필하고 NOT NULL과 델타 pull 인덱스를 적용한다")

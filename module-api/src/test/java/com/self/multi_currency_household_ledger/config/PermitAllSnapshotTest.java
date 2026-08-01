@@ -11,7 +11,7 @@ import java.util.regex.Pattern;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.jpa.mapping.JpaMetamodelMappingContext;
 import org.springframework.mock.web.MockHttpServletRequest;
@@ -60,8 +60,13 @@ class PermitAllSnapshotTest {
             "GET /api/v1/assets -> permitAll",
             "any request -> AuthenticatedAuthorizationManager");
 
-    /** 매처의 {@code toString()} 은 Spring Security 버전에 따라 감싸는 형태가 달라진다(예: {@code Deferred [Mvc [...], Ant [...]]}). 스냅샷이 프레임워크 내부 표현이 아니라 규칙 자체를 고정하도록 메서드·패턴만 뽑아 쓴다. */
-    private static final Pattern MATCHER_PATTERN = Pattern.compile("pattern='([^']+)'(?:, ([A-Z]+))?");
+    /**
+     * 매처의 {@code toString()} 은 Spring Security 버전에 따라 감싸는 형태가 달라진다(6.x 는
+     * {@code Mvc [pattern='/x', GET]}, 7.x 는 {@code PathPattern [GET /x]}). 스냅샷이 프레임워크 내부
+     * 표현이 아니라 규칙 자체를 고정하도록 메서드·패턴만 뽑아 쓴다. 패턴 자체가 {@code [A-Z]{3}} 처럼
+     * 대괄호를 포함하므로 끝의 {@code ]} 는 탐욕 매칭으로 마지막 것을 잡는다.
+     */
+    private static final Pattern MATCHER_PATTERN = Pattern.compile("^PathPattern \\[(?:([A-Z]+) )?(.+)\\]$");
 
     @Autowired
     private Filter springSecurityFilterChain;
@@ -107,7 +112,7 @@ class PermitAllSnapshotTest {
             }
             throw new AssertionError("매처 표현을 해석하지 못했다 — 정규식을 갱신해야 한다: " + raw);
         }
-        return matcher.group(2) == null ? matcher.group(1) : matcher.group(2) + " " + matcher.group(1);
+        return matcher.group(1) == null ? matcher.group(2) : matcher.group(1) + " " + matcher.group(2);
     }
 
     /**
