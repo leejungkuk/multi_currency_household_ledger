@@ -4,7 +4,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Bean;
 import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 
 @SpringBootApplication(
         scanBasePackages = {
@@ -16,7 +16,7 @@ public class TestExchangeApplication {
 
     @Bean
     @ServiceConnection
-    PostgreSQLContainer<?> postgresContainer() {
-        return new PostgreSQLContainer<>("postgres:16-alpine");
+    PostgreSQLContainer postgresContainer() {
+        return new PostgreSQLContainer("postgres:16-alpine");
     }
 }

@@ -6,8 +6,6 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
 import com.self.multi_currency_household_ledger.exchange.service.ExchangeRateService;
 import com.self.multi_currency_household_ledger.ledger.domain.LedgerEntryRepository;
@@ -24,17 +22,19 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Bean;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
-import org.testcontainers.containers.PostgreSQLContainer;
+import org.testcontainers.postgresql.PostgreSQLContainer;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
@@ -90,18 +90,18 @@ class LedgerChangesControllerIntegrationTest {
         JsonNode firstPage = getChanges(MEMBER_A, null, null, 2);
         assertThat(firstPage.path("entries").size()).isEqualTo(2);
         assertThat(firstPage.path("hasMore").asBoolean()).isTrue();
-        assertThat(firstPage.path("nextCursor").path("updatedAt").asText()).isEqualTo("2026-04-06T09:01:00");
+        assertThat(firstPage.path("nextCursor").path("updatedAt").asString()).isEqualTo("2026-04-06T09:01:00");
         assertThat(firstPage.path("nextCursor").path("id").asLong())
                 .isEqualTo(second.ledgerEntry().id());
 
         JsonNode secondPage = getChanges(
                 MEMBER_A,
-                firstPage.path("nextCursor").path("updatedAt").asText(),
+                firstPage.path("nextCursor").path("updatedAt").asString(),
                 firstPage.path("nextCursor").path("id").asLong(),
                 2);
         assertThat(secondPage.path("entries").size()).isEqualTo(1);
         assertThat(secondPage.path("hasMore").asBoolean()).isFalse();
-        assertThat(secondPage.path("nextCursor").path("updatedAt").asText()).isEqualTo("2026-04-06T09:01:00");
+        assertThat(secondPage.path("nextCursor").path("updatedAt").asString()).isEqualTo("2026-04-06T09:01:00");
         assertThat(secondPage.path("nextCursor").path("id").asLong())
                 .isEqualTo(third.ledgerEntry().id());
 
@@ -135,7 +135,7 @@ class LedgerChangesControllerIntegrationTest {
                 .isEqualTo(memberB.ledgerEntry().id());
         assertThat(response.path("entries").get(0).path("id").asLong())
                 .isNotEqualTo(memberA.ledgerEntry().id());
-        assertThat(response.path("entries").get(0).path("clientEntryId").asText())
+        assertThat(response.path("entries").get(0).path("clientEntryId").asString())
                 .isEqualTo(memberB.clientEntryId().toString());
     }
 
@@ -196,8 +196,8 @@ class LedgerChangesControllerIntegrationTest {
 
         @Bean
         @ServiceConnection
-        PostgreSQLContainer<?> postgresContainer() {
-            return new PostgreSQLContainer<>("postgres:16-alpine");
+        PostgreSQLContainer postgresContainer() {
+            return new PostgreSQLContainer("postgres:16-alpine");
         }
     }
 }
