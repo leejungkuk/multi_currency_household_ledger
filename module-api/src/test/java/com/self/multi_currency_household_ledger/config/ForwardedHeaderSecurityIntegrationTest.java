@@ -96,15 +96,32 @@ class ForwardedHeaderSecurityIntegrationTest {
                 .contains(PROXIED_IP);
     }
 
-    /** 인증 여부와 무관하게 필터는 실행되므로, 응답 코드가 아니라 valve 가 세운 remote address 만 본다. */
-    private void get(String headerName, String headerValue) throws Exception {
+    /**
+     * proto 축은 IP 축과 별개 배선이다. {@code RemoteIpValve} 가 {@code X-Forwarded-Proto} 를 읽어
+     * {@code setSecure(true)} 를 세워야만 Security 의 {@code HstsHeaderWriter} 가 동작한다 — 그 헤더 이름이나
+     * 신뢰 프록시 기본값이 바뀌면 운영에서 HSTS 가 조용히 사라진다. HSTS <b>값</b>은 라이터 축인
+     * {@link SecurityHeadersIntegrationTest} 가 이미 못박았으므로 여기서는 배선 신호인 <b>존재</b>만 본다
+     * (두 곳에 값을 박으면 의도적 정책 변경이 정보 없이 두 번 빨개진다).
+     */
+    @Test
+    @DisplayName("신뢰 프록시가 붙인 X-Forwarded-Proto 는 secure 판정으로 반영돼 HSTS 를 켠다")
+    void x_forwarded_proto_from_a_trusted_proxy_enables_hsts() throws Exception {
+        HttpResponse<Void> response = get("X-Forwarded-Proto", "https");
+
+        assertThat(response.headers().firstValue("Strict-Transport-Security"))
+                .as("반영되지 않으면 Caddy 뒤 실제 HTTPS 응답에 HSTS 가 빠져 다운그레이드 공격 방어가 사라진다")
+                .isPresent();
+    }
+
+    /** 인증 여부와 무관하게 valve 는 실행되므로 응답 코드는 보지 않는다 — IP 축은 valve 가 세운 remote address 를, proto 축은 응답 헤더를 본다. */
+    private HttpResponse<Void> get(String headerName, String headerValue) throws Exception {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create("http://localhost:%d/api/v1/assets".formatted(port)))
                 .header(headerName, headerValue)
                 .GET()
                 .build();
         try (HttpClient client = HttpClient.newHttpClient()) {
-            client.send(request, HttpResponse.BodyHandlers.discarding());
+            return client.send(request, HttpResponse.BodyHandlers.discarding());
         }
     }
 

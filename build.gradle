@@ -59,8 +59,10 @@ subprojects {
 
     // 컴파일 타임 정적 분석 — 테스트가 못 잡는 버그(NPE·자기대입·잘못된 equals 등)를 ERROR 로 차단
     // -Werror: 경고 0 기준선(2026-06-11 정리 완료)을 빌드 게이트로 고정 — 새 경고는 곧 빌드 실패
+    // -Xlint:deprecation: -Werror 만으로는 forRemoval=true 인 API 만 걸린다. 나머지 @Deprecated 사용은
+    // Note 로만 나가 빌드를 통과하므로, 프레임워크 업그레이드가 남기는 폐기 API 사용을 놓친다.
     tasks.withType(JavaCompile).configureEach {
-        options.compilerArgs << '-Werror'
+        options.compilerArgs << '-Werror' << '-Xlint:deprecation'
         options.errorprone {
             disableWarningsInGeneratedCode = true
             excludedPaths = '.*/build/generated/.*'

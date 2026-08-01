@@ -190,6 +190,34 @@ class LedgerEntryRepositoryTest {
         assertThat(expense).isEqualByComparingTo(new BigDecimal("1000.00"));
     }
 
+    // 집계 프로젝션의 scale 은 응답 바디에 그대로 실린다("3000.00" vs "3000"). isEqualByComparingTo 는 scale 을
+    // 무시하므로 위 테스트는 이 축에 눈이 멀어 있다 — 여기서만 Hibernate 의 numeric 타입 매핑이 고정된다.
+    @Test
+    @DisplayName("집계 프로젝션은 DB numeric scale을 그대로 유지하고 대상이 없으면 coalesce 리터럴 scale로 떨어진다")
+    void aggregate_projections_preserve_database_numeric_scale() {
+        LocalDate startDate = LocalDate.of(2026, 4, 1);
+        LocalDate endDate = LocalDate.of(2026, 5, 1);
+        ExchangeRate usdRate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.000000"), startDate);
+
+        ledgerEntryRepository.saveAll(List.of(
+                krwEntry(MEMBER_ID, incomeCategory, startDate, "3000.00", "내 수입"),
+                foreignEntry(MEMBER_ID, category, CurrencyCode.USD, "100.00", startDate, "내 USD 지출", usdRate)));
+        ledgerEntryRepository.flush();
+
+        BigDecimal income = ledgerEntryRepository.sumKrwAmountByMemberIdAndTransactionTypeAndTransactionDateRange(
+                MEMBER_ID, TransactionType.INCOME, startDate, endDate);
+        BigDecimal emptyRange = ledgerEntryRepository.sumKrwAmountByMemberIdAndTransactionTypeAndTransactionDateRange(
+                MEMBER_ID, TransactionType.INCOME, endDate, endDate.plusMonths(1));
+        LedgerEntryRepository.CurrencySubtotalProjection subtotal = ledgerEntryRepository
+                .findCurrencySubtotalsByMemberIdAndTransactionDateRange(MEMBER_ID, startDate, endDate)
+                .getFirst();
+
+        assertThat(income.scale()).isEqualTo(2);
+        assertThat(emptyRange.scale()).isZero();
+        assertThat(subtotal.getOriginalAmount().scale()).isEqualTo(2);
+        assertThat(subtotal.getKrwAmount().scale()).isEqualTo(2);
+    }
+
     @Test
     @DisplayName("월 목록은 member_id로 격리하고 거래일 내림차순, id 내림차순, 하드 캡으로 조회한다")
     void find_monthly_entries_filters_member_sorts_by_date_and_id_desc_with_cap() {
