@@ -8,6 +8,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.health.registry.HealthContributorRegistry;
 import org.springframework.boot.micrometer.metrics.test.autoconfigure.AutoConfigureMetrics;
@@ -26,8 +27,12 @@ import tools.jackson.databind.ObjectMapper;
 
 /**
  * actuator 는 애플리케이션 포트가 아니라 내부 전용 management 포트에서만 서비스된다. prometheus 스크랩 본문에는 JVM 상태·엔드포인트별 URI·DB 풀
- * 수치가 실리므로 공개 포트로 새면 그대로 정보 노출이다. 별도 management context 는 부모의 security filter chain 을 물려받지 않아 포트 격리가 유일한
- * 방어선이므로, 그 경계를 테스트로 고정한다.
+ * 수치가 실리므로 공개 포트로 새면 그대로 정보 노출이다. 그래서 포트 격리를 테스트로 고정한다.
+ *
+ * <p>이전 주석은 "management context 가 부모의 security filter chain 을 물려받지 않는다"고 적었으나 그건 사실이 아니다 —
+ * {@code ServletManagementChildContextConfiguration$ServletManagementContextSecurityConfiguration} 이 부모 빈팩토리에서
+ * {@code springSecurityFilterChain} 을 꺼내 자식 컨텍스트에 재등록한다(바이트코드 확인). 즉 management 포트도 같은 체인을
+ * 타므로 레이트 리밋도 함께 받는다. 포트 격리가 유일한 방어선인 것은 맞지만 그 이유가 체인 미상속이어서는 아니다.
  */
 // Spring Boot 는 테스트에서 metrics export 를 기본으로 끈다(management.defaults.metrics.export.enabled=false).
 // 이 어노테이션이 없으면 PrometheusMeterRegistry 빈 자체가 만들어지지 않아 /actuator/prometheus 가 아예 없는
@@ -55,6 +60,9 @@ class ActuatorEndpointIntegrationTest {
     @Autowired
     private HealthContributorRegistry healthContributorRegistry;
 
+    @Autowired
+    private ObjectProvider<RateLimitFilter> rateLimitFilterProvider;
+
     @MockitoBean
     @SuppressWarnings("UnusedVariable")
     private JwtDecoder jwtDecoder;
@@ -67,6 +75,16 @@ class ActuatorEndpointIntegrationTest {
         assertThat(response.statusCode()).isEqualTo(200);
         assertThat(objectMapper.readTree(response.body()).path("status").asString())
                 .isEqualTo("UP");
+    }
+
+    /**
+     * 레이트 리밋이 운영 기본값에서 실제로 켜지는지 고정한다. 속성 오버라이드가 없는 이 컨텍스트에 얹어 Testcontainers 컨텍스트를 하나도 늘리지 않는다.
+     * 다른 테스트 본문에 끼워 넣지 않는 이유는, 그 테스트가 수정·교체될 때 이 회귀 가드가 조용히 사라지기 때문이다.
+     */
+    @Test
+    @DisplayName("속성 오버라이드가 없으면 레이트 리밋 필터 빈이 존재한다")
+    void rate_limit_filter_is_enabled_by_default() {
+        assertThat(rateLimitFilterProvider.getIfAvailable()).isNotNull();
     }
 
     @Test
