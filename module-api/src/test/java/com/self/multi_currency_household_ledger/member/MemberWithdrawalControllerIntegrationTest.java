@@ -1,6 +1,9 @@
 package com.self.multi_currency_household_ledger.member;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.nullable;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -9,8 +12,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.classic.spi.ThrowableProxyUtil;
 import ch.qos.logback.core.read.ListAppender;
 import com.self.multi_currency_household_ledger.AuthUserFixture;
+import com.self.multi_currency_household_ledger.member.client.AppleTokenRevoker;
+import com.self.multi_currency_household_ledger.member.client.RevokeOutcome;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -35,6 +41,8 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
@@ -48,6 +56,8 @@ class MemberWithdrawalControllerIntegrationTest {
 
     private static final UUID MEMBER_A = UUID.fromString("00000000-0000-0000-0000-000000000001");
     private static final UUID MEMBER_B = UUID.fromString("00000000-0000-0000-0000-000000000002");
+    private static final String APPLE_AUTHORIZATION_CODE = "apple-authorization-code";
+    private static final String MEMBER_B_CLAIMED_APPLE_CODE = "claimed-member-b-authorization-code";
     private static final String CREATE_LEDGER_REQUEST =
             """
             {
@@ -86,9 +96,13 @@ class MemberWithdrawalControllerIntegrationTest {
     @SuppressWarnings("UnusedVariable")
     private JwtDecoder jwtDecoder;
 
+    @MockitoBean
+    private AppleTokenRevoker appleTokenRevoker;
+
     @BeforeEach
     void setUp() {
         new AuthUserFixture(jdbcTemplate).reset(MEMBER_A, MEMBER_B);
+        given(appleTokenRevoker.revoke(nullable(String.class))).willReturn(RevokeOutcome.SKIPPED);
     }
 
     @Test
@@ -102,6 +116,7 @@ class MemberWithdrawalControllerIntegrationTest {
 
         assertThat(authUserCount(MEMBER_A)).isZero();
         assertThat(ledgerCount(MEMBER_A)).isZero();
+        then(appleTokenRevoker).should().revoke(null);
     }
 
     @Test
@@ -116,6 +131,128 @@ class MemberWithdrawalControllerIntegrationTest {
         assertThat(ledgerCount(MEMBER_A)).isZero();
         assertThat(authUserCount(MEMBER_B)).isEqualTo(1L);
         assertThat(ledgerCount(MEMBER_B)).isEqualTo(1L);
+    }
+
+    @Test
+    @DisplayName("회원 A 토큰에 회원 B의 것이라고 주장하는 코드를 붙여도 A 데이터만 삭제한다")
+    void withdraw_isolated_by_jwt_subject_even_with_code_claimed_for_another_member() throws Exception {
+        createLedger(MEMBER_A);
+        createLedger(MEMBER_B);
+
+        withdraw(MEMBER_A, MEMBER_B_CLAIMED_APPLE_CODE).andExpect(status().isOk());
+
+        assertThat(authUserCount(MEMBER_A)).isZero();
+        assertThat(ledgerCount(MEMBER_A)).isZero();
+        assertThat(authUserCount(MEMBER_B)).isEqualTo(1L);
+        assertThat(ledgerCount(MEMBER_B)).isEqualTo(1L);
+        then(appleTokenRevoker).should().revoke(MEMBER_B_CLAIMED_APPLE_CODE);
+        // 이 IDOR 머지 게이트는 JWT subject 기준 DB 삭제 격리를 검증한다.
+        // Apple 쪽 revoke 대상의 코드 소유권 검증은 의도적으로 이 단언의 범위 밖이다.
+    }
+
+    @Test
+    @DisplayName("빈 문자열 코드는 application/json 본문에서 가공 없이 revoker로 전달한다")
+    void withdraw_forwards_empty_apple_authorization_code() throws Exception {
+        withdraw(MEMBER_A, "").andExpect(status().isOk());
+
+        assertThat(authUserCount(MEMBER_A)).isZero();
+        then(appleTokenRevoker).should().revoke("");
+    }
+
+    @Test
+    @DisplayName("Apple authorization code를 application/json 본문에서 revoker로 전달한다")
+    void withdraw_forwards_apple_authorization_code() throws Exception {
+        withdraw(MEMBER_A, APPLE_AUTHORIZATION_CODE).andExpect(status().isOk());
+
+        assertThat(authUserCount(MEMBER_A)).isZero();
+        then(appleTokenRevoker).should().revoke(APPLE_AUTHORIZATION_CODE);
+    }
+
+    @Test
+    @DisplayName("Apple revoke가 FAILED여도 200을 반환하고 계정 삭제를 유지한다")
+    void withdraw_keeps_deletion_when_apple_revoke_fails() throws Exception {
+        given(appleTokenRevoker.revoke(APPLE_AUTHORIZATION_CODE)).willReturn(RevokeOutcome.FAILED);
+
+        withdraw(MEMBER_A, APPLE_AUTHORIZATION_CODE).andExpect(status().isOk());
+
+        assertThat(authUserCount(MEMBER_A)).isZero();
+        then(appleTokenRevoker).should().revoke(APPLE_AUTHORIZATION_CODE);
+    }
+
+    @Test
+    @DisplayName("Apple revoke는 삭제 트랜잭션 커밋 뒤 이미 삭제된 행을 관측하며 실행된다")
+    void withdraw_revokes_after_delete_transaction_commits() throws Exception {
+        given(appleTokenRevoker.revoke(APPLE_AUTHORIZATION_CODE)).willAnswer(invocation -> {
+            assertThat(TransactionSynchronizationManager.isActualTransactionActive())
+                    .isFalse();
+            assertThat(authUserCount(MEMBER_A)).isZero();
+            return RevokeOutcome.REVOKED;
+        });
+
+        withdraw(MEMBER_A, APPLE_AUTHORIZATION_CODE).andExpect(status().isOk());
+
+        then(appleTokenRevoker).should().revoke(APPLE_AUTHORIZATION_CODE);
+    }
+
+    @Test
+    @DisplayName("513자 Apple authorization code는 400 ErrorResponse이며 계정을 삭제하지 않는다")
+    void withdraw_rejects_apple_authorization_code_over_512_characters() throws Exception {
+        String request = "{\"appleAuthorizationCode\":\"" + "a".repeat(513) + "\"}";
+
+        mockMvc.perform(delete("/api/v1/members/me")
+                        .with(memberJwt(MEMBER_A))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+
+        assertThat(authUserCount(MEMBER_A)).isEqualTo(1L);
+        then(appleTokenRevoker).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("빈 application/json 본문은 본문 없음으로 취급해 null을 전달한다")
+    void withdraw_with_empty_json_body_passes_null_code() throws Exception {
+        mockMvc.perform(delete("/api/v1/members/me")
+                        .with(memberJwt(MEMBER_A))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(""))
+                .andExpect(status().isOk());
+
+        assertThat(authUserCount(MEMBER_A)).isZero();
+        then(appleTokenRevoker).should().revoke(null);
+    }
+
+    @Test
+    @DisplayName("Content-Type 없는 JSON 본문은 관측된 Spring 동작대로 본문 없음으로 취급한다")
+    void withdraw_with_body_but_without_content_type_passes_null_code() throws Exception {
+        mockMvc.perform(delete("/api/v1/members/me")
+                        .with(memberJwt(MEMBER_A))
+                        .content(withdrawalRequest(APPLE_AUTHORIZATION_CODE)))
+                .andExpect(status().isOk());
+
+        assertThat(authUserCount(MEMBER_A)).isZero();
+        then(appleTokenRevoker).should().revoke(null);
+    }
+
+    @Test
+    @DisplayName("코드 포함 탈퇴 요청 전 구간은 member_id와 authorizationCode를 로그에 남기지 않는다")
+    void withdraw_does_not_log_member_id_or_apple_authorization_code() throws Exception {
+        Logger rootLogger = (Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        rootLogger.addAppender(appender);
+        try {
+            withdraw(MEMBER_A, APPLE_AUTHORIZATION_CODE).andExpect(status().isOk());
+        } finally {
+            rootLogger.detachAppender(appender);
+        }
+
+        assertThat(appender.list)
+                .extracting(MemberWithdrawalControllerIntegrationTest::logText)
+                .noneMatch(
+                        message -> message.contains(MEMBER_A.toString()) || message.contains(APPLE_AUTHORIZATION_CODE));
     }
 
     @Test
@@ -222,8 +359,25 @@ class MemberWithdrawalControllerIntegrationTest {
                 .andExpect(status().isOk());
     }
 
-    private org.springframework.test.web.servlet.ResultActions withdraw(UUID memberId) throws Exception {
+    private ResultActions withdraw(UUID memberId) throws Exception {
         return mockMvc.perform(delete("/api/v1/members/me").with(memberJwt(memberId)));
+    }
+
+    private ResultActions withdraw(UUID memberId, String appleAuthorizationCode) throws Exception {
+        return mockMvc.perform(delete("/api/v1/members/me")
+                .with(memberJwt(memberId))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(withdrawalRequest(appleAuthorizationCode)));
+    }
+
+    private static String withdrawalRequest(String appleAuthorizationCode) {
+        return "{\"appleAuthorizationCode\":\"" + appleAuthorizationCode + "\"}";
+    }
+
+    private static String logText(ILoggingEvent event) {
+        String throwable =
+                event.getThrowableProxy() == null ? "" : ThrowableProxyUtil.asString(event.getThrowableProxy());
+        return event.getFormattedMessage() + throwable;
     }
 
     private static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
