@@ -29,7 +29,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Set up Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3
@@ -75,7 +75,7 @@ jobs:
     steps:
       # upload-sarif 가 워크스페이스를 git 리포로 기대하는 경로가 있다. contents: read 를 유지하는 이유.
       - name: Checkout
-        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       # packages: read 는 토큰 권한일 뿐 인증 주체가 아니고, 별도 잡이라 publish 의 로그인 상태를 물려받지 않는다.
       # 지금은 패키지가 public 이라 익명 pull 로도 되지만, 가시성이 바뀌면 조용히 스캔 0건이 된다.
