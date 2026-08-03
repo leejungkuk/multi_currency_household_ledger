@@ -7,8 +7,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.self.multi_currency_household_ledger.AuthUserFixture;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.UUID;
 import java.util.regex.Pattern;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -55,6 +57,8 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
         })
 class JsonWireBaselineIntegrationTest {
 
+    private static final UUID MEMBER_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
+
     /**
      * {@code ApiResponse}·{@code ErrorResponse} 는 주입 {@code Clock} 이 아니라 {@code LocalDateTime.now(KST)} 를
      * 직접 부르므로 고정할 수 없다. 자릿수 마스킹은 {@code ISO_LOCAL_DATE_TIME} 의 소수부 길이가 0/3/6/9 로
@@ -85,7 +89,8 @@ class JsonWireBaselineIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        jdbcTemplate.update("delete from ledger_entry");
+        AuthUserFixture authUsers = new AuthUserFixture(jdbcTemplate);
+        authUsers.reset(MEMBER_ID);
         jdbcTemplate.update("delete from exchange_rate");
         // id 를 정규식으로 마스킹하는 대신 identity 를 되감아 골든이 실제 id 를 그대로 담게 한다.
         // 마스킹은 봉투의 자동 생성 id 와 시드 카탈로그의 고정 id 를 구분하지 못해 후자의 검증까지 지운다.
@@ -202,7 +207,7 @@ class JsonWireBaselineIntegrationTest {
     }
 
     private static RequestPostProcessor token() {
-        return jwt().jwt(t -> t.subject("00000000-0000-0000-0000-000000000001").audience(List.of("authenticated")));
+        return jwt().jwt(t -> t.subject(MEMBER_ID.toString()).audience(List.of("authenticated")));
     }
 
     @TestConfiguration
@@ -211,7 +216,7 @@ class JsonWireBaselineIntegrationTest {
         @Bean
         @ServiceConnection
         PostgreSQLContainer postgresContainer() {
-            return new PostgreSQLContainer("postgres:16-alpine");
+            return new PostgreSQLContainer("postgres:16-alpine").withInitScript("testcontainers/auth-users-stub.sql");
         }
     }
 }

@@ -23,7 +23,8 @@ class LedgerUpdatedAtMigrationTest {
     private static final String MIGRATION_LOCATION = "classpath:db/migration";
 
     @Container
-    private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine");
+    private static final PostgreSQLContainer POSTGRES =
+            new PostgreSQLContainer("postgres:16-alpine").withInitScript("testcontainers/auth-users-stub.sql");
 
     @Test
     @DisplayName("V8은 legacy NULL updated_at을 백필하고 NOT NULL과 델타 pull 인덱스를 적용한다")

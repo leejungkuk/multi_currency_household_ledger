@@ -5,9 +5,9 @@ import static org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTest
 
 import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
 import com.self.multi_currency_household_ledger.exchange.service.ExchangeRateService;
+import com.self.multi_currency_household_ledger.ledger.AuthUserFixture;
 import com.self.multi_currency_household_ledger.ledger.TestJpaConfig;
 import com.self.multi_currency_household_ledger.ledger.TestLedgerApplication;
-import com.self.multi_currency_household_ledger.ledger.domain.LedgerEntryRepository;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerRestoreResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryRequest;
 import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryResponse;
@@ -29,6 +29,7 @@ import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabas
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -53,7 +54,7 @@ class LedgerRestoreServiceIntegrationTest {
     private LedgerService ledgerService;
 
     @Autowired
-    private LedgerEntryRepository ledgerEntryRepository;
+    private JdbcTemplate jdbcTemplate;
 
     @MockitoBean
     @SuppressWarnings("UnusedVariable")
@@ -61,7 +62,7 @@ class LedgerRestoreServiceIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        ledgerEntryRepository.deleteAll();
+        new AuthUserFixture(jdbcTemplate).reset(MEMBER_ID, OTHER_MEMBER_ID);
     }
 
     @Test

@@ -5,6 +5,7 @@ import static org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTest
 
 import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
 import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRate;
+import com.self.multi_currency_household_ledger.ledger.AuthUserFixture;
 import com.self.multi_currency_household_ledger.ledger.TestJpaConfig;
 import com.self.multi_currency_household_ledger.ledger.TestLedgerApplication;
 import jakarta.persistence.EntityManager;
@@ -34,6 +35,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 class LedgerEntryRepositoryTest {
 
     private static final UUID MEMBER_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
+    private static final UUID OTHER_MEMBER_ID = UUID.fromString("00000000-0000-0000-0000-000000000002");
     private static final LocalDate TODAY = LocalDate.of(2026, 4, 6);
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
     private static final Clock FIXED_CLOCK = Clock.fixed(Instant.parse("2026-04-05T15:00:00Z"), KST);
@@ -59,6 +61,7 @@ class LedgerEntryRepositoryTest {
 
     @BeforeEach
     void setUp() {
+        new AuthUserFixture(jdbcTemplate).reset(MEMBER_ID, OTHER_MEMBER_ID);
         category = categoryRepository.save(
                 new Category(TransactionType.EXPENSE, "TEST_FOOD", "테스트 식비", "Test Food", "icon-food", 100));
         incomeCategory = categoryRepository.save(

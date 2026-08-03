@@ -23,4 +23,7 @@ tasks.named('processTestResources') {
     from("${rootProject.projectDir}/module-api/src/main/resources") {
         include 'db/migration/**'
     }
+    from("${rootProject.projectDir}/module-api/src/test/resources") {
+        include 'testcontainers/**'
+    }
 }

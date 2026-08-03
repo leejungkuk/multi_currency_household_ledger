@@ -6,9 +6,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.self.multi_currency_household_ledger.AuthUserFixture;
 import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
 import com.self.multi_currency_household_ledger.exchange.service.ExchangeRateService;
-import com.self.multi_currency_household_ledger.ledger.domain.LedgerEntryRepository;
 import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryRequest;
 import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryResponse;
 import com.self.multi_currency_household_ledger.ledger.service.LedgerService;
@@ -59,9 +59,6 @@ class LedgerChangesControllerIntegrationTest {
     private LedgerService ledgerService;
 
     @Autowired
-    private LedgerEntryRepository ledgerEntryRepository;
-
-    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @MockitoBean
@@ -74,7 +71,8 @@ class LedgerChangesControllerIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        ledgerEntryRepository.deleteAll();
+        AuthUserFixture authUsers = new AuthUserFixture(jdbcTemplate);
+        authUsers.reset(MEMBER_A, MEMBER_B);
     }
 
     @Test
@@ -197,7 +195,7 @@ class LedgerChangesControllerIntegrationTest {
         @Bean
         @ServiceConnection
         PostgreSQLContainer postgresContainer() {
-            return new PostgreSQLContainer("postgres:16-alpine");
+            return new PostgreSQLContainer("postgres:16-alpine").withInitScript("testcontainers/auth-users-stub.sql");
         }
     }
 }

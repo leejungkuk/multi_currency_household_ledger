@@ -171,7 +171,7 @@ class RateLimitIntegrationTest {
         @Bean
         @ServiceConnection
         PostgreSQLContainer postgresContainer() {
-            return new PostgreSQLContainer("postgres:16-alpine");
+            return new PostgreSQLContainer("postgres:16-alpine").withInitScript("testcontainers/auth-users-stub.sql");
         }
 
         /**

@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.tuple;
 import static org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase.Replace.NONE;
 
 import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
+import com.self.multi_currency_household_ledger.ledger.AuthUserFixture;
 import com.self.multi_currency_household_ledger.ledger.TestJpaConfig;
 import com.self.multi_currency_household_ledger.ledger.TestLedgerApplication;
 import java.math.BigDecimal;
@@ -17,6 +18,7 @@ import java.time.ZoneId;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,6 +35,10 @@ class CatalogSeedMigrationTest {
 
     private static final Clock FIXED_CLOCK =
             Clock.fixed(Instant.parse("2026-06-01T00:00:00Z"), ZoneId.of("Asia/Seoul"));
+    private static final UUID MEMBER_101 = UUID.fromString("00000000-0000-0000-0000-000000000101");
+    private static final UUID MEMBER_102 = UUID.fromString("00000000-0000-0000-0000-000000000102");
+    private static final UUID MEMBER_103 = UUID.fromString("00000000-0000-0000-0000-000000000103");
+    private static final UUID MEMBER_104 = UUID.fromString("00000000-0000-0000-0000-000000000104");
 
     @Autowired
     private CategoryRepository categoryRepository;
@@ -45,6 +51,11 @@ class CatalogSeedMigrationTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @BeforeEach
+    void setUp() {
+        new AuthUserFixture(jdbcTemplate).reset(MEMBER_101, MEMBER_102, MEMBER_103, MEMBER_104);
+    }
 
     @Test
     @DisplayName("Flyway 시드는 디자인 정본 카테고리 21개와 자산 6개를 명시 id로 저장한다")

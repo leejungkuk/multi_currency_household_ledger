@@ -10,6 +10,7 @@ import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
 import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRate;
 import com.self.multi_currency_household_ledger.exchange.exception.ExchangeErrorCode;
 import com.self.multi_currency_household_ledger.exchange.service.ExchangeRateService;
+import com.self.multi_currency_household_ledger.ledger.AuthUserFixture;
 import com.self.multi_currency_household_ledger.ledger.TestJpaConfig;
 import com.self.multi_currency_household_ledger.ledger.TestLedgerApplication;
 import com.self.multi_currency_household_ledger.ledger.domain.LedgerEntry;
@@ -87,7 +88,7 @@ class LedgerRecalculationIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        ledgerEntryRepository.deleteAll();
+        new AuthUserFixture(jdbcTemplate).reset(MEMBER_ID);
         jdbcTemplate.update("delete from exchange_rate");
     }
 

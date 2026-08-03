@@ -7,9 +7,9 @@ import static org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTest
 import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
 import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRate;
 import com.self.multi_currency_household_ledger.exchange.service.ExchangeRateService;
+import com.self.multi_currency_household_ledger.ledger.AuthUserFixture;
 import com.self.multi_currency_household_ledger.ledger.TestJpaConfig;
 import com.self.multi_currency_household_ledger.ledger.TestLedgerApplication;
-import com.self.multi_currency_household_ledger.ledger.domain.LedgerEntryRepository;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerChangesResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryRequest;
 import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryResponse;
@@ -59,9 +59,6 @@ class LedgerChangesServiceIntegrationTest {
     private LedgerRecalculationService ledgerRecalculationService;
 
     @Autowired
-    private LedgerEntryRepository ledgerEntryRepository;
-
-    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @MockitoBean
@@ -69,7 +66,7 @@ class LedgerChangesServiceIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        ledgerEntryRepository.deleteAll();
+        new AuthUserFixture(jdbcTemplate).reset(MEMBER_ID);
         jdbcTemplate.update("delete from exchange_rate");
     }
 
