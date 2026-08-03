@@ -1,6 +1,7 @@
 package com.self.multi_currency_household_ledger.ledger.service;
 
 import com.self.multi_currency_household_ledger.common.exception.BusinessException;
+import com.self.multi_currency_household_ledger.common.exception.DatabaseConstraints;
 import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRate;
 import com.self.multi_currency_household_ledger.exchange.service.ExchangeRateService;
 import com.self.multi_currency_household_ledger.ledger.domain.Asset;
@@ -113,6 +114,9 @@ public class LedgerService {
             }
             ledgerEntryRepository.flush();
         } catch (DataIntegrityViolationException e) {
+            if (DatabaseConstraints.isLedgerEntryMemberForeignKeyViolation(e)) {
+                throw e;
+            }
             throw importConflict();
         }
         return new ImportLedgerEntriesResponse(entries);
