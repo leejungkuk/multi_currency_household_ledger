@@ -2,6 +2,12 @@ dependencies {
     implementation project(':module-common')
 
     implementation 'org.springframework.boot:spring-boot-starter-web'
+    // Boot 4 는 RestClientAutoConfiguration 을 starter-web 밖으로 뺐다 — RestClient.Builder 빈이 사라진다.
+    implementation 'org.springframework.boot:spring-boot-starter-restclient'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'com.nimbusds:nimbus-jose-jwt:10.9'
     implementation 'io.micrometer:micrometer-core'
+
+    testImplementation 'org.wiremock:wiremock-standalone:3.13.2'
 }

@@ -95,6 +95,16 @@ exchange:
     connect-timeout: ${EXIMBANK_CONNECT_TIMEOUT:2s}
     read-timeout: ${EXIMBANK_READ_TIMEOUT:5s}
 
+apple:
+  siwa:
+    client-id: ${APPLE_SIWA_CLIENT_ID:}
+    team-id: ${APPLE_SIWA_TEAM_ID:}
+    key-id: ${APPLE_SIWA_KEY_ID:}
+    private-key-base64: ${APPLE_SIWA_PRIVATE_KEY_BASE64:}
+    base-url: ${APPLE_SIWA_BASE_URL:https://appleid.apple.com}
+    connect-timeout: ${APPLE_SIWA_CONNECT_TIMEOUT:2s}
+    read-timeout: ${APPLE_SIWA_READ_TIMEOUT:3s}
+
 ledger:
   recalculation:
     window-days: ${LEDGER_RECALCULATION_WINDOW_DAYS:7}
