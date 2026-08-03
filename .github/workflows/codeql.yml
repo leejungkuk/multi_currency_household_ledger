@@ -1,0 +1,47 @@
+name: codeql
+
+# 비차단이라 PR 시점 결과가 막는 게 없다. 차이는 "언제 보느냐" 뿐인데 PR 대기 시간은 두 배가 되므로
+# main 푸시 + 주 1 회로 돌린다. 코드가 안 변해도 새 룰·새 CVE 기준으로 발견이 늘 수 있어 cron 이 필요하다.
+on:
+  push:
+    branches: [ main ]
+  schedule:
+    - cron: '0 20 * * 0'   # 매주 월요일 05:00 KST (UTC 일요일 20:00)
+  # 도입 직후 "CodeQL 분석이 실제로 올라오는가" 를 크론(최대 7일)까지 기다리지 않고 확인하기 위한 수동 트리거.
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961  # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb  # v6
+
+      # autobuild 는 Gradle 멀티모듈에서 자주 실패한다. 빌드 커맨드를 명시한다.
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@f205ea1c3313d32999d8d6a48b4f6530d4437b38  # v4.37.4
+        with:
+          languages: java-kotlin
+          build-mode: manual
+
+      # init 과 analyze 사이에서 실제로 컴파일돼야 CodeQL DB 가 만들어진다.
+      # 테스트는 build.yml 이 이미 돌렸으므로 제외한다.
+      - name: Build
+        run: ./gradlew build -x test --no-daemon
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@f205ea1c3313d32999d8d6a48b4f6530d4437b38  # v4.37.4

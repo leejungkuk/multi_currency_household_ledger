@@ -1,0 +1,35 @@
+name: dependency-submission
+
+# Gradle 은 락파일 없이는 GitHub 의존성 그래프에 잡히지 않는다. 이 워크플로가 그래프를 채우고,
+# 그래프가 있어야 Dependabot alert 가 실제로 발생한다(없으면 alert 를 켜도 영원히 0 건이다).
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+
+    # 이 잡은 build.gradle 을 평가하고 서드파티 Gradle 플러그인(Spring Boot·Error Prone·Spotless·Lombok)을
+    # 러너에서 실행한다. 그래서 쓰기 권한을 주지 않는다 — 제출(contents: write)은 Gradle 이 돌지 않는
+    # 별도 워크플로가 맡는다(dependency-submission-submit.yml).
+    # 액션 문서가 이 분리를 "untrusted workflow scenario" 의 표준 형태로 제시한다.
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961  # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # 이 액션이 Gradle 셋업을 내장하므로 setup-gradle 을 따로 두지 않는다.
+      # generate-and-upload = 그래프를 만들어 워크플로 아티팩트로만 저장하고, 제출은 하지 않는다.
+      - name: Generate and save dependency graph
+        uses: gradle/actions/dependency-submission@9c971963bec38e04b3d30dcc455b5382be2fdbfb  # v6
+        with:
+          dependency-graph: generate-and-upload
