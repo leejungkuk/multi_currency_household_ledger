@@ -35,7 +35,7 @@ jobs:
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f  # v3
 
       - name: Log in to GHCR
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9  # v3
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -80,7 +80,7 @@ jobs:
       # packages: read 는 토큰 권한일 뿐 인증 주체가 아니고, 별도 잡이라 publish 의 로그인 상태를 물려받지 않는다.
       # 지금은 패키지가 public 이라 익명 pull 로도 되지만, 가시성이 바뀌면 조용히 스캔 0건이 된다.
       - name: Log in to GHCR
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9  # v3
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
