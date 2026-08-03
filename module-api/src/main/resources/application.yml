@@ -36,6 +36,20 @@ spring:
       # 필드가 추가된 신버전 앱이 같은 서버를 쓰는 상황에서 그대로 장애다. 이 줄이 뒤에 적용돼 그것만 되돌린다.
       fail-on-unknown-properties: false
 
+logging:
+  level:
+    # Hibernate 는 SQL 예외를 던지기 전에 이 로거로 먼저 WARN 을 남기는데, PostgreSQL 제약 위반 메시지는
+    # 위반한 키 값을 그대로 담는다 — `Detail: Key (member_id)=(<uuid>) is not present in table "users"`.
+    # 즉 탈퇴로 파기하겠다고 약속한 UUID 를 파기 실패 로그가 붙잡고(Loki 14일 잔존), 살아 있는 회원의
+    # member_id 도 sync 유니크 경합마다 같은 경로로 샌다. 애플리케이션 코드로는 막을 수 없다 —
+    # 우리 예외 핸들러가 도는 시점에는 이미 기록된 뒤다.
+    #
+    # 끄더라도 진단은 잃지 않는다. 500 으로 나가는 무결성 위반은 GlobalExceptionHandler 의 캐치올이
+    # 예외 전체(PSQLException 메시지 포함)를 ERROR 로 남긴다. 이 로거를 꺼서 사라지는 것은
+    # 의도적으로 삼키는 경로(import 409·sync 유니크 회복·환율 중복 skip)의 중복 기록뿐이고,
+    # 셋 다 기대된 조건이라 진단 대상이 아니다.
+    org.hibernate.orm.jdbc.error: 'OFF'
+
 server:
   # 앱은 Caddy 뒤에서만 서비스된다(컨테이너가 8080 을 호스트로 퍼블리시하지 않는다). 이게 없으면 모든 요청의
   # remote address 가 Caddy 컨테이너 IP 로, 스킴이 http 로 보인다 — 접속 IP 로 판단하는 것(레이트 리밋·차단·감사)이

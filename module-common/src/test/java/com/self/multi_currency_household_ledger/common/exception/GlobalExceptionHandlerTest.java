@@ -10,10 +10,12 @@ import com.self.multi_currency_household_ledger.common.dto.ErrorResponse;
 import jakarta.validation.ConstraintViolationException;
 import java.io.InputStream;
 import java.lang.reflect.Method;
+import java.sql.SQLException;
 import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpInputMessage;
 import org.springframework.http.HttpStatus;
@@ -90,6 +92,47 @@ class GlobalExceptionHandlerTest {
         ErrorResponse body = response.getBody();
         assertThat(body).isNotNull();
         assertThat(body.code()).isEqualTo("INTERNAL_ERROR");
+    }
+
+    @Test
+    @DisplayName("삭제된 회원의 FK 위반은 로그 없이 401 UNAUTHORIZED로 변환된다")
+    void handleDataIntegrityViolation_maps_member_fk_to_401_without_logging_member_id() {
+        Logger logger = (Logger) LoggerFactory.getLogger(GlobalExceptionHandler.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        ResponseEntity<ErrorResponse> response;
+        try {
+            response = handler.handleDataIntegrityViolation(constraintViolation("fk_ledger_entry_member"));
+        } finally {
+            logger.detachAppender(appender);
+        }
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().code()).isEqualTo("UNAUTHORIZED");
+        assertThat(appender.list).isEmpty();
+    }
+
+    @Test
+    @DisplayName("알 수 없는 무결성 위반은 기존처럼 500을 반환하고 ERROR 로그를 남긴다")
+    void handleDataIntegrityViolation_preserves_catch_all_for_unknown_constraint() {
+        Logger logger = (Logger) LoggerFactory.getLogger(GlobalExceptionHandler.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        ResponseEntity<ErrorResponse> response;
+        try {
+            response = handler.handleDataIntegrityViolation(constraintViolation("fk_unknown"));
+        } finally {
+            logger.detachAppender(appender);
+        }
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().code()).isEqualTo("INTERNAL_ERROR");
+        assertThat(appender.list).hasSize(1);
+        assertThat(appender.list.getFirst().getLevel()).isEqualTo(Level.ERROR);
     }
 
     @Test
@@ -297,5 +340,12 @@ class GlobalExceptionHandlerTest {
 
         assertThat(resolved).isNotNull();
         assertThat(resolved.getName()).isEqualTo("handleOptimisticLockingFailure");
+    }
+
+    private static DataIntegrityViolationException constraintViolation(String constraintName) {
+        SQLException sqlException = new SQLException("Key (member_id)=(secret-member-id) is not present");
+        var cause = new org.hibernate.exception.ConstraintViolationException(
+                "insert failed", sqlException, "insert into ledger_entry", constraintName);
+        return new DataIntegrityViolationException("data integrity violation", cause);
     }
 }

@@ -72,7 +72,7 @@ class ArchitectureTest {
             .should()
             .dependOnClassesThat()
             .resideInAnyPackage("..exchange..", "..ledger..")
-            // module-member 는 아직 빈 스캐폴드 — 클래스 0개여도 규칙 자체는 유지한다
+            // 패키지 필터가 리팩터링 중 일시적으로 비어도 의존 방향 규칙 자체는 유지한다
             .allowEmptyShould(true);
 
     // ── 계층 규칙: Rich Domain — domain 은 상위 계층을 모른다 ───────────────────

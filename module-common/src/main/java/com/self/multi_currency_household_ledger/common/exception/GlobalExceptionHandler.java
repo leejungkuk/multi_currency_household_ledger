@@ -4,6 +4,7 @@ import com.self.multi_currency_household_ledger.common.dto.ErrorResponse;
 import jakarta.validation.ConstraintViolationException;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -98,6 +99,16 @@ public class GlobalExceptionHandler {
         log.warn("Optimistic locking failure: {}", e.getMessage());
         return ResponseEntity.status(errorCode.getHttpStatus())
                 .body(ErrorResponse.of(errorCode.getCode(), errorCode.getMessage()));
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleDataIntegrityViolation(DataIntegrityViolationException e) {
+        if (DatabaseConstraints.isLedgerEntryMemberForeignKeyViolation(e)) {
+            ErrorCode errorCode = ErrorCode.Common.UNAUTHORIZED;
+            return ResponseEntity.status(errorCode.getHttpStatus())
+                    .body(ErrorResponse.of(errorCode.getCode(), errorCode.getMessage()));
+        }
+        return handleException(e);
     }
 
     /**

@@ -30,6 +30,7 @@ import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryReques
 import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryResponse;
 import com.self.multi_currency_household_ledger.ledger.exception.LedgerErrorCode;
 import java.math.BigDecimal;
+import java.sql.SQLException;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -148,7 +149,7 @@ class LedgerServiceTest {
         given(categoryRepository.findById(1L)).willReturn(Optional.of(category));
         given(assetRepository.findById(1L)).willReturn(Optional.of(asset));
         given(ledgerEntryRepository.save(any(LedgerEntry.class)))
-                .willThrow(new DataIntegrityViolationException("duplicate client entry"));
+                .willThrow(constraintViolation("uq_ledger_entry_member_client_entry"));
 
         assertThatThrownBy(() -> ledgerService.importEntries(request, MEMBER_ID))
                 .isInstanceOf(BusinessException.class)
@@ -159,6 +160,26 @@ class LedgerServiceTest {
         then(ledgerEntryRepository).should().save(any(LedgerEntry.class));
         // 항목별 조회로 되돌아가면 요청 1건이 항목 수만큼 왕복해 커넥션을 붙잡는다.
         then(ledgerEntryRepository).should(never()).findByMemberIdAndClientEntryId(any(), any());
+    }
+
+    @Test
+    @DisplayName("import 저장 중 탈퇴 회원 FK 위반은 401 핸들러가 처리하도록 원래 예외를 되던진다")
+    void import_entries_rethrows_member_fk_violation() {
+        UUID clientEntryId = UUID.fromString("10000000-0000-0000-0000-000000000002");
+        ImportLedgerEntriesRequest request =
+                new ImportLedgerEntriesRequest(List.of(new ImportLedgerEntriesRequest.ImportLedgerEntryItem(
+                        clientEntryId, new BigDecimal("100.00"), CurrencyCode.KRW, 1L, 1L, TODAY, "커피")));
+        DataIntegrityViolationException memberFkViolation = constraintViolation("fk_ledger_entry_member");
+
+        given(ledgerEntryRepository.findByMemberIdAndClientEntryIdIn(MEMBER_ID, Set.of(clientEntryId)))
+                .willReturn(List.of());
+        given(ledgerEntryRepository.countByMemberId(MEMBER_ID)).willReturn(0L);
+        given(categoryRepository.findById(1L)).willReturn(Optional.of(category));
+        given(assetRepository.findById(1L)).willReturn(Optional.of(asset));
+        given(ledgerEntryRepository.save(any(LedgerEntry.class))).willThrow(memberFkViolation);
+
+        assertThatThrownBy(() -> ledgerService.importEntries(request, MEMBER_ID))
+                .isSameAs(memberFkViolation);
     }
 
     @Test
@@ -197,6 +218,12 @@ class LedgerServiceTest {
         assertThat(racedEntry.getClientPayloadHash()).isNull();
         then(ledgerEntryRepository).should(times(2)).findByMemberIdAndClientEntryId(MEMBER_ID, clientEntryId);
         then(ledgerSyncInsertService).should().create(MEMBER_ID, request);
+    }
+
+    private static DataIntegrityViolationException constraintViolation(String constraintName) {
+        var cause = new org.hibernate.exception.ConstraintViolationException(
+                "constraint violation", new SQLException("constraint violation"), "insert", constraintName);
+        return new DataIntegrityViolationException("data integrity violation", cause);
     }
 
     // 외화 거래 시 미래 날짜가 주어지면 에러가 발생하는지 확인한다.
