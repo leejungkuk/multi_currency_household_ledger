@@ -15,23 +15,65 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    # permissions 를 선언하는 순간 명시하지 않은 권한은 전부 none 이 된다 — checkout 도 contents: read 가 있어야 돈다.
+    permissions:
+      contents: read
+      security-events: write
+
     # 테스트 DB는 Testcontainers(postgres:16-alpine, @ServiceConnection)가 테스트 프로세스에서
     # 직접 띄운다 — ubuntu-latest 러너에 Docker가 내장돼 있어 별도 서비스 컨테이너가 필요 없다.
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803  # v6
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961  # v5
         with:
           distribution: temurin
           java-version: '21'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v6
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb  # v6
 
       # 시크릿(exchange.eximbank.api-key 등)은 불필요하다: @SpringBootTest도 테스트 프로퍼티로
       # 더미 키를 주입하며 외부 API를 호출하지 않는다.
       - name: Build (Spotless + compile + test)
         run: ./gradlew build --no-daemon
+
+      # 취약점을 "찾았을 때" 의 반환코드는 0 = 비차단(S1). 이것과 별개로 DB 다운로드 실패·rate limit·타임아웃은
+      # trivy 가 non-zero 를 내 잡을 빨갛게 만들므로 continue-on-error 를 따로 건다(D-b′).
+      # 한계를 명시적으로 감수한다: 스캔이 실패하면 SARIF 가 없어 "발견 0건" 과 구분되지 않는다.
+      - name: Scan bootJar for known vulnerabilities (non-blocking)
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          # 파일명이 아니라 디렉터리를 스캔한다 — 버전이 바뀌면 파일명 하드코딩은 조용히 0건이 된다.
+          # 같은 디렉터리의 -plain.jar 도 함께 잡히는 것은 의도한 것이다(SARIF 중복제거가 흡수한다).
+          scan-type: fs
+          scan-ref: module-api/build/libs
+          # 시크릿 스캔은 GitHub secret scanning + push protection 이 이미 담당한다. 중복 알림을 만들지 않는다.
+          scanners: vuln
+          format: sarif
+          output: trivy-fs.sarif
+          exit-code: '0'
+          # ⚠️ Dependabot 은 uses: 의 SHA 만 갱신한다. 이 바이너리 버전은 with: 입력이라 자동으로 오르지 않으므로
+          # trivy-action 범프 PR 이 올 때 함께 올린다. 방치하면 DB 스키마가 앞서 나가 다운로드가 실패하고,
+          # 이 잡은 continue-on-error 라 그 실패가 조용히 무스캔이 된다.
+          version: v0.72.0
+
+      # Dependabot 브랜치의 push 런만 GITHUB_TOKEN 이 읽기 전용으로 강등돼 업로드가 403 이다.
+      # 같은 브랜치의 pull_request 런은 정상 업로드된다 — Code Scanning 은 pull_request 이벤트에 명시적 예외를 둔다
+      # ("code scanning always allows the uploading of results when the pull_request event triggers the action run").
+      # 포크 여부로 가드하지 마라 — 정상 PR 결과까지 버린다.
+      - name: Upload Trivy (fs) results
+        if: >-
+          always()
+          && hashFiles('trivy-fs.sarif') != ''
+          && !(github.event_name == 'push' && github.actor == 'dependabot[bot]')
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@f205ea1c3313d32999d8d6a48b4f6530d4437b38  # v4.37.4
+        with:
+          sarif_file: trivy-fs.sarif
+          # category 가 있어야 Security 탭에서 fs 분석과 image 분석이 별개로 구분된다(§5 판정의 전제).
+          category: trivy-fs
