@@ -49,7 +49,7 @@ class DependencySecurityFloorTest {
     private static final String POSTGRESQL_FLOOR = "42.7.12";
 
     /** {@code ext['jackson-2-bom.version']} 이 BOM 값 2.21.4 를 끌어올린 값. CVE-2026-59889 · CVE-2026-54515 · GHSA-mhm7-754m-9p8w. */
-    private static final String JACKSON2_FLOOR = "2.21.4";
+    private static final String JACKSON2_FLOOR = "2.21.5";
 
     /** {@code ext['jackson-bom.version']} 이 BOM 값 3.1.4 를 끌어올린 값. CVE-2026-59889. */
     private static final String JACKSON3_FLOOR = "3.1.5";

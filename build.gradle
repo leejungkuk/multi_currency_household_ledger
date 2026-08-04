@@ -34,7 +34,7 @@ subprojects {
     // 제거 조건: Boot BOM 이 이 버전 이상을 담게 되면 해당 줄을 지운다.
     // 확인: ./gradlew :module-api:dependencyInsight --dependency <coord> --configuration runtimeClasspath
     ext['postgresql.version'] = '42.7.12'      // CVE-2026-54291 (HIGH, 채널 바인딩 조용한 다운그레이드)
-    ext['jackson-2-bom.version'] = '2.21.4'    // CVE-2026-59889 · CVE-2026-54515 · GHSA-mhm7-754m-9p8w
+    ext['jackson-2-bom.version'] = '2.21.5'    // CVE-2026-59889 · CVE-2026-54515 · GHSA-mhm7-754m-9p8w
     ext['jackson-bom.version'] = '3.1.5'       // CVE-2026-59889
 
     dependencyManagement {

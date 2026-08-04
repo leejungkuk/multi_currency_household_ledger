@@ -105,6 +105,7 @@ jobs:
           # rootfs: fs 는 매니페스트·락파일만 보고 jar 를 스캔하지 않는다.
           # --exit-code 2: 필터를 통과한 발견에만 이 값이 나온다. 그래서 아래 case 는 2 만 차단하고 나머지 오류는 비차단으로 흘린다.
           trivy rootfs --scanners vuln --severity CRITICAL,HIGH \
+            --cache-dir /tmp/e2e-cold-cache --db-repository ghcr.io/aquasecurity/nonexistent-db \
             --exit-code 2 module-api/build/libs/ || code=$?
           case "${code:-0}" in
             0) echo "차단 대상 없음" ;;
