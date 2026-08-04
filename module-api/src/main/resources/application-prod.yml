@@ -2,7 +2,12 @@
 #
 # 접속 정보·시크릿은 이 파일에 두지 않는다 — 전부 환경변수로 주입한다(배포 문서 참고).
 # 필수: SPRING_DATASOURCE_URL / USERNAME / PASSWORD, SUPABASE_JWT_ISSUER_URI,
-#       EXCHANGE_EXIMBANK_API_KEY, WONI_CORS_ALLOWED_ORIGINS
+#       EXCHANGE_EXIMBANK_API_KEY, WONI_CORS_ALLOWED_ORIGINS, APPLE_SIWA_CLIENT_ID,
+#       APPLE_SIWA_TEAM_ID, APPLE_SIWA_KEY_ID, APPLE_SIWA_PRIVATE_KEY_BASE64
+
+apple:
+  siwa:
+    required: true
 
 # actuator 바인딩을 전 인터페이스로 되돌린다. 기본값(application.yml)은 루프백인데, 컨테이너 안에서
 # 루프백에 묶으면 같은 docker 네트워크의 수집기가 9091 에 붙지 못해 지표 수집이 끊긴다.
