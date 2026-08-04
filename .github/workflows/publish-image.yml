@@ -104,6 +104,10 @@ jobs:
           format: sarif
           output: trivy-image.sarif
           exit-code: '0'
+          # OS 패키지 발견은 전부 Fixed Version 이 비어 있어 apt-get upgrade 로도 base 재빌드로도 고칠 수 없다 —
+          # 조치 불가능한 alert 이 쌓이면 고칠 수 있는 것이 묻힌다(패치가 나오면 다음 스캔에서 자동으로 다시 뜬다).
+          # bootJar(build.yml)에는 켜지 않는다: Java 라이브러리는 unfixed 의 의미가 달라 대개 패치가 존재한다.
+          ignore-unfixed: true
           # ⚠️ Dependabot 은 uses: 의 SHA 만 갱신한다. 이 바이너리 버전은 with: 입력이라 자동으로 오르지 않으므로
           # trivy-action 범프 PR 이 올 때 함께 올린다. 방치하면 DB 스키마가 앞서 나가 다운로드가 실패한다.
           version: v0.72.0
