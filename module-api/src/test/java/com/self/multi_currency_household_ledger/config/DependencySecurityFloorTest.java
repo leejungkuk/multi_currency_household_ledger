@@ -20,6 +20,17 @@ import org.springframework.security.web.SecurityFilterChain;
  * 끌어내려도 통과하기 때문이다 — 실제로 Boot 4 전환 직전까지 있던 {@code ext['tomcat.version'] = '10.1.55'} 가
  * 그 형태의 지뢰였다(BOM 프로퍼티 하드 오버라이드라 Tomcat 11 을 10.1.55 로 강제 다운그레이드한다).
  *
+ * <p><b>단, postgresql · jackson 2.x · jackson 3.x 3종은 그 규칙의 예외로 override 값을 하한으로 쓴다.</b>
+ * 위 규칙은 override 가 버전을 <b>내리는</b> 방향일 때의 것이고, 이 3종은 루트 {@code build.gradle} 의
+ * {@code ext} 가 BOM 값(42.7.11 / 2.21.4 / 3.1.4)을 CVE 패치 라인으로 <b>올린</b> 것이라 BOM 값을 하한으로
+ * 잡으면 override 를 지워도 통과한다 — 지키려는 대상이 하한을 통과해버리면 가드가 아니다.
+ *
+ * <p><b>이 3종의 가드가 잡는 것과 못 잡는 것.</b> 잡는 것은 <b>현재 패치 하한의 회귀</b>다 — 누가 {@code ext}
+ * 를 지우거나 BOM 이 되돌아가면 빨개진다. 못 잡는 것은 <b>stale pin</b> 이다 — 새 CVE 가 나와 42.7.13 이
+ * 필요해져도 이 테스트는 42.7.12 에서 계속 그린이고, BOM 이 우리 pin 보다 높은 버전을 담게 돼도 pin 이 이긴
+ * 상태를 알려주지 않는다. 그쪽 안전망은 Dependabot 이 pin 된 버전에 다시 alert 을 띄우는 것이다. 이 테스트를
+ * "CVE 가드"로 읽으면 거짓 안전감이 된다.
+ *
  * <p>nimbus 쪽은 {@link JwtClaimSetParsingSecurityTest} 가 거동으로 잡으므로 여기서 중복하지 않는다.
  */
 class DependencySecurityFloorTest {
@@ -33,6 +44,15 @@ class DependencySecurityFloorTest {
 
     /** 현재 BOM(Boot 4.1.0)이 관리하는 값. Servlet 6.1(Tomcat 11) 라인이라 10.1.x 대의 패치는 모두 포함한다. */
     private static final String TOMCAT_FLOOR = "11.0.22";
+
+    /** {@code ext['postgresql.version']} 이 BOM 값 42.7.11 을 끌어올린 값. CVE-2026-54291(HIGH, 채널 바인딩 조용한 다운그레이드). */
+    private static final String POSTGRESQL_FLOOR = "42.7.12";
+
+    /** {@code ext['jackson-2-bom.version']} 이 BOM 값 2.21.4 를 끌어올린 값. CVE-2026-59889 · CVE-2026-54515 · GHSA-mhm7-754m-9p8w. */
+    private static final String JACKSON2_FLOOR = "2.21.5";
+
+    /** {@code ext['jackson-bom.version']} 이 BOM 값 3.1.4 를 끌어올린 값. CVE-2026-59889. */
+    private static final String JACKSON3_FLOOR = "3.1.5";
 
     @Test
     @DisplayName("spring-security 는 BOM 이 관리하는 라인 아래로 내려가지 않는다")
@@ -54,6 +74,42 @@ class DependencySecurityFloorTest {
 
         assertThat(compare(actual, TOMCAT_FLOOR))
                 .as("tomcat %s < %s — BOM 값이 하드 오버라이드로 끌어내려졌다", actual, TOMCAT_FLOOR)
+                .isNotNegative();
+    }
+
+    @Test
+    @DisplayName("postgresql 드라이버는 override 로 끌어올린 패치 하한 아래로 내려가지 않는다")
+    void postgresql_meets_security_floor() throws ClassNotFoundException {
+        // runtimeOnly 라 testCompileClasspath 에 없다 — 타입으로 참조하면 컴파일이 깨진다.
+        String actual = Class.forName("org.postgresql.Driver").getPackage().getImplementationVersion();
+
+        assertThat(actual).as("postgresql jar 매니페스트에서 버전을 읽지 못했다").isNotNull();
+        assertThat(compare(actual, POSTGRESQL_FLOOR))
+                .as("postgresql %s < %s — ext override 가 사라졌다. CVE-2026-54291 재노출", actual, POSTGRESQL_FLOOR)
+                .isNotNegative();
+    }
+
+    @Test
+    @DisplayName("jackson 2.x 는 override 로 끌어올린 패치 하한 아래로 내려가지 않는다")
+    void jackson2_meets_security_floor() {
+        String actual =
+                com.fasterxml.jackson.databind.ObjectMapper.class.getPackage().getImplementationVersion();
+
+        assertThat(actual).as("jackson-databind 2.x jar 매니페스트에서 버전을 읽지 못했다").isNotNull();
+        assertThat(compare(actual, JACKSON2_FLOOR))
+                .as("jackson-databind %s < %s — ext override 가 사라졌다", actual, JACKSON2_FLOOR)
+                .isNotNegative();
+    }
+
+    @Test
+    @DisplayName("jackson 3.x 는 override 로 끌어올린 패치 하한 아래로 내려가지 않는다")
+    void jackson3_meets_security_floor() {
+        // Jackson 3 는 tools.jackson 네임스페이스라 2.x 와 클래스 이름이 겹친다 — 양쪽 다 정규명으로 쓴다.
+        String actual = tools.jackson.databind.ObjectMapper.class.getPackage().getImplementationVersion();
+
+        assertThat(actual).as("jackson-databind 3.x jar 매니페스트에서 버전을 읽지 못했다").isNotNull();
+        assertThat(compare(actual, JACKSON3_FLOOR))
+                .as("jackson-databind %s < %s — ext override 가 사라졌다", actual, JACKSON3_FLOOR)
                 .isNotNegative();
     }
 
