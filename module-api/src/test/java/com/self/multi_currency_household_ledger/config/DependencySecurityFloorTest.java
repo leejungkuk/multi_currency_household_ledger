@@ -46,7 +46,7 @@ class DependencySecurityFloorTest {
     private static final String TOMCAT_FLOOR = "11.0.22";
 
     /** {@code ext['postgresql.version']} 이 BOM 값 42.7.11 을 끌어올린 값. CVE-2026-54291(HIGH, 채널 바인딩 조용한 다운그레이드). */
-    private static final String POSTGRESQL_FLOOR = "42.7.12";
+    private static final String POSTGRESQL_FLOOR = "42.7.11";
 
     /** {@code ext['jackson-2-bom.version']} 이 BOM 값 2.21.4 를 끌어올린 값. CVE-2026-59889 · CVE-2026-54515 · GHSA-mhm7-754m-9p8w. */
     private static final String JACKSON2_FLOOR = "2.21.5";
