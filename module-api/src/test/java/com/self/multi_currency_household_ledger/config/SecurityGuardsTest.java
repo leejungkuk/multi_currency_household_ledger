@@ -41,7 +41,7 @@ class SecurityGuardsTest {
     }
 
     @Test
-    @DisplayName("명시 origin 만 있으면 통과하고 앞뒤 공백은 제거된다")
+    @DisplayName("명시 origin 만 있으면 통과하고 앞뒤 공백은 제거되며 자격증명 허용은 켜지지 않는다")
     void explicit_origins_are_accepted_and_trimmed() {
         UrlBasedCorsConfigurationSource source = (UrlBasedCorsConfigurationSource)
                 securityConfig.corsConfigurationSource(List.of(" https://woni.app ", "http://localhost:3000"));
@@ -49,5 +49,8 @@ class SecurityGuardsTest {
         CorsConfiguration configuration = source.getCorsConfigurations().get("/**");
         assertThat(configuration).isNotNull();
         assertThat(configuration.getAllowedOrigins()).containsExactly("https://woni.app", "http://localhost:3000");
+        // stateless Bearer JWT 라 자격증명 동반 cross-origin 요청이 필요 없다. 미설정(null)이 기본이라
+        // false 단정은 쓸 수 없고, 막아야 하는 회귀는 true 로 되돌아가는 것 하나다.
+        assertThat(configuration.getAllowCredentials()).isNotEqualTo(Boolean.TRUE);
     }
 }
