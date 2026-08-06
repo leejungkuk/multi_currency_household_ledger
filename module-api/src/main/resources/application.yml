@@ -24,6 +24,10 @@ spring:
       resourceserver:
         jwt:
           issuer-uri: ${SUPABASE_JWT_ISSUER_URI}
+          # issuer-uri 프로퍼티에서 파생시킨다 — 환경변수를 다시 읽지 않는 이유는 application-secret.yml 이
+          # issuer-uri 만 덮어쓰기 때문이다. 그때도 이 값이 따라오고, issuer 와 어긋날 여지가 사라진다.
+          # 왕복을 없애는 근거는 SecurityConfig#jwtDecoder javadoc.
+          jwk-set-uri: ${spring.security.oauth2.resourceserver.jwt.issuer-uri}/.well-known/jwks.json
 
   jackson:
     time-zone: Asia/Seoul

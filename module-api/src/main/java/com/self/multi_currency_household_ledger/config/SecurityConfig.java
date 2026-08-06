@@ -21,9 +21,9 @@ import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.oauth2.core.OAuth2TokenValidator;
 import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
+import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.security.oauth2.jwt.JwtDecoders;
 import org.springframework.security.oauth2.jwt.JwtIssuerValidator;
 import org.springframework.security.oauth2.jwt.JwtTimestampValidator;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
@@ -111,12 +111,34 @@ public class SecurityConfig {
         return source;
     }
 
+    /**
+     * JWKS URI 를 직접 받는다 — {@code JwtDecoders.fromIssuerLocation(...)} 은 <b>빈 생성 시점에</b> 디스커버리 문서를
+     * 동기로 가져오므로, 그 왕복이 늦으면 컨텍스트 생성이 실패하고 앱이 아예 뜨지 않는다(2026-08-06 운영에서 배포·리부팅에
+     * 각 1회 재현 — Supabase {@code /.well-known/openid-configuration} Read timed out). 무인 배포에서는 이것이
+     * "정상 이미지가 롤백·낙인되는" 유일한 경로이기도 하다.
+     *
+     * <p>디스커버리로 얻는 것은 {@code jwks_uri} 하나뿐이고 그 값은 issuer 에서 그대로 파생되므로(설정에서 조립한다),
+     * 왕복을 없애도 잃는 정보가 없다. issuer 검증은 {@code configure(...)} 의 {@link JwtIssuerValidator} 가 토큰의
+     * {@code iss} 클레임에 대해 그대로 수행하므로 검증 강도도 같다. {@code withJwkSetUri} 는 지연 조회라 기동 시점에
+     * 네트워크를 타지 않는다.
+     *
+     * <p>알고리즘은 명시해야 한다 — {@code withJwkSetUri} 는 기본이 <b>RS256 전용</b>이고(디스커버리 경로와 달리
+     * JWKS 의 {@code alg} 를 읽지 않는다), 운영 Supabase JWKS 에는 ES256(EC P-256) 키만 있어서 빼면 모든 실토큰이
+     * 거부된다. {@code discoverJwsAlgorithms()} 는 쓰지 않는다 — {@code build()} 시점에 JWKS 를 동기로 가져와
+     * 위에서 없앤 기동 왕복이 그대로 되살아난다. Supabase 가 서명 알고리즘을 바꾸면 이 줄도 함께 바꿔야 한다.
+     */
     @Bean
     @ConditionalOnMissingBean(JwtDecoder.class)
     JwtDecoder jwtDecoder(
             @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}") String issuerUri,
+            @Value("${spring.security.oauth2.resourceserver.jwt.jwk-set-uri}") String jwkSetUri,
             @Value("${woni.security.jwt.audience}") String audience) {
-        return configure(JwtDecoders.fromIssuerLocation(issuerUri), issuerUri, audience);
+        return configure(
+                NimbusJwtDecoder.withJwkSetUri(jwkSetUri)
+                        .jwsAlgorithm(SignatureAlgorithm.ES256)
+                        .build(),
+                issuerUri,
+                audience);
     }
 
     /**

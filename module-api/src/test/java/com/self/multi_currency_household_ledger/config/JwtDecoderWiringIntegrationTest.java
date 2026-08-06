@@ -8,9 +8,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
-import com.nimbusds.jose.crypto.RSASSASigner;
+import com.nimbusds.jose.crypto.ECDSASigner;
+import com.nimbusds.jose.jwk.Curve;
+import com.nimbusds.jose.jwk.ECKey;
 import com.nimbusds.jose.jwk.JWKSet;
-import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
 import com.self.multi_currency_household_ledger.ledger.controller.CatalogController;
@@ -24,11 +25,12 @@ import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.security.GeneralSecurityException;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
-import java.security.NoSuchAlgorithmException;
-import java.security.interfaces.RSAPrivateKey;
-import java.security.interfaces.RSAPublicKey;
+import java.security.interfaces.ECPrivateKey;
+import java.security.interfaces.ECPublicKey;
+import java.security.spec.ECGenParameterSpec;
 import java.time.Instant;
 import java.util.Date;
 import java.util.List;
@@ -52,6 +54,19 @@ import org.springframework.test.web.servlet.MockMvc;
  * <p>이 테스트가 없으면 {@code jwtDecoder()} 에서 {@code configure(...)} 래핑을 벗겨내도 전 테스트가 그린이다 —
  * 단위 테스트는 {@code configure()} 를 직접 부르므로 그 경로를 지나지 않기 때문이다. JWKS 는 JDK 내장 HTTP 서버로
  * 로컬에서 제공해 외부 네트워크 의존을 만들지 않는다.
+ *
+ * <p>로컬 서버는 <b>디스커버리 문서를 제공하지 않는다</b>(JWKS 경로만 연다). 이것이 "기동 시 issuer 디스커버리를
+ * 타지 않는다"를 고정하는 장치다 — {@code JwtDecoders.fromIssuerLocation(...)} 으로 되돌리면 빈 생성이 404 로
+ * 실패해 이 클래스 전체가 무너진다. 디스커버리 왕복은 운영에서 실제로 timeout 이 나 앱을 못 뜨게 했다(2026-08-06,
+ * 배포·리부팅에서 각 1회). 얻는 것이 {@code jwks_uri} 하나뿐이라 그 값을 설정으로 직접 준다.
+ *
+ * <p>JWKS 를 하필 {@code /.well-known/jwks.json} 에 여는 것은 {@code application.yml} 의 파생식
+ * ({@code issuer-uri} + 이 경로)을 테스트가 실제로 태우기 위해서다 — {@code jwk-set-uri} 를
+ * {@code @DynamicPropertySource} 로 직접 주면 그 식에 오타가 나도 깨지는 테스트가 하나도 없다.
+ *
+ * <p>키는 <b>EC P-256/ES256</b> 으로 만든다. 운영 Supabase JWKS 에는 ES256 키만 있으므로, 여기서 RS256 으로
+ * 서명하면 {@code withJwkSetUri} 의 기본값(RS256 전용)과 우연히 맞아떨어져 "실토큰 전면 거부"를 이 테스트가
+ * 가려버린다.
  */
 @WebMvcTest(controllers = CatalogController.class)
 @Import(SecurityConfig.class)
@@ -127,8 +142,8 @@ class JwtDecoderWiringIntegrationTest {
         }
 
         SignedJWT signedJwt = new SignedJWT(
-                new JWSHeader.Builder(JWSAlgorithm.RS256).keyID(KEY_ID).build(), claims.build());
-        signedJwt.sign(new RSASSASigner((RSAPrivateKey) KEY_PAIR.getPrivate()));
+                new JWSHeader.Builder(JWSAlgorithm.ES256).keyID(KEY_ID).build(), claims.build());
+        signedJwt.sign(new ECDSASigner((ECPrivateKey) KEY_PAIR.getPrivate()));
         return signedJwt.serialize();
     }
 
@@ -144,20 +159,19 @@ class JwtDecoderWiringIntegrationTest {
 
     private static KeyPair generateKeyPair() {
         try {
-            KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
-            generator.initialize(2048);
+            KeyPairGenerator generator = KeyPairGenerator.getInstance("EC");
+            generator.initialize(new ECGenParameterSpec("secp256r1"));
             return generator.generateKeyPair();
-        } catch (NoSuchAlgorithmException e) {
-            throw new IllegalStateException("RSA is unavailable", e);
+        } catch (GeneralSecurityException e) {
+            throw new IllegalStateException("EC P-256 is unavailable", e);
         }
     }
 
     private static HttpServer startIssuerServer() {
         try {
             HttpServer server = HttpServer.create(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0);
-            server.createContext(
-                    "/.well-known/openid-configuration", exchange -> respond(exchange, discoveryDocument()));
-            server.createContext("/jwks", exchange -> respond(exchange, jwks()));
+            // 디스커버리 경로는 일부러 열지 않고, JWKS 경로는 application.yml 파생식과 같게 둔다 — 클래스 javadoc 참조.
+            server.createContext("/.well-known/jwks.json", exchange -> respond(exchange, jwks()));
             server.start();
             return server;
         } catch (IOException e) {
@@ -165,18 +179,10 @@ class JwtDecoderWiringIntegrationTest {
         }
     }
 
-    private static String discoveryDocument() {
-        String issuer = issuer();
-        return """
-                {"issuer":"%s","jwks_uri":"%s/jwks","authorization_endpoint":"%s/authorize",\
-                "response_types_supported":["code"],"subject_types_supported":["public"],\
-                "id_token_signing_alg_values_supported":["RS256"]}"""
-                .formatted(issuer, issuer, issuer);
-    }
-
     private static String jwks() {
-        RSAKey key = new RSAKey.Builder((RSAPublicKey) KEY_PAIR.getPublic())
+        ECKey key = new ECKey.Builder(Curve.P_256, (ECPublicKey) KEY_PAIR.getPublic())
                 .keyID(KEY_ID)
+                .algorithm(JWSAlgorithm.ES256)
                 .build();
         return new JWKSet(key).toString();
     }
