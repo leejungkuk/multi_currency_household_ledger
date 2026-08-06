@@ -1,0 +1,10 @@
+[Unit]
+Description=woni 배포 에이전트 실패 알림 (%i)
+
+[Service]
+Type=oneshot
+User=ubuntu
+# ntfy 로직을 두 곳에 두지 않으려고 에이전트의 전용 모드를 쓴다(유닛 인라인 셸은 shellcheck·verify.sh 밖이다).
+# 경로 2줄은 woni-deploy.service 와 같은 값으로 설치 시점에 맞춘다(Step 3).
+Environment=WONI_AGENT_CONF=/home/ubuntu/woni/deploy/agent.conf
+ExecStart=/home/ubuntu/woni/repo/tools/deploy-agent.sh --notify-failure %i

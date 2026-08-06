@@ -1,0 +1,14 @@
+[Unit]
+Description=woni 배포 에이전트 주기 실행 (300초)
+# 타이머 유닛 자체가 failed 로 가는 일은 드물지만, 그러면 폴링이 통째로 멈추는데 service 쪽 OnFailure=
+# 는 발화가 없어 영영 울리지 않는다. service 와 같은 알림 유닛을 건다(플랜 §3 「timer/service 실패 → 🔴」).
+OnFailure=woni-deploy-alert@%n.service
+
+[Timer]
+# 둘 다 필요하다. OnUnitInactiveSec= 만 두면 마지막 활성/비활성 타임스탬프가 없는 설치·부팅 직후에
+# 다음 발화가 예약되지 않을 수 있는데, S9("인스턴스 중지 중 승인 → 켜면 그때 반영")가 그 동작에 의존한다.
+OnBootSec=2min
+OnUnitInactiveSec=300
+
+[Install]
+WantedBy=timers.target

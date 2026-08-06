@@ -1,0 +1,19 @@
+[Unit]
+Description=woni 배포 에이전트 (GHCR :deploy 폴링 → 배포·스모크·롤백)
+Documentation=https://github.com/leejungkuk/multi_currency_household_ledger/blob/main/tools/deploy-agent.sh
+After=docker.service
+Requires=docker.service
+OnFailure=woni-deploy-alert@%n.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+StateDirectory=woni-deploy
+# 호스트 고유값(도메인·토픽·compose 경로)은 유닛에 박지 않는다(D12). 설정 파일 경로만 넘기고,
+# 유닛이 $HOME 에 의존하지 않도록 절대경로로 명시한다. 설치 시점에 이 줄과 ExecStart 의
+# 리포 경로만 실제 레이아웃에 맞춘다(Step 3).
+Environment=WONI_AGENT_CONF=/home/ubuntu/woni/deploy/agent.conf
+ExecStart=/home/ubuntu/woni/repo/tools/deploy-agent.sh
+# 최악은 전진 배포 유예 420초 + 롤백 유예 420초 + pull·스모크다. oneshot 기본 타임아웃(90초)이면
+# 배포 도중에 SIGTERM 을 맞아 override.yml 과 실행 중 컨테이너가 어긋난 채 남는다.
+TimeoutStartSec=1800
