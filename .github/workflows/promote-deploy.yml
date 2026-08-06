@@ -1,0 +1,146 @@
+name: promote-deploy
+
+# main 에 이미 구워진 이미지 하나를 :deploy 태그로 옮긴다. 호스트의 배포 에이전트(tools/deploy-agent.sh)가
+# 폴링하는 태그는 :deploy 뿐이므로 이 워크플로를 실행하는 행위 자체가 유일한 배포 승인 게이트다(플랜 D1).
+# 트리거가 workflow_dispatch 뿐인 이유(D11): 배포와 롤백이 워크플로 하나로 끝난다 — 이전 sha 를 넣으면
+# 그것이 곧 롤백이다. push·schedule 을 얹으면 사람 승인이 우회되고, Environments + required reviewers 는
+# 승인이 머지 커밋에 묶여 임의의 과거 sha 를 승격할 수단이 없어진다.
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: '승격할 커밋 sha (40자 hex, main 에 머지된 커밋)'
+        required: true
+      migrations_reviewed:
+        description: '요약의 마이그레이션 목록을 확인했다면 reviewed 를 그대로 입력'
+        required: true
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+defaults:
+  run:
+    # 셸을 명시하면 -eo pipefail 로 뜬다. 기본값은 -e 뿐이라 파이프 앞쪽 실패를 삼켜, digest 조회가 실패해도
+    # 뒤쪽 jq 의 종료코드로 초록이 된다.
+    shell: bash
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+
+    # 태그를 옮기는 데 필요한 것은 이 둘뿐이다. write:packages 자격증명만 유출돼도 리포를 건드리지 않고
+    # 승인 게이트를 우회하므로(플랜 §6 신뢰 경계 ①) 권한 면적을 이보다 넓히지 않는다.
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      # checkout 하지 않는다 — 조상 판정은 API 로, 승격은 레지스트리에서만 일어난다.
+      # git merge-base 는 쓸 수 없다: actions/checkout 기본 fetch-depth: 1 에서는 항상 실패해
+      # 이전 sha 를 되돌리는 롤백 승격(S7)이 통째로 막힌다.
+      #
+      # ⚠️ 입력은 전부 env: 로 넘겨 "$VAR" 로 참조한다. ${{ inputs.* }} 를 run: 본문에 직접 박으면
+      # 입력 문자열이 스크립트로 합성돼 실행된다(스크립트 인젝션).
+      - name: Validate sha
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ inputs.sha }}
+        run: |
+          [[ "$SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::sha 는 40자 소문자 hex 여야 한다"; exit 1; }
+
+          # three-dot compare 의 status 로 조상 여부를 판정한다: identical = 현재 main HEAD, behind = main 의 조상.
+          # ahead·diverged 는 main 에 없는 커밋이라 build.yml(required check)을 통과했다는 보장이 없다.
+          # 잔여 엣지: main 이 force-push 로 재작성되면 과거 배포 sha 가 diverged 가 돼 롤백 승격이 막힌다.
+          status=$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$SHA" --jq .status) \
+            || { echo "::error::compare 호출 실패 — 이 리포에 없는 sha 이거나 API 오류다"; exit 1; }
+          case "$status" in
+            identical | behind) echo "main 조상 확인 (status=$status)" ;;
+            *) echo "::error::main 의 조상이 아니다 (status=$status)"; exit 1 ;;
+          esac
+
+      # ⚠️ 이것은 게이트가 아니라 정보 제공이다. compare API 는 three-dot diff 라 위에서 승인되는 두 status
+      # 모두 files 가 항상 0건이어서(실측) "이 승격으로 무엇이 새로 적용되는지"를 워크플로가 계산할 수 없다.
+      # 그래서 대상 sha 의 마이그레이션 목록을 그대로 보여주고 판단은 사람이 한다(플랜 §8).
+      - name: List migrations at target sha
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ inputs.sha }}
+        run: |
+          # 조회 실패를 삼키면 빈 목록이 "마이그레이션 없음" 과 구분되지 않는다 — 목록 없이 승격시키지 않는다.
+          names=$(gh api "repos/$GITHUB_REPOSITORY/contents/module-api/src/main/resources/db/migration?ref=$SHA" --jq '.[].name') \
+            || { echo "::error::마이그레이션 목록 조회 실패 — 목록 없이는 승격하지 않는다"; exit 1; }
+          {
+            echo "### 승격 대상 \`$SHA\` 의 마이그레이션"
+            echo ""
+            echo '```'
+            echo "$names"
+            echo '```'
+            echo ""
+            echo "서버에 적용된 Flyway 이력과 대조해 사람이 판단한다(이 목록은 게이트가 아니다)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # 위 목록을 실제로 읽었다는 확인. 워크플로가 새 마이그레이션을 계산할 수 없으므로 이 입력이 대신하는 것은
+      # "구 이미지와 호환되는 additive 변경이라 무인 배포·자동 롤백이 성립하는가" 라는 사람의 판단이다(Step 0 규칙).
+      # 목록 출력보다 뒤에 두는 이유: 문구를 틀려 실패해도 요약에 목록이 남아 그대로 보고 다시 실행할 수 있다.
+      - name: Confirm migrations reviewed
+        env:
+          CONFIRM: ${{ inputs.migrations_reviewed }}
+        run: |
+          [ "$CONFIRM" = reviewed ] \
+            || { echo "::error::migrations_reviewed 에 reviewed 를 정확히 입력해야 한다"; exit 1; }
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # imagetools create 는 원본 매니페스트를 다시 태그하는 명령이라 digest 가 보존되는 것이 정상이지만,
+      # 소스가 여럿이면 새 index 를 조립하는 명령이기도 하므로 보존을 가정하지 않고 실측한다. digest 가 바뀌면
+      # 호스트가 pull 하는 바이트가 스캔·검증된 그 이미지와 달라지고, 사람이 대조할 digest 도 의미를 잃는다.
+      - name: Promote :sha to :deploy
+        id: promote
+        env:
+          SHA: ${{ inputs.sha }}
+        run: |
+          # 포맷은 '{{json .Manifest}}' + jq 다. '{{.Manifest.Digest}}' 로는 값이 나오지 않는다(로컬 실측:
+          # 매니페스트가 구조체가 아니라 raw JSON 이라 필드 접근이 먹지 않고 사람용 블록이 통째로 찍힌다).
+          src=$(docker buildx imagetools inspect --format '{{json .Manifest}}' "$IMAGE:$SHA" | jq -er .digest)
+          docker buildx imagetools create -t "$IMAGE:deploy" "$IMAGE:$SHA"
+          dst=$(docker buildx imagetools inspect --format '{{json .Manifest}}' "$IMAGE:deploy" | jq -er .digest)
+          { echo "source_digest=$src"; echo "deploy_digest=$dst"; } >> "$GITHUB_OUTPUT"
+
+      # 폴백: crane tag 는 원본 매니페스트 바이트를 그대로 PUT 하므로 정의상 digest 를 보존한다.
+      # 인증은 위 login-action 이 ~/.docker/config.json 에 남긴 것을 crane 기본 keychain 이 그대로 읽는다.
+      - name: Set up crane (digest 미보존 폴백)
+        if: steps.promote.outputs.deploy_digest != steps.promote.outputs.source_digest
+        uses: imjasonh/setup-crane@feee3b6bb0d4c68370f256a4502498c9227e5c6b  # v0.7
+
+      - name: Re-tag with crane
+        if: steps.promote.outputs.deploy_digest != steps.promote.outputs.source_digest
+        env:
+          SHA: ${{ inputs.sha }}
+        run: crane tag "$IMAGE:$SHA" deploy
+
+      # 신뢰 경계 ①(레지스트리 태그 → 호스트 코드 실행)의 유일한 완화책은 사람의 대조다: 여기 찍힌 digest 를
+      # 배포 성공 ntfy 알림의 값과 맞춰 본다(에이전트는 sha256: 를 뗀 앞 12자로 알린다 — deploy-agent.sh short()).
+      - name: Report digests
+        env:
+          SHA: ${{ inputs.sha }}
+          SOURCE: ${{ steps.promote.outputs.source_digest }}
+        run: |
+          dst=$(docker buildx imagetools inspect --format '{{json .Manifest}}' "$IMAGE:deploy" | jq -er .digest)
+          {
+            echo "### 승격 완료"
+            echo ""
+            echo "| 항목 | 값 |"
+            echo "|---|---|"
+            echo "| 커밋 | \`$SHA\` |"
+            echo "| 원본 digest | \`$SOURCE\` |"
+            echo "| \`:deploy\` digest | \`$dst\` |"
+            echo "| ntfy 대조값 | \`${dst:7:12}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          [ "$dst" = "$SOURCE" ] \
+            || { echo "::error::digest 가 보존되지 않았다 — crane 폴백까지 실패했다"; exit 1; }
