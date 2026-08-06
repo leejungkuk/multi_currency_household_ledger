@@ -53,6 +53,7 @@ jobs:
           tags: |
             ${{ env.IMAGE }}:latest
             ${{ env.IMAGE }}:${{ github.sha }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
           # 소스가 바뀌면 Gradle 레이어는 어차피 무효화되지만, base 이미지·apt 레이어는 재사용된다.
           cache-from: type=gha
           cache-to: type=gha,mode=max
