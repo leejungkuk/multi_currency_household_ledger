@@ -76,7 +76,7 @@ services:
   # `:ro` 로 마운트해도 컨테이너 생성·exec 같은 쓰기 API 가 그대로 통한다(= 호스트 root 등가 권한).
   # 여기서 조회 API 만 통과시키고, 그 외에는 haproxy 가 403 으로 끊는다.
   docker-socket-proxy:
-    image: tecnativa/docker-socket-proxy:v0.4.2
+    image: tecnativa/docker-socket-proxy:v0.5.0
     container_name: woni-docker-socket-proxy
     restart: unless-stopped
     logging: *logging
