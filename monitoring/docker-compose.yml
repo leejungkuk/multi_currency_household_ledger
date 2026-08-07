@@ -62,7 +62,7 @@ services:
     networks: [monitoring]
 
   loki:
-    image: grafana/loki:3.6.13
+    image: grafana/loki:3.7.4
     container_name: woni-loki
     restart: unless-stopped
     logging: *logging
