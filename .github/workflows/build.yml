@@ -75,7 +75,7 @@ jobs:
           && hashFiles('trivy-fs.sarif') != ''
           && !(github.event_name == 'push' && github.actor == 'dependabot[bot]')
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@f205ea1c3313d32999d8d6a48b4f6530d4437b38  # v4.37.4
+        uses: github/codeql-action/upload-sarif@5595ccaf912efad79be6eef63a5619ff05969be3  # v4.37.6
         with:
           sarif_file: trivy-fs.sarif
           # category 가 있어야 Security 탭에서 fs 분석과 image 분석이 별개로 구분된다(§5 판정의 전제).
