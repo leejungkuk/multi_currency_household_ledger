@@ -1,7 +1,6 @@
 package com.self.multi_currency_household_ledger.exchange.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
@@ -64,10 +63,21 @@ class ExchangeRateServiceTest {
             given(exchangeRateProvider.getExchangeRates(DATE))
                     .willReturn(List.of(new FetchedRate(CurrencyCode.USD, new BigDecimal("1300.00"))));
 
-            boolean fetched = exchangeRateService.fetchAndSaveRates(DATE);
+            int saved = exchangeRateService.fetchAndSaveRates(DATE);
 
-            assertThat(fetched).isTrue();
+            assertThat(saved).isEqualTo(1);
             verify(exchangeRateRepository).saveAndFlush(any(ExchangeRate.class));
+        }
+
+        @Test
+        @DisplayName("Provider 빈 응답은 저장 수 0을 반환한다")
+        void returns_zero_for_empty_provider_response() {
+            given(exchangeRateProvider.getExchangeRates(DATE)).willReturn(List.of());
+
+            int saved = exchangeRateService.fetchAndSaveRates(DATE);
+
+            assertThat(saved).isZero();
+            verify(exchangeRateRepository, never()).saveAndFlush(any(ExchangeRate.class));
         }
 
         @Test
@@ -77,8 +87,24 @@ class ExchangeRateServiceTest {
                     .willReturn(List.of(new FetchedRate(CurrencyCode.USD, new BigDecimal("1300.00"))));
             given(exchangeRateRepository.saveAndFlush(any(ExchangeRate.class)))
                     .willThrow(DataIntegrityViolationException.class);
+            given(exchangeRateRepository.findByCurrencyCodeAndBaseDate(CurrencyCode.USD, DATE))
+                    .willReturn(Optional.of(ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), DATE)));
 
-            assertThatCode(() -> exchangeRateService.fetchAndSaveRates(DATE)).doesNotThrowAnyException();
+            assertThat(exchangeRateService.fetchAndSaveRates(DATE)).isZero();
+        }
+
+        @Test
+        @DisplayName("저장 무결성 위반 뒤 동일 환율이 없으면 원래 예외를 전파한다")
+        void propagates_non_duplicate_integrity_violation() {
+            DataIntegrityViolationException failure = new DataIntegrityViolationException("numeric overflow");
+            given(exchangeRateProvider.getExchangeRates(DATE))
+                    .willReturn(List.of(new FetchedRate(CurrencyCode.USD, new BigDecimal("1300.00"))));
+            given(exchangeRateRepository.saveAndFlush(any(ExchangeRate.class))).willThrow(failure);
+            given(exchangeRateRepository.findByCurrencyCodeAndBaseDate(CurrencyCode.USD, DATE))
+                    .willReturn(Optional.empty());
+
+            assertThatThrownBy(() -> exchangeRateService.fetchAndSaveRates(DATE))
+                    .isSameAs(failure);
         }
 
         @Test
@@ -88,22 +114,21 @@ class ExchangeRateServiceTest {
                     .willReturn(List.of(new FetchedRate(CurrencyCode.EUR, new BigDecimal("1450.00"))));
             ArgumentCaptor<ExchangeRate> captor = ArgumentCaptor.forClass(ExchangeRate.class);
 
-            boolean fetched = exchangeRateService.fetchAndSaveRates(DATE);
+            int saved = exchangeRateService.fetchAndSaveRates(DATE);
 
-            assertThat(fetched).isTrue();
+            assertThat(saved).isEqualTo(1);
             verify(exchangeRateRepository).saveAndFlush(captor.capture());
             assertThat(captor.getValue().getCurrencyCode()).isEqualTo(CurrencyCode.EUR);
         }
 
         @Test
-        @DisplayName("Provider 실패는 배경 수집 경로에서 전파하지 않고 저장을 건너뛴다")
-        void skips_when_provider_fails() {
-            given(exchangeRateProvider.getExchangeRates(DATE))
-                    .willThrow(new BusinessException(ExchangeErrorCode.EXCHANGE_API_LIMIT_EXCEEDED));
+        @DisplayName("Provider 실패는 오류 코드를 보존해 호출자에게 전파한다")
+        void propagates_provider_failure() {
+            BusinessException failure = new BusinessException(ExchangeErrorCode.EXCHANGE_API_LIMIT_EXCEEDED);
+            given(exchangeRateProvider.getExchangeRates(DATE)).willThrow(failure);
 
-            boolean fetched = exchangeRateService.fetchAndSaveRates(DATE);
-
-            assertThat(fetched).isFalse();
+            assertThatThrownBy(() -> exchangeRateService.fetchAndSaveRates(DATE))
+                    .isSameAs(failure);
             verify(exchangeRateRepository, never()).saveAndFlush(any(ExchangeRate.class));
         }
     }

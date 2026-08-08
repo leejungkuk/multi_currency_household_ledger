@@ -43,16 +43,10 @@ public class ExchangeRateScheduler {
 
     private void collectAndRecalculate(LocalDate date) {
         try {
-            boolean fetched = exchangeRateService.fetchAndSaveRates(date);
-            if (!fetched) {
-                retryPending.set(true);
-                log.warn("환율 수집 실패로 재계산을 건너뜁니다. date={}", date);
-                return;
-            }
-
+            int saved = exchangeRateService.fetchAndSaveRates(date);
             int recalculated = ledgerRecalculationService.recalculateRecentForeignEntries();
             retryPending.set(false);
-            log.info("환율 수집 후 거래 재계산 완료. date={}, recalculated={}", date, recalculated);
+            log.info("환율 수집 후 거래 재계산 완료. date={}, saved={}, recalculated={}", date, saved, recalculated);
         } catch (RuntimeException e) {
             retryPending.set(true);
             log.error("환율 수집 또는 거래 재계산 스케줄 실패. date={}", date, e);

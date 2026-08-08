@@ -1,10 +1,12 @@
 package com.self.multi_currency_household_ledger.exchange.domain;
 
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 public interface ExchangeRateRepository extends JpaRepository<ExchangeRate, Long> {
 
@@ -20,6 +22,20 @@ public interface ExchangeRateRepository extends JpaRepository<ExchangeRate, Long
     List<ExchangeRate> findByBaseDate(LocalDate baseDate);
 
     List<ExchangeRate> findByBaseDateBetweenOrderByBaseDateAscCurrencyCodeAsc(LocalDate from, LocalDate to);
+
+    @Query(
+            """
+            select rate.baseDate from ExchangeRate rate
+            where rate.baseDate between :from and :to
+              and rate.currencyCode in :expectedCodes
+            group by rate.baseDate
+            having count(distinct rate.currencyCode) = :expectedCount
+            """)
+    List<LocalDate> findCompleteBaseDates(
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to,
+            @Param("expectedCodes") Collection<CurrencyCode> expectedCodes,
+            @Param("expectedCount") long expectedCount);
 
     @Query(
             """

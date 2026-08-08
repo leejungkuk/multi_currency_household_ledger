@@ -5,6 +5,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+import com.self.multi_currency_household_ledger.common.exception.BusinessException;
+import com.self.multi_currency_household_ledger.exchange.exception.ExchangeErrorCode;
 import com.self.multi_currency_household_ledger.exchange.service.ExchangeRateService;
 import com.self.multi_currency_household_ledger.ledger.service.LedgerRecalculationService;
 import java.time.Clock;
@@ -41,7 +43,7 @@ class ExchangeRateSchedulerTest {
     @Test
     @DisplayName("11:05 KST 수집 성공 후 ledger 재계산을 호출한다")
     void daily_collection_success_triggers_recalculation() {
-        given(exchangeRateService.fetchAndSaveRates(TODAY)).willReturn(true);
+        given(exchangeRateService.fetchAndSaveRates(TODAY)).willReturn(12);
 
         scheduler.collectDailyRates();
 
@@ -51,7 +53,9 @@ class ExchangeRateSchedulerTest {
     @Test
     @DisplayName("수집 실패 시 재계산을 건너뛰고 다음 인트라데이 성공에서 회수한다")
     void failed_daily_collection_is_recovered_by_next_successful_intraday_retry() {
-        given(exchangeRateService.fetchAndSaveRates(TODAY)).willReturn(false, true);
+        given(exchangeRateService.fetchAndSaveRates(TODAY))
+                .willThrow(new BusinessException(ExchangeErrorCode.EXCHANGE_API_ERROR))
+                .willReturn(12);
 
         scheduler.collectDailyRates();
         verify(ledgerRecalculationService, never()).recalculateRecentForeignEntries();

@@ -29,27 +29,29 @@ public class ExchangeRateService {
 
     /**
      * Provider 호출 → DB 저장.
-     * 트랜잭션 없이 통화별 saveAndFlush로 독립 커밋한다. unique constraint 위반은 중복 적재이므로 정상 skip.
+     * 트랜잭션 없이 통화별 saveAndFlush로 독립 커밋한다. 저장 실패 뒤 동일 행이 실제로 존재할 때만 중복으로 skip한다.
      */
-    public boolean fetchAndSaveRates(LocalDate date) {
-        List<FetchedRate> fetched;
-        try {
-            fetched = exchangeRateProvider.getExchangeRates(date);
-        } catch (BusinessException e) {
-            log.warn("환율 수집 실패로 저장을 건너뜁니다. date={}, code={}", date, e.getCode());
-            return false;
-        }
+    public int fetchAndSaveRates(LocalDate date) {
+        List<FetchedRate> fetched = exchangeRateProvider.getExchangeRates(date);
+        int saved = 0;
 
         for (FetchedRate rate : fetched) {
             ExchangeRate entity = ExchangeRate.of(rate.currencyCode(), rate.tts(), date);
             try {
                 exchangeRateRepository.saveAndFlush(entity);
+                saved++;
                 log.info("환율 저장 완료: {} {} {}", entity.getCurrencyCode(), entity.getTts(), date);
             } catch (DataIntegrityViolationException e) {
-                log.debug("환율 이미 존재 (skip): {} {}", entity.getCurrencyCode(), date);
+                if (exchangeRateRepository
+                        .findByCurrencyCodeAndBaseDate(entity.getCurrencyCode(), date)
+                        .isPresent()) {
+                    log.debug("환율 이미 존재 (skip): {} {}", entity.getCurrencyCode(), date);
+                    continue;
+                }
+                throw e;
             }
         }
-        return true;
+        return saved;
     }
 
     @Transactional(readOnly = true)
