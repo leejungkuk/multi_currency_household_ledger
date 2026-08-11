@@ -4,7 +4,9 @@
 # Linux 호스트 전용이다(flock·GNU timeout). macOS에서는 bash -n·shellcheck·--dry-run만 지원한다.
 # --dry-run은 docker·monitoring/·상태 파일에 쓰지 않는다. 판정에 필요한 git fetch만 예외로 허용한다.
 #
-# 종료 코드 계약: 회복 가능한 실패는 자체 억제 알림 후 0, 복원까지 실패해 관측 스택이 down인 경우만 1이다.
+# 종료 코드 계약: systemd의 무플래그 주기는 회복 가능한 실패를 자체 억제 알림 후 0으로 끝내고,
+# 복원까지 실패해 관측 스택이 down인 경우만 1이다. 수동 --resync·--retry는 OnFailure 대상이 아니므로
+# 공용 락을 유한 시간 안에 얻지 못하면 의도를 버리지 않고 비-0으로 끝내 운영자에게 재실행을 요구한다.
 # 설정·필수 명령 부재나 셸 비정상 종료는 systemd OnFailure의 "스택 상태 미확인" 경로가 담당한다.
 
 # jq 필터의 $tree·$reason 등은 --arg로 넘기는 jq 변수다.
@@ -19,6 +21,7 @@ readonly HEALTH_POLL_SEC=10
 readonly SETTLE_SEC=60
 readonly FAILURE_THRESHOLD=3
 readonly REMINDER_INTERVAL_SEC=86400
+readonly MANUAL_LOCK_WAIT_SEC=2400
 REPO_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)   # readonly 아님: self_test_setup이 케이스 디렉터리로 격리한다
 
 STATE_DIR="${STATE_DIRECTORY:-/var/lib/woni-deploy}"
@@ -180,6 +183,8 @@ run_compose_timed() {
 }
 
 with_lock() {
+  local mode="$1"
+  shift
   if require_command flock; then
     :
   else
@@ -190,10 +195,30 @@ with_lock() {
     return 1
   fi
   exec 9>"$STATE_DIR/agent.lock"
-  if ! flock -n 9; then
-    log "배포 또는 관측 동기화가 진행 중이라 이번 주기를 건너뜁니다."
-    return 0
-  fi
+  case "$mode" in
+    manual)
+      if flock -n 9; then
+        :
+      else
+        log "배포 또는 관측 동기화 공용 락을 기다립니다(최대 ${MANUAL_LOCK_WAIT_SEC}초): $STATE_DIR/agent.lock"
+        if ! flock -w "$MANUAL_LOCK_WAIT_SEC" 9; then
+          warn "배포 또는 관측 동기화가 공용 락을 ${MANUAL_LOCK_WAIT_SEC}초 넘게 점유 중입니다: $STATE_DIR/agent.lock"
+          warn "systemctl status woni-deploy.service woni-monitoring-sync.service로 점유 작업을 확인한 뒤 같은 명령을 다시 실행하십시오."
+          return 1
+        fi
+      fi
+      ;;
+    timer)
+      if ! flock -n 9; then
+        log "배포 또는 관측 동기화가 진행 중이라 이번 주기를 건너뜁니다."
+        return 0
+      fi
+      ;;
+    *)
+      warn "알 수 없는 락 모드입니다: $mode"
+      return 1
+      ;;
+  esac
   "$@"
 }
 
@@ -244,7 +269,7 @@ handle_unknown_failure() {
     log "[dry-run] $detail"
     return 0
   fi
-  with_lock record_unknown_failure "$reason" \
+  with_lock timer record_unknown_failure "$reason" \
     "⚠️ 관측 동기화 판정 실패: $detail" \
     "🔔 관측 동기화 판정 실패가 미해소 상태입니다: $detail"
 }
@@ -619,6 +644,7 @@ write_success_state() {
   local tree="$1" smoke="$2"
   hard_state_write '
     .monitoring_sync.synced_tree = $tree
+    | .monitoring_sync.resync_pending = false
     | .monitoring_sync.failure = {tree: "", count: 0}
     | .monitoring_sync.in_progress_tree = ""
     | .monitoring_sync.unknown_unresolved = ""
@@ -669,11 +695,19 @@ retry_failed() {
 }
 
 locked_cycle() {
-  local rev="$1" tree="$2" current_rev current_tree synced smoke marker archive_dir services_text
+  local rev="$1" tree="$2" current_rev current_tree synced resync_pending smoke marker archive_dir services_text
   local -a services=()
   if state_init; then
     :
   else
+    return 1
+  fi
+  if [[ "$RESYNC" == true ]] &&
+    ! hard_state_write '.monitoring_sync.resync_pending = true'; then
+    warn "강제 동기화 의도를 기록하지 못해 적용을 보류합니다."
+    notify_suppressed "resync-state" "$tree" \
+      "⚠️ 관측 강제 동기화를 보류했습니다: 상태 기록 실패 (${tree:0:12})" \
+      "🔔 관측 강제 동기화 상태 기록 실패가 미해소 상태입니다 (${tree:0:12})"
     return 1
   fi
 
@@ -724,8 +758,10 @@ locked_cycle() {
   fi
 
   synced=$(state_get '.monitoring_sync.synced_tree')
+  # jq //는 false도 fallback으로 취급하므로 fallback도 문자열 "false"여야 이 게이트가 유지된다.
+  resync_pending=$(state_get '.monitoring_sync.resync_pending' false)
   smoke=$(state_get '.monitoring_sync.smoke_unresolved')
-  if [[ "$RESYNC" != true && "$tree" == "$synced" ]]; then
+  if [[ "$RESYNC" != true && "$resync_pending" != true && "$tree" == "$synced" ]]; then
     if [[ -n "$smoke" ]]; then
       recheck_smoke "$tree"
     else
@@ -875,7 +911,11 @@ run_cycle() {
     log "[dry-run] 판정 완료. docker·monitoring/·상태 파일은 변경하지 않았습니다(git fetch만 예외)."
     return 0
   fi
-  with_lock locked_cycle "$rev" "$tree"
+  if [[ "$RESYNC" == true ]]; then
+    with_lock manual locked_cycle "$rev" "$tree"
+  else
+    with_lock timer locked_cycle "$rev" "$tree"
+  fi
 }
 
 self_test_setup() {
@@ -921,7 +961,7 @@ self_test_tree_sha() {
     fi
     return 1
   }
-  with_lock() { printf '%s\t%s\t%s\n' "$1" "$2" "$3" >>"$SELF_TEST_EVENTS"; }
+  with_lock() { shift; printf '%s\t%s\t%s\n' "$1" "$2" "$3" >>"$SELF_TEST_EVENTS"; }
   run_cycle >/dev/null
   [[ "$(<"$SELF_TEST_EVENTS")" == $'locked_cycle\t'"$SELF_TEST_REV"$'\t'"$SELF_TEST_TREE" ]]
 }
@@ -1094,6 +1134,121 @@ self_test_idempotent() {
   [[ ! -s "$SELF_TEST_EVENTS" ]]
 }
 
+self_test_resync_pending_bypasses_idempotent_skip() {
+  self_test_setup resync-pending
+  local rev=1234567890abcdef1234567890abcdef12345678
+  local tree=abcdefabcdefabcdefabcdefabcdefabcdefabcd
+  hard_state_write '
+    .monitoring_sync.synced_tree = $tree
+    | .monitoring_sync.resync_pending = true
+  ' --arg tree "$tree"
+  container_revision() {
+    printf 'revision-checked\n' >>"$SELF_TEST_EVENTS"
+    printf '%s\n' "$rev"
+  }
+  locked_cycle "$rev" "$tree" >/dev/null 2>&1
+  [[ -s "$SELF_TEST_EVENTS" ]]
+}
+
+self_test_resync_records_pending() {
+  self_test_setup resync-records-pending
+  local rev=34567890abcdef1234567890abcdef1234567890
+  local tree=4567890abcdef1234567890abcdef12345678901
+  RESYNC=true
+  container_revision() { printf 'changed-while-waiting\n'; }
+  locked_cycle "$rev" "$tree" >/dev/null 2>&1
+  jq -e '.monitoring_sync.resync_pending == true' "$STATE_FILE" >/dev/null
+}
+
+self_test_resync_state_failure_is_fail_closed() {
+  self_test_setup resync-state-failure
+  local rev=567890abcdef1234567890abcdef123456789012
+  local tree=67890abcdef1234567890abcdef1234567890123 rc
+  RESYNC=true
+  hard_state_write() { printf 'state-write\n' >>"$SELF_TEST_EVENTS"; return 1; }
+  notify_suppressed() { printf 'notify\t%s\n' "$1" >>"$SELF_TEST_EVENTS"; return 0; }
+  container_revision() { printf '%s\n' "$rev"; }
+  git() { printf '%s\n' "$tree"; }
+  run_timed() { printf 'disk\t%s\n' "$2" >>"$SELF_TEST_EVENTS"; return 0; }
+  if locked_cycle "$rev" "$tree" >/dev/null 2>&1; then rc=0; else rc=$?; fi
+  [[ "$rc" == 1 && "$(<"$SELF_TEST_EVENTS")" == $'state-write\nnotify\tresync-state' ]]
+}
+
+self_test_success_clears_resync_pending() {
+  self_test_setup success-clears-resync
+  local tree=234567890abcdef1234567890abcdef123456789
+  hard_state_write '.monitoring_sync.resync_pending = true'
+  write_success_state "$tree" "" >/dev/null 2>&1
+  jq -e --arg tree "$tree" '
+    .monitoring_sync.synced_tree == $tree
+    and ((.monitoring_sync.resync_pending // false) == false)
+  ' "$STATE_FILE" >/dev/null
+}
+
+self_test_retry_preserves_resync_pending() {
+  self_test_setup retry-preserves-resync
+  hard_state_write '
+    .monitoring_sync.resync_pending = true
+    | .monitoring_sync.failed_trees = ["failed"]
+  '
+  retry_failed >/dev/null 2>&1
+  jq -e '
+    .monitoring_sync.resync_pending == true
+    and (.monitoring_sync.failed_trees == [])
+  ' "$STATE_FILE" >/dev/null
+}
+
+self_test_resync_manual_lock_timeout() {
+  self_test_setup resync-manual-lock-timeout
+  local rc output
+  touch "$REPO_DIR/.git"
+  load_config() { return 0; }
+  require_command() { return 0; }
+  container_revision() { printf '7890abcdef1234567890abcdef12345678901234\n'; }
+  run_timed() { return 0; }
+  git() { printf '890abcdef1234567890abcdef123456789012345\n'; }
+  flock() {
+    [[ "$1" == -w ]] && printf 'flock\t%s\n' "$*" >>"$SELF_TEST_EVENTS"
+    return 1
+  }
+  # shellcheck disable=SC2329
+  locked_cycle() { printf 'locked-cycle\n' >>"$SELF_TEST_EVENTS"; }
+  if output=$(main --resync 2>&1); then rc=0; else rc=$?; fi
+  [[ "$rc" == 1
+    && "$(<"$SELF_TEST_EVENTS")" == $'flock\t-w '"$MANUAL_LOCK_WAIT_SEC"$' 9'
+    && "$output" == *"agent.lock"*
+    && "$output" == *"다시 실행"* ]]
+}
+
+self_test_retry_manual_lock_timeout() {
+  self_test_setup retry-manual-lock-timeout
+  local rc output
+  touch "$REPO_DIR/.git"
+  load_config() { return 0; }
+  require_command() { return 0; }
+  flock() {
+    [[ "$1" == -w ]] && printf 'flock\t%s\n' "$*" >>"$SELF_TEST_EVENTS"
+    return 1
+  }
+  # shellcheck disable=SC2329
+  retry_failed() { printf 'retry-failed\n' >>"$SELF_TEST_EVENTS"; }
+  if output=$(main --retry 2>&1); then rc=0; else rc=$?; fi
+  [[ "$rc" == 1
+    && "$(<"$SELF_TEST_EVENTS")" == $'flock\t-w '"$MANUAL_LOCK_WAIT_SEC"$' 9'
+    && "$output" == *"agent.lock"*
+    && "$output" == *"다시 실행"* ]]
+}
+
+self_test_timer_lock_contention_skips() {
+  self_test_setup timer-lock-contention
+  local rc
+  flock() { printf 'flock\t%s\n' "$*" >>"$SELF_TEST_EVENTS"; return 1; }
+  # shellcheck disable=SC2329
+  locked_cycle() { printf 'locked-cycle\n' >>"$SELF_TEST_EVENTS"; }
+  if with_lock timer locked_cycle ignored ignored >/dev/null 2>&1; then rc=0; else rc=$?; fi
+  [[ "$rc" == 0 && "$(<"$SELF_TEST_EVENTS")" == $'flock\t-n 9' ]]
+}
+
 self_test_run_case() {
   local name="$1" function_name="$2"
   if ("$function_name"); then
@@ -1141,6 +1296,14 @@ self_test() {
   self_test_run_case 'D8 종료 코드' self_test_exit_contract
   self_test_run_case '보호 서비스 거부' self_test_protected_services
   self_test_run_case '멱등' self_test_idempotent
+  self_test_run_case 'resync pending은 멱등 단락을 통과' self_test_resync_pending_bypasses_idempotent_skip
+  self_test_run_case 'resync 명령은 pending 기록' self_test_resync_records_pending
+  self_test_run_case 'resync 상태 기록 실패는 적용 보류' self_test_resync_state_failure_is_fail_closed
+  self_test_run_case '성공 시 resync pending 해제' self_test_success_clears_resync_pending
+  self_test_run_case 'retry는 낙인 해제·resync pending 유지' self_test_retry_preserves_resync_pending
+  self_test_run_case 'resync 수동 락 타임아웃' self_test_resync_manual_lock_timeout
+  self_test_run_case 'retry 수동 락 타임아웃' self_test_retry_manual_lock_timeout
+  self_test_run_case '타이머 락 경합은 non-blocking 스킵' self_test_timer_lock_contention_skips
 
   rm -rf -- "$SELF_TEST_ROOT"
   ((SELF_TEST_FAILURES == 0))
@@ -1188,7 +1351,7 @@ main() {
   if require_command curl; then :; else return 1; fi
 
   if [[ "$mode" == retry ]]; then
-    with_lock retry_failed
+    with_lock manual retry_failed
     return $?
   fi
 
