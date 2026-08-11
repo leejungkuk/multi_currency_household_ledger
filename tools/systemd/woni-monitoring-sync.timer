@@ -1,0 +1,11 @@
+[Unit]
+Description=woni 관측 스택 동기화 주기 실행 (300초)
+OnFailure=woni-deploy-alert@%n.service
+
+[Timer]
+# 설치·부팅 직후에는 이전 비활성 타임스탬프가 없으므로 첫 실행과 이후 주기를 모두 명시한다.
+OnBootSec=2min
+OnUnitInactiveSec=300
+
+[Install]
+WantedBy=timers.target
