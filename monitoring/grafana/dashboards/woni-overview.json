@@ -209,12 +209,12 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "sum(rate(http_server_requests_seconds_count{job=\"woni-api\",outcome=\"SERVER_ERROR\"}[5m])) / sum(rate(http_server_requests_seconds_count{job=\"woni-api\"}[5m]))",
+          "expr": "(sum(rate(http_server_requests_seconds_count{job=\"woni-api\",outcome=\"SERVER_ERROR\"}[5m])) or vector(0)) / sum(rate(http_server_requests_seconds_count{job=\"woni-api\"}[5m]))",
           "range": true,
           "refId": "A"
         }
       ],
-      "description": "요청이 전혀 없으면 0/0 이라 No data 로 표시된다."
+      "description": "5xx 가 한 건도 없으면 분자 시계열이 아예 없어 나눗셈이 빈 결과가 된다. or vector(0) 으로 0 을 채워, 건강한 상태를 No data 가 아니라 0% 로 보이게 한다(No data 는 수집 끊김을 뜻해야 한다). 요청 자체가 없을 때는 분모가 비어 여전히 No data 다."
     },
     {
       "id": 4,
