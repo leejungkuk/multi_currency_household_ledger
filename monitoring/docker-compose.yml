@@ -21,7 +21,7 @@ x-logging: &logging
 
 services:
   prometheus:
-    image: prom/prometheus:v3.13.1
+    image: prom/prometheus:v3.13.2
     container_name: woni-prometheus
     restart: unless-stopped
     logging: *logging
