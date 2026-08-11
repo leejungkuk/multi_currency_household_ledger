@@ -7,8 +7,10 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.self.multi_currency_household_ledger.common.exception.BusinessException;
 import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
 import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRate;
+import com.self.multi_currency_household_ledger.exchange.exception.ExchangeErrorCode;
 import com.self.multi_currency_household_ledger.exchange.service.ExchangeRateService;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -52,7 +54,7 @@ class ManualRateCollectControllerTest {
         var rates = List.of(
                 ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), DATE),
                 ExchangeRate.of(CurrencyCode.EUR, new BigDecimal("1450.00"), DATE));
-        given(exchangeRateService.fetchAndSaveRates(DATE)).willReturn(true);
+        given(exchangeRateService.fetchAndSaveRates(DATE)).willReturn(2);
         given(exchangeRateService.getAllRatesByDate(DATE)).willReturn(rates);
 
         mockMvc.perform(post("/api/v1/exchange-rates/collect").param("date", "2026-04-03"))
@@ -74,7 +76,7 @@ class ManualRateCollectControllerTest {
     void collect_without_date_fetches_today_from_clock() throws Exception {
         givenToday(TODAY);
         var rates = List.of(ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), TODAY));
-        given(exchangeRateService.fetchAndSaveRates(TODAY)).willReturn(true);
+        given(exchangeRateService.fetchAndSaveRates(TODAY)).willReturn(1);
         given(exchangeRateService.getAllRatesByDate(TODAY)).willReturn(rates);
 
         mockMvc.perform(post("/api/v1/exchange-rates/collect"))
@@ -87,18 +89,34 @@ class ManualRateCollectControllerTest {
     }
 
     @Test
-    @DisplayName("POST /api/v1/exchange-rates/collect fetch 실패 시 500 EXCHANGE_API_ERROR를 반환하고 목록 조회를 하지 않는다")
-    void collect_returns_500_when_fetch_fails() throws Exception {
+    @DisplayName("POST /api/v1/exchange-rates/collect provider 쿼터 오류를 503으로 전파하고 목록 조회를 하지 않는다")
+    void collect_propagates_provider_failure() throws Exception {
         givenToday(TODAY);
-        given(exchangeRateService.fetchAndSaveRates(DATE)).willReturn(false);
+        given(exchangeRateService.fetchAndSaveRates(DATE))
+                .willThrow(new BusinessException(ExchangeErrorCode.EXCHANGE_API_LIMIT_EXCEEDED));
 
         mockMvc.perform(post("/api/v1/exchange-rates/collect").param("date", "2026-04-03"))
-                .andExpect(status().isInternalServerError())
+                .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.success").value(false))
-                .andExpect(jsonPath("$.code").value("EXCHANGE_API_ERROR"));
+                .andExpect(jsonPath("$.code").value("EXCHANGE_API_LIMIT_EXCEEDED"));
 
         verify(exchangeRateService).fetchAndSaveRates(DATE);
         verify(exchangeRateService, never()).getAllRatesByDate(DATE);
+    }
+
+    @Test
+    @DisplayName("POST /api/v1/exchange-rates/collect 빈 응답이어도 200과 그날의 현재 행을 반환한다")
+    void collect_returns_current_rows_when_provider_response_is_empty() throws Exception {
+        givenToday(TODAY);
+        var existing = List.of(ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), DATE));
+        given(exchangeRateService.fetchAndSaveRates(DATE)).willReturn(0);
+        given(exchangeRateService.getAllRatesByDate(DATE)).willReturn(existing);
+
+        mockMvc.perform(post("/api/v1/exchange-rates/collect").param("date", "2026-04-03"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].currencyCode").value("USD"));
     }
 
     @Test

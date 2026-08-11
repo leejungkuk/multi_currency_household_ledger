@@ -1,10 +1,8 @@
 package com.self.multi_currency_household_ledger.exchange.controller;
 
 import com.self.multi_currency_household_ledger.common.dto.ApiResponse;
-import com.self.multi_currency_household_ledger.common.exception.BusinessException;
 import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRate;
 import com.self.multi_currency_household_ledger.exchange.dto.ExchangeRateResponse;
-import com.self.multi_currency_household_ledger.exchange.exception.ExchangeErrorCode;
 import com.self.multi_currency_household_ledger.exchange.service.ExchangeRateService;
 import java.time.Clock;
 import java.time.LocalDate;
@@ -35,10 +33,7 @@ public class ManualRateCollectController {
         LocalDate target = date != null ? date : LocalDate.now(clock);
         ExchangeRate.assertNotFuture(target, clock);
 
-        boolean fetched = exchangeRateService.fetchAndSaveRates(target);
-        if (!fetched) {
-            throw new BusinessException(ExchangeErrorCode.EXCHANGE_API_ERROR);
-        }
+        exchangeRateService.fetchAndSaveRates(target);
 
         List<ExchangeRateResponse> responses = exchangeRateService.getAllRatesByDate(target).stream()
                 .map(rate -> ExchangeRateResponse.from(rate, target))

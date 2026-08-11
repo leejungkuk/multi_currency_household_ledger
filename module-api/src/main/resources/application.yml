@@ -94,6 +94,10 @@ woni:
       allowed-origins: ${WONI_CORS_ALLOWED_ORIGINS:http://localhost:3000}
 
 exchange:
+  backfill:
+    # 백필 범위와 거래 재계산 보정창의 단일 정본(1~365). 임시 상향 시 재계산이 완주하기 전에 되돌리지 않는다.
+    # LedgerRecalculationService의 "주기 상한 도달" 경고가 연속 사이클에서 더 이상 나오지 않는 것이 원복 기준이다.
+    window-days: ${EXCHANGE_BACKFILL_WINDOW_DAYS:30}
   eximbank:
     api-url: https://oapi.koreaexim.go.kr/site/program/financial/exchangeJSON
     connect-timeout: ${EXIMBANK_CONNECT_TIMEOUT:2s}
@@ -111,7 +115,6 @@ apple:
 
 ledger:
   recalculation:
-    window-days: ${LEDGER_RECALCULATION_WINDOW_DAYS:7}
     # 재계산 배치가 한 번에 붙잡는 트랜잭션·힙·커넥션의 상한. 청크마다 트랜잭션을 끊고(chunk-size),
     # 한 주기 처리량도 막는다(max-entries-per-run). 상한에 걸린 나머지는 대상 술어에 그대로 남아
     # 다음 주기가 이어받는다 — 초과분이 영구 동결되지 않는다.

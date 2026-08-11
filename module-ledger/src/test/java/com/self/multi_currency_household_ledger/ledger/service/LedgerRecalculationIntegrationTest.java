@@ -63,7 +63,7 @@ class LedgerRecalculationIntegrationTest {
     private static final LocalDate TODAY = LocalDate.of(2026, 4, 6);
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
     private static final Clock FIXED_CLOCK = Clock.fixed(Instant.parse("2026-04-05T15:00:00Z"), KST);
-    private static final int WINDOW_DAYS = 7;
+    private static final LocalDate WINDOW_START = LocalDate.now(FIXED_CLOCK).minusDays(30);
     private static final int PROXIED_CHUNK_SIZE = 2;
 
     @Autowired
@@ -107,7 +107,7 @@ class LedgerRecalculationIntegrationTest {
                 insertStaleEntry(TODAY, TODAY.minusDays(1)),
                 insertStaleEntry(TODAY, TODAY.minusDays(1)));
 
-        int recalculated = service(2, 100).recalculateRecentForeignEntries();
+        int recalculated = service(2, 100).recalculateForeignEntriesFrom(WINDOW_START);
 
         assertThat(recalculated).isEqualTo(5);
         assertThat(ids.subList(0, 3)).allSatisfy(id -> assertRecalculated(id, "1200.000000", TODAY.minusDays(2)));
@@ -127,16 +127,37 @@ class LedgerRecalculationIntegrationTest {
                 insertStaleEntry(TODAY, TODAY.minusDays(1)));
         LedgerRecalculationService service = service(2, 3);
 
-        int firstRun = service.recalculateRecentForeignEntries();
+        int firstRun = service.recalculateForeignEntriesFrom(WINDOW_START);
 
         assertThat(firstRun).isEqualTo(3);
         assertThat(staleEntryCount()).isEqualTo(2);
 
-        int secondRun = service.recalculateRecentForeignEntries();
+        int secondRun = service.recalculateForeignEntriesFrom(WINDOW_START);
 
         assertThat(secondRun).isEqualTo(2);
         assertThat(staleEntryCount()).isZero();
         assertThat(ids).allSatisfy(id -> assertRecalculated(id, "1300.000000", TODAY));
+    }
+
+    @Test
+    @DisplayName("7일 밖 거래도 상한 중단 후 같은 30일 시작일의 다음 주기가 회수한다")
+    void same_window_start_recovers_older_entry_after_max_per_run_stops_the_first_run() {
+        LocalDate firstTransactionDate = TODAY.minusDays(9);
+        LocalDate remainingTransactionDate = TODAY.minusDays(8);
+        insertRate(CurrencyCode.USD, "1290.000000", firstTransactionDate);
+        insertRate(CurrencyCode.USD, "1300.000000", remainingTransactionDate);
+        stubRate(firstTransactionDate, "1290.000000", firstTransactionDate);
+        stubRate(remainingTransactionDate, "1300.000000", remainingTransactionDate);
+        long first = insertStaleEntry(firstTransactionDate, firstTransactionDate.minusDays(1));
+        long remaining = insertStaleEntry(remainingTransactionDate, remainingTransactionDate.minusDays(1));
+        LedgerRecalculationService service = service(1, 1);
+
+        assertThat(service.recalculateForeignEntriesFrom(WINDOW_START)).isEqualTo(1);
+        assertRecalculated(first, "1290.000000", firstTransactionDate);
+        assertThat(rateBaseDateOf(remaining)).isEqualTo(remainingTransactionDate.minusDays(1));
+
+        assertThat(service.recalculateForeignEntriesFrom(WINDOW_START)).isEqualTo(1);
+        assertRecalculated(remaining, "1300.000000", remainingTransactionDate);
     }
 
     @Test
@@ -153,7 +174,7 @@ class LedgerRecalculationIntegrationTest {
                 insertStaleEntry(TODAY.minusDays(2), TODAY.minusDays(3)));
         long failedChunk = insertStaleEntry(TODAY, TODAY.minusDays(1));
 
-        assertThatThrownBy(() -> proxiedService.recalculateRecentForeignEntries())
+        assertThatThrownBy(() -> proxiedService.recalculateForeignEntriesFrom(WINDOW_START))
                 .isInstanceOf(BusinessException.class);
 
         assertThat(firstChunk).allSatisfy(id -> assertRecalculated(id, "1200.000000", TODAY.minusDays(2)));
@@ -170,7 +191,7 @@ class LedgerRecalculationIntegrationTest {
         long fallback = insertStaleEntry(TODAY.minusDays(2), TODAY.minusDays(3));
         long krw = insertEntry(CurrencyCode.KRW, TODAY, null, "1.000000", "5000.00");
 
-        int recalculated = service(10, 100).recalculateRecentForeignEntries();
+        int recalculated = service(10, 100).recalculateForeignEntriesFrom(WINDOW_START);
 
         assertThat(recalculated).isZero();
         assertThat(rateBaseDateOf(upToDate)).isEqualTo(TODAY);
@@ -186,7 +207,7 @@ class LedgerRecalculationIntegrationTest {
         stubRate(TODAY, "1300.000000", TODAY);
         long id = insertEntry(CurrencyCode.USD, TODAY, null, "1000.000000", "100000.00");
 
-        int recalculated = service(2, 100).recalculateRecentForeignEntries();
+        int recalculated = service(2, 100).recalculateForeignEntriesFrom(WINDOW_START);
 
         assertThat(recalculated).isEqualTo(1);
         assertRecalculated(id, "1300.000000", TODAY);
@@ -200,8 +221,8 @@ class LedgerRecalculationIntegrationTest {
         insertStaleEntry(TODAY, TODAY.minusDays(1));
         LedgerRecalculationService service = service(2, 100);
 
-        assertThat(service.recalculateRecentForeignEntries()).isEqualTo(1);
-        assertThat(service.recalculateRecentForeignEntries()).isZero();
+        assertThat(service.recalculateForeignEntriesFrom(WINDOW_START)).isEqualTo(1);
+        assertThat(service.recalculateForeignEntriesFrom(WINDOW_START)).isZero();
     }
 
     @Test
@@ -223,7 +244,7 @@ class LedgerRecalculationIntegrationTest {
             CompletableFuture<Throwable> chunkResult = CompletableFuture.supplyAsync(
                     () -> {
                         try {
-                            chunkProcessor.recalculateChunk(TODAY.minusDays(WINDOW_DAYS), Long.MIN_VALUE, 10);
+                            chunkProcessor.recalculateChunk(WINDOW_START, Long.MIN_VALUE, 10);
                             return null;
                         } catch (Throwable throwable) {
                             return throwable;
@@ -248,7 +269,7 @@ class LedgerRecalculationIntegrationTest {
         assertThat(entry.getRateBaseDate()).isEqualTo(TODAY.minusDays(1));
 
         // 낙관적 락을 흡수하고 주기를 정상 종료해도 되는 근거 — 대상 술어가 상태 기반이라 롤백된 행을 다음 주기가 회수한다.
-        assertThat(service(2, 100).recalculateRecentForeignEntries()).isEqualTo(1);
+        assertThat(service(2, 100).recalculateForeignEntriesFrom(WINDOW_START)).isEqualTo(1);
         assertThat(rateBaseDateOf(id)).isEqualTo(TODAY);
     }
 
@@ -261,8 +282,8 @@ class LedgerRecalculationIntegrationTest {
                 insertStaleEntry(TODAY, TODAY.minusDays(1)),
                 insertStaleEntry(TODAY, TODAY.minusDays(1)));
 
-        List<LedgerEntry> firstPage = ledgerEntryRepository.findStaleForeignEntriesAfterCursor(
-                TODAY.minusDays(WINDOW_DAYS), 0L, PageRequest.of(0, 2));
+        List<LedgerEntry> firstPage =
+                ledgerEntryRepository.findStaleForeignEntriesAfterCursor(WINDOW_START, 0L, PageRequest.of(0, 2));
         List<LedgerEntry> nextPage = ledgerEntryRepository.findStaleForeignEntriesAfterCursor(
                 firstPage.getLast().getTransactionDate(), firstPage.getLast().getId(), PageRequest.of(0, 2));
 
@@ -271,7 +292,7 @@ class LedgerRecalculationIntegrationTest {
     }
 
     private LedgerRecalculationService service(int chunkSize, int maxEntriesPerRun) {
-        return new LedgerRecalculationService(chunkProcessor, FIXED_CLOCK, WINDOW_DAYS, chunkSize, maxEntriesPerRun);
+        return new LedgerRecalculationService(chunkProcessor, chunkSize, maxEntriesPerRun);
     }
 
     private void stubRate(LocalDate transactionDate, String tts, LocalDate baseDate) {
@@ -335,7 +356,7 @@ class LedgerRecalculationIntegrationTest {
 
     private int staleEntryCount() {
         return ledgerEntryRepository
-                .findStaleForeignEntriesAfterCursor(TODAY.minusDays(WINDOW_DAYS), 0L, PageRequest.of(0, 100))
+                .findStaleForeignEntriesAfterCursor(WINDOW_START, 0L, PageRequest.of(0, 100))
                 .size();
     }
 
@@ -356,8 +377,8 @@ class LedgerRecalculationIntegrationTest {
         }
 
         @Bean
-        LedgerRecalculationService proxiedService(LedgerRecalculationChunkProcessor chunkProcessor, Clock clock) {
-            return new LedgerRecalculationService(chunkProcessor, clock, WINDOW_DAYS, PROXIED_CHUNK_SIZE, 100);
+        LedgerRecalculationService proxiedService(LedgerRecalculationChunkProcessor chunkProcessor) {
+            return new LedgerRecalculationService(chunkProcessor, PROXIED_CHUNK_SIZE, 100);
         }
     }
 }

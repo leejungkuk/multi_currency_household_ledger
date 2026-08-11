@@ -62,7 +62,7 @@ class LocalSecurityConfigTest {
     void collect_is_permitted_without_token_in_local() throws Exception {
         given(clock.instant()).willReturn(TODAY.atStartOfDay(KST).toInstant());
         given(clock.getZone()).willReturn(KST);
-        given(exchangeRateService.fetchAndSaveRates(TODAY)).willReturn(true);
+        given(exchangeRateService.fetchAndSaveRates(TODAY)).willReturn(0);
         given(exchangeRateService.getAllRatesByDate(TODAY)).willReturn(List.of());
 
         mockMvc.perform(post("/api/v1/exchange-rates/collect"))
