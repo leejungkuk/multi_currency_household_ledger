@@ -80,6 +80,21 @@ jobs:
             echo "서버에 적용된 Flyway 이력과 대조해 사람이 판단한다(이 목록은 게이트가 아니다)."
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # git 커밋 → 호스트 컨테이너 정의 간선의 유일한 완화책은 사람이 이 값을 ntfy와 대조하는 것이다.
+      # 조회는 API 한 번이고, 실패한 뒤 태그를 옮기면 이미 호스트가 배포하므로 승격 전에 fail-closed로 막는다.
+      - name: Resolve monitoring tree at target sha
+        id: monitoring-tree
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ inputs.sha }}
+        run: |
+          tree=$(gh api "repos/$GITHUB_REPOSITORY/git/trees/$SHA" \
+            --jq '.tree[] | select(.path=="monitoring") | .sha') \
+            || { echo "::error::monitoring 트리 sha 조회 실패 — 대조값 없이는 승격하지 않는다"; exit 1; }
+          [[ "$tree" =~ ^[0-9a-f]{40}$ ]] \
+            || { echo "::error::monitoring 트리 sha가 올바른 40자 hex가 아니다"; exit 1; }
+          echo "tree_sha=$tree" >> "$GITHUB_OUTPUT"
+
       # 위 목록을 실제로 읽었다는 확인. 워크플로가 새 마이그레이션을 계산할 수 없으므로 이 입력이 대신하는 것은
       # "구 이미지와 호환되는 additive 변경이라 무인 배포·자동 롤백이 성립하는가" 라는 사람의 판단이다(Step 0 규칙).
       # 목록 출력보다 뒤에 두는 이유: 문구를 틀려 실패해도 요약에 목록이 남아 그대로 보고 다시 실행할 수 있다.
@@ -130,6 +145,7 @@ jobs:
         env:
           SHA: ${{ inputs.sha }}
           SOURCE: ${{ steps.promote.outputs.source_digest }}
+          MONITORING_TREE: ${{ steps.monitoring-tree.outputs.tree_sha }}
         run: |
           dst=$(docker buildx imagetools inspect --format '{{json .Manifest}}' "$IMAGE:deploy" | jq -er .digest)
           {
@@ -140,7 +156,9 @@ jobs:
             echo "| 커밋 | \`$SHA\` |"
             echo "| 원본 digest | \`$SOURCE\` |"
             echo "| \`:deploy\` digest | \`$dst\` |"
-            echo "| ntfy 대조값 | \`${dst:7:12}\` |"
+            echo "| 배포 ntfy 대조값 | \`${dst:7:12}\` |"
+            echo "| monitoring 트리 | \`$MONITORING_TREE\` |"
+            echo "| monitoring ntfy 대조값 | \`${MONITORING_TREE:0:12}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
           [ "$dst" = "$SOURCE" ] \
             || { echo "::error::digest 가 보존되지 않았다 — crane 폴백까지 실패했다"; exit 1; }
