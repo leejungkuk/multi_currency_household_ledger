@@ -94,6 +94,10 @@ woni:
       allowed-origins: ${WONI_CORS_ALLOWED_ORIGINS:http://localhost:3000}
 
 exchange:
+  backfill:
+    # 백필 범위와 거래 재계산 보정창의 단일 정본(1~365). 임시 상향 시 재계산이 완주하기 전에 되돌리지 않는다.
+    # LedgerRecalculationService의 "주기 상한 도달" 경고가 연속 사이클에서 더 이상 나오지 않는 것이 원복 기준이다.
+    window-days: ${EXCHANGE_BACKFILL_WINDOW_DAYS:30}
   eximbank:
     api-url: https://oapi.koreaexim.go.kr/site/program/financial/exchangeJSON
     connect-timeout: ${EXIMBANK_CONNECT_TIMEOUT:2s}
