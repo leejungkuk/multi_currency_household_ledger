@@ -1,0 +1,232 @@
+{
+  "compose": {
+    "monitoring/docker-compose.deploy.yml": {
+      "services": {
+        "prometheus": {
+          "networks": [
+            "monitoring",
+            "woni"
+          ],
+          "volumes": [
+            "./prometheus/targets-deploy:/etc/prometheus/targets:ro"
+          ]
+        }
+      }
+    },
+    "monitoring/docker-compose.yml": {
+      "name": "woni-monitoring",
+      "networks": {
+        "monitoring": {
+          "name": "woni-monitoring"
+        }
+      },
+      "services": {
+        "alloy": {
+          "command": [
+            "run",
+            "--server.http.listen-addr=0.0.0.0:12345",
+            "--storage.path=/var/lib/alloy/data",
+            "/etc/alloy/config.alloy"
+          ],
+          "container_name": "woni-alloy",
+          "depends_on": [
+            "loki",
+            "docker-socket-proxy"
+          ],
+          "image": "grafana/alloy:v1.18.1",
+          "logging": {
+            "driver": "json-file",
+            "options": {
+              "max-file": "3",
+              "max-size": "10m"
+            }
+          },
+          "networks": [
+            "monitoring"
+          ],
+          "restart": "unless-stopped",
+          "volumes": [
+            "./alloy/config.alloy:/etc/alloy/config.alloy:ro",
+            "alloy-data:/var/lib/alloy/data"
+          ]
+        },
+        "docker-socket-proxy": {
+          "container_name": "woni-docker-socket-proxy",
+          "environment": {
+            "CONTAINERS": 1,
+            "NETWORKS": 1,
+            "POST": 0
+          },
+          "image": "tecnativa/docker-socket-proxy:v0.5.0",
+          "logging": {
+            "driver": "json-file",
+            "options": {
+              "max-file": "3",
+              "max-size": "10m"
+            }
+          },
+          "networks": [
+            "monitoring"
+          ],
+          "restart": "unless-stopped",
+          "volumes": [
+            "/var/run/docker.sock:/var/run/docker.sock:ro"
+          ]
+        },
+        "grafana": {
+          "container_name": "woni-grafana",
+          "depends_on": [
+            "prometheus",
+            "loki"
+          ],
+          "environment": {
+            "GF_ANALYTICS_CHECK_FOR_UPDATES": "false",
+            "GF_ANALYTICS_REPORTING_ENABLED": "false",
+            "GF_NEWS_NEWS_FEED_ENABLED": "false",
+            "GF_SECURITY_ADMIN_PASSWORD": "${GRAFANA_ADMIN_PASSWORD:?monitoring/.env 에 GRAFANA_ADMIN_PASSWORD 를 설정하세요}",
+            "GF_SECURITY_ADMIN_USER": "${GRAFANA_ADMIN_USER:-admin}",
+            "GF_USERS_ALLOW_SIGN_UP": "false"
+          },
+          "image": "grafana/grafana:13.1.2",
+          "logging": {
+            "driver": "json-file",
+            "options": {
+              "max-file": "3",
+              "max-size": "10m"
+            }
+          },
+          "networks": [
+            "monitoring"
+          ],
+          "ports": [
+            "127.0.0.1:3000:3000"
+          ],
+          "restart": "unless-stopped",
+          "volumes": [
+            "./grafana/provisioning:/etc/grafana/provisioning:ro",
+            "./grafana/dashboards:/var/lib/grafana/dashboards:ro",
+            "grafana-data:/var/lib/grafana"
+          ]
+        },
+        "loki": {
+          "command": "-config.file=/etc/loki/loki-config.yml",
+          "container_name": "woni-loki",
+          "image": "grafana/loki:3.7.6",
+          "logging": {
+            "driver": "json-file",
+            "options": {
+              "max-file": "3",
+              "max-size": "10m"
+            }
+          },
+          "networks": [
+            "monitoring"
+          ],
+          "restart": "unless-stopped",
+          "volumes": [
+            "./loki/loki-config.yml:/etc/loki/loki-config.yml:ro",
+            "loki-data:/loki"
+          ]
+        },
+        "node-exporter": {
+          "command": [
+            "--path.rootfs=/host"
+          ],
+          "container_name": "woni-node-exporter",
+          "image": "prom/node-exporter:v1.12.1",
+          "logging": {
+            "driver": "json-file",
+            "options": {
+              "max-file": "3",
+              "max-size": "10m"
+            }
+          },
+          "networks": [
+            "monitoring"
+          ],
+          "pid": "host",
+          "restart": "unless-stopped",
+          "volumes": [
+            "/:/host:ro"
+          ]
+        },
+        "prometheus": {
+          "command": [
+            "--config.file=/etc/prometheus/prometheus.yml",
+            "--storage.tsdb.path=/prometheus",
+            "--storage.tsdb.retention.time=15d",
+            "--storage.tsdb.retention.size=2GB",
+            "--web.enable-lifecycle"
+          ],
+          "container_name": "woni-prometheus",
+          "extra_hosts": [
+            "host.docker.internal:host-gateway"
+          ],
+          "image": "prom/prometheus:v3.13.2",
+          "logging": {
+            "driver": "json-file",
+            "options": {
+              "max-file": "3",
+              "max-size": "10m"
+            }
+          },
+          "networks": [
+            "monitoring"
+          ],
+          "ports": [
+            "127.0.0.1:9090:9090"
+          ],
+          "restart": "unless-stopped",
+          "volumes": [
+            "./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro",
+            "./prometheus/targets:/etc/prometheus/targets:ro",
+            "prometheus-data:/prometheus"
+          ]
+        }
+      },
+      "volumes": {
+        "alloy-data": {
+          "name": "woni-alloy-data"
+        },
+        "grafana-data": {
+          "name": "woni-grafana-data"
+        },
+        "loki-data": {
+          "name": "woni-loki-data"
+        },
+        "prometheus-data": {
+          "name": "woni-prometheus-data"
+        }
+      },
+      "x-logging": {
+        "driver": "json-file",
+        "options": {
+          "max-file": "3",
+          "max-size": "10m"
+        }
+      }
+    }
+  },
+  "files": {
+    "monitoring/.env.example": "8bf1c03867d08343bddaa9fdf1cd8787a6c3bb6fa1008a19ab792d9a56726044",
+    "monitoring/alloy/config.alloy": "e94ff5b39fc4b3e45b5416ce51a6818ba5a743a476d85315fcf8b7ccecfed402",
+    "monitoring/docker-compose.deploy.yml": "a3e37ecdba0ee459710d9a14d9839336dc0dc236bc1ab999478005c2f7c4233a",
+    "monitoring/docker-compose.yml": "fe65c522a204b6597cb716b65c8d3fcb36ddd2d47b03b90f3e96be82dc0d2664",
+    "monitoring/grafana/dashboards/spring-boot-statistics.json": "5be5d6fef06e33620b66165df023a2f96e8c01f7349e0636245552f6eb8cf5fb",
+    "monitoring/grafana/dashboards/woni-overview.json": "98b7f25045e8a29deca615831d0a142886002e4344ce7c3c945f7f5bd46cf848",
+    "monitoring/grafana/provisioning/dashboards/dashboards.yml": "30ac6561713af10a691afe2a3da36d7f4609c8d16513e026a7305b6a8ae5b160",
+    "monitoring/grafana/provisioning/datasources/datasources.yml": "f40c32f73ee478b7900ec5a3f524a41e79ee6051f2e485ffa77ea9f37df2ebdb",
+    "monitoring/loki/loki-config.yml": "ba1f49d5f68522d19a56481d877312dadf228b397fb5f36a866db4d85f774293",
+    "monitoring/prometheus/prometheus.yml": "0617b65347a6455a752bbd0b734f93a14382aa7cec0870e0fad0b3fc26e1fc4e",
+    "monitoring/prometheus/targets-deploy/woni-api.json": "6590d1a6de852f180dc4c5c158d65b9b8441ffe438352b6fedda2a48f6eacf52",
+    "monitoring/prometheus/targets/woni-api.json": "20f155c78a22f5a57d62ba0e49b929a27ff3488c824dda0ba493f73d53a1c9d7"
+  },
+  "services": [
+    "alloy",
+    "docker-socket-proxy",
+    "grafana",
+    "loki",
+    "node-exporter",
+    "prometheus"
+  ]
+}
