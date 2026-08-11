@@ -1,0 +1,38 @@
+name: monitoring-guard
+
+# monitoring/은 승격만으로 호스트에 반영되므로 PR이 마지막 사람 개입 지점이다.
+# paths 필터는 required check가 스킵되면 pending으로 남아 무관한 PR까지 잠그므로 쓰지 않는다.
+
+on:
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  monitoring-guard:
+    name: monitoring-guard
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548  # v6.1.0
+        with:
+          python-version: '3.13'
+
+      - name: Install PyYAML
+        run: python3 -m pip install --disable-pip-version-check pyyaml==6.0.3
+
+      - name: Check monitoring baseline
+        # ubuntu-latest 러너에 기본 탑재된 docker compose CLI에 의존한다.
+        run: python3 tools/monitoring-guard.py
+
+      - name: Test monitoring guard regressions
+        run: python3 tools/monitoring-guard.py --self-test
+
+      - name: Test monitoring sync regressions
+        run: bash tools/monitoring-sync.sh --self-test
