@@ -1,7 +1,6 @@
 package com.self.multi_currency_household_ledger.ledger.service;
 
 import com.self.multi_currency_household_ledger.ledger.service.LedgerRecalculationChunkProcessor.ChunkResult;
-import java.time.Clock;
 import java.time.LocalDate;
 import java.util.Optional;
 import lombok.extern.slf4j.Slf4j;
@@ -17,21 +16,15 @@ public class LedgerRecalculationService {
     private static final long CURSOR_ID_LOWER_BOUND = Long.MIN_VALUE;
 
     private final LedgerRecalculationChunkProcessor chunkProcessor;
-    private final Clock clock;
-    private final int correctionWindowDays;
     private final int chunkSize;
     private final int maxEntriesPerRun;
 
     public LedgerRecalculationService(
             LedgerRecalculationChunkProcessor chunkProcessor,
-            Clock clock,
-            @Value("${ledger.recalculation.window-days:7}") int correctionWindowDays,
             @Value("${ledger.recalculation.chunk-size:200}") int chunkSize,
             @Value("${ledger.recalculation.max-entries-per-run:5000}") int maxEntriesPerRun) {
-        validateSettings(correctionWindowDays, chunkSize, maxEntriesPerRun);
+        validateSettings(chunkSize, maxEntriesPerRun);
         this.chunkProcessor = chunkProcessor;
-        this.clock = clock;
-        this.correctionWindowDays = correctionWindowDays;
         this.chunkSize = chunkSize;
         this.maxEntriesPerRun = maxEntriesPerRun;
     }
@@ -44,8 +37,7 @@ public class LedgerRecalculationService {
      * <p>주기 상한에 걸리면 남은 몫은 다음 주기로 넘기고 정상 종료한다(예외 아님). 대상 조건이 SQL 술어라
      * 갱신된 행만 결과집합에서 빠지므로 나머지는 다음 주기가 그대로 이어받는다.
      */
-    public int recalculateRecentForeignEntries() {
-        LocalDate windowStart = LocalDate.now(clock).minusDays(correctionWindowDays);
+    public int recalculateForeignEntriesFrom(LocalDate windowStart) {
         LocalDate cursorDate = windowStart;
         Long cursorId = CURSOR_ID_LOWER_BOUND;
 
@@ -81,11 +73,10 @@ public class LedgerRecalculationService {
         // 잔여를 세려면 쿼리가 한 번 더 필요한데, 이 로그 하나 때문에 주기마다 그 비용을 낼 이유는 없다.
         log.warn(
                 "재계산 주기 상한 {}건에 도달해 이번 주기를 종료합니다(잔여가 있으면 다음 주기가 이어받습니다)."
-                        + " 이 로그가 반복되면 미처리분이 보정창({}일)을 벗어나 영구 동결되므로"
+                        + " 이 로그가 반복되면 미처리분이 시작일 {}의 보정 범위를 벗어나 영구 동결되므로"
                         + " ledger.recalculation.max-entries-per-run 상향을 검토하세요."
-                        + " windowStart={}, cursorDate={}, cursorId={}",
+                        + " cursorDate={}, cursorId={}",
                 maxEntriesPerRun,
-                correctionWindowDays,
                 windowStart,
                 cursorDate,
                 cursorId);
@@ -121,10 +112,7 @@ public class LedgerRecalculationService {
         }
     }
 
-    private void validateSettings(int correctionWindowDays, int chunkSize, int maxEntriesPerRun) {
-        if (correctionWindowDays < 3 || correctionWindowDays > 7) {
-            throw new IllegalArgumentException("correctionWindowDays must be between 3 and 7");
-        }
+    private void validateSettings(int chunkSize, int maxEntriesPerRun) {
         if (chunkSize < 1 || maxEntriesPerRun < 1) {
             throw new IllegalArgumentException("chunkSize and maxEntriesPerRun must be positive");
         }

@@ -25,6 +25,7 @@ class ExchangeRateSchedulerTest {
 
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
     private static final LocalDate TODAY = LocalDate.of(2026, 4, 6);
+    private static final LocalDate WINDOW_START = TODAY.minusDays(30);
     private static final Clock ELEVEN_O_FIVE = Clock.fixed(Instant.parse("2026-04-06T02:05:00Z"), KST);
 
     @Mock
@@ -47,7 +48,7 @@ class ExchangeRateSchedulerTest {
 
         scheduler.collectDailyRates();
 
-        verify(ledgerRecalculationService).recalculateRecentForeignEntries();
+        verify(ledgerRecalculationService).recalculateForeignEntriesFrom(WINDOW_START);
     }
 
     @Test
@@ -58,11 +59,11 @@ class ExchangeRateSchedulerTest {
                 .willReturn(12);
 
         scheduler.collectDailyRates();
-        verify(ledgerRecalculationService, never()).recalculateRecentForeignEntries();
+        verify(ledgerRecalculationService, never()).recalculateForeignEntriesFrom(WINDOW_START);
 
         scheduler.retryFailedDailyCollection();
 
-        verify(ledgerRecalculationService, times(1)).recalculateRecentForeignEntries();
+        verify(ledgerRecalculationService, times(1)).recalculateForeignEntriesFrom(WINDOW_START);
     }
 
     @Test
@@ -71,6 +72,6 @@ class ExchangeRateSchedulerTest {
         scheduler.retryFailedDailyCollection();
 
         verify(exchangeRateService, never()).fetchAndSaveRates(TODAY);
-        verify(ledgerRecalculationService, never()).recalculateRecentForeignEntries();
+        verify(ledgerRecalculationService, never()).recalculateForeignEntriesFrom(WINDOW_START);
     }
 }

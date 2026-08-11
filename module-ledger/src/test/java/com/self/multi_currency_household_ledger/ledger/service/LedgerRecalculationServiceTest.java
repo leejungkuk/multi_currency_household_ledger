@@ -8,10 +8,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 
 import com.self.multi_currency_household_ledger.ledger.service.LedgerRecalculationChunkProcessor.ChunkResult;
-import java.time.Clock;
-import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,10 +20,7 @@ import org.springframework.orm.ObjectOptimisticLockingFailureException;
 class LedgerRecalculationServiceTest {
 
     private static final LocalDate TODAY = LocalDate.of(2026, 4, 6);
-    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
-    private static final Clock FIXED_CLOCK = Clock.fixed(Instant.parse("2026-04-05T15:00:00Z"), KST);
-    private static final int WINDOW_DAYS = 7;
-    private static final LocalDate WINDOW_START = TODAY.minusDays(WINDOW_DAYS);
+    private static final LocalDate WINDOW_START = TODAY.minusDays(30);
 
     @Mock
     private LedgerRecalculationChunkProcessor chunkProcessor;
@@ -36,7 +30,7 @@ class LedgerRecalculationServiceTest {
     void first_chunk_opens_at_correction_window_start() {
         given(chunkProcessor.recalculateChunk(WINDOW_START, Long.MIN_VALUE, 2)).willReturn(lastChunk(1));
 
-        int recalculated = service(2, 100).recalculateRecentForeignEntries();
+        int recalculated = service(2, 100).recalculateForeignEntriesFrom(WINDOW_START);
 
         assertThat(recalculated).isEqualTo(1);
         then(chunkProcessor).should().recalculateChunk(WINDOW_START, Long.MIN_VALUE, 2);
@@ -50,7 +44,7 @@ class LedgerRecalculationServiceTest {
         given(chunkProcessor.recalculateChunk(TODAY.minusDays(1), 10L, 2)).willReturn(chunk(2, TODAY, 20L));
         given(chunkProcessor.recalculateChunk(TODAY, 20L, 2)).willReturn(lastChunk(1));
 
-        int recalculated = service(2, 100).recalculateRecentForeignEntries();
+        int recalculated = service(2, 100).recalculateForeignEntriesFrom(WINDOW_START);
 
         assertThat(recalculated).isEqualTo(5);
     }
@@ -62,7 +56,7 @@ class LedgerRecalculationServiceTest {
         given(chunkProcessor.recalculateChunk(WINDOW_START, Long.MIN_VALUE, 2)).willReturn(chunk(2, TODAY, 10L));
         given(chunkProcessor.recalculateChunk(TODAY, 10L, 1)).willReturn(chunk(1, TODAY, 11L));
 
-        int firstRun = service.recalculateRecentForeignEntries();
+        int firstRun = service.recalculateForeignEntriesFrom(WINDOW_START);
 
         assertThat(firstRun).isEqualTo(3);
         then(chunkProcessor).should(never()).recalculateChunk(TODAY, 11L, 2);
@@ -70,7 +64,7 @@ class LedgerRecalculationServiceTest {
         // 갱신된 행은 대상 술어에서 빠지므로, 다음 주기도 같은 커서(보정창 시작)에서 남은 몫을 잡는다.
         given(chunkProcessor.recalculateChunk(WINDOW_START, Long.MIN_VALUE, 2)).willReturn(lastChunk(2));
 
-        assertThat(service.recalculateRecentForeignEntries()).isEqualTo(2);
+        assertThat(service.recalculateForeignEntriesFrom(WINDOW_START)).isEqualTo(2);
     }
 
     @Test
@@ -79,7 +73,7 @@ class LedgerRecalculationServiceTest {
         given(chunkProcessor.recalculateChunk(WINDOW_START, Long.MIN_VALUE, 2)).willReturn(chunk(2, TODAY, 10L));
         given(chunkProcessor.recalculateChunk(TODAY, 10L, 2)).willThrow(new IllegalStateException("chunk failed"));
 
-        assertThatThrownBy(() -> service(2, 100).recalculateRecentForeignEntries())
+        assertThatThrownBy(() -> service(2, 100).recalculateForeignEntriesFrom(WINDOW_START))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("chunk failed");
     }
@@ -92,7 +86,7 @@ class LedgerRecalculationServiceTest {
                 .willReturn(chunk(2, TODAY, 10L));
         given(chunkProcessor.recalculateChunk(TODAY, 10L, 2)).willReturn(lastChunk(1));
 
-        int recalculated = service(2, 100).recalculateRecentForeignEntries();
+        int recalculated = service(2, 100).recalculateForeignEntriesFrom(WINDOW_START);
 
         assertThat(recalculated).isEqualTo(3);
         then(chunkProcessor).should(times(2)).recalculateChunk(WINDOW_START, Long.MIN_VALUE, 2);
@@ -105,7 +99,7 @@ class LedgerRecalculationServiceTest {
         given(chunkProcessor.recalculateChunk(TODAY, 10L, 2))
                 .willThrow(new ObjectOptimisticLockingFailureException("LedgerEntry", 1L));
 
-        int recalculated = service(2, 100).recalculateRecentForeignEntries();
+        int recalculated = service(2, 100).recalculateForeignEntriesFrom(WINDOW_START);
 
         assertThat(recalculated).isEqualTo(2);
         then(chunkProcessor).should(times(2)).recalculateChunk(TODAY, 10L, 2);
@@ -119,7 +113,7 @@ class LedgerRecalculationServiceTest {
     }
 
     private LedgerRecalculationService service(int chunkSize, int maxEntriesPerRun) {
-        return new LedgerRecalculationService(chunkProcessor, FIXED_CLOCK, WINDOW_DAYS, chunkSize, maxEntriesPerRun);
+        return new LedgerRecalculationService(chunkProcessor, chunkSize, maxEntriesPerRun);
     }
 
     private ChunkResult chunk(int recalculated, LocalDate nextCursorDate, Long nextCursorId) {

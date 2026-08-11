@@ -17,6 +17,8 @@ import org.springframework.stereotype.Component;
 public class ExchangeRateScheduler {
 
     private static final LocalTime RETRY_CUTOFF_TIME = LocalTime.of(14, 0);
+    // Step 2에서 exchange.backfill.window-days 프로퍼티로 대체한다.
+    private static final int TEMPORARY_BACKFILL_WINDOW_DAYS = 30;
 
     private final ExchangeRateService exchangeRateService;
     private final LedgerRecalculationService ledgerRecalculationService;
@@ -44,7 +46,8 @@ public class ExchangeRateScheduler {
     private void collectAndRecalculate(LocalDate date) {
         try {
             int saved = exchangeRateService.fetchAndSaveRates(date);
-            int recalculated = ledgerRecalculationService.recalculateRecentForeignEntries();
+            LocalDate windowStart = LocalDate.now(clock).minusDays(TEMPORARY_BACKFILL_WINDOW_DAYS);
+            int recalculated = ledgerRecalculationService.recalculateForeignEntriesFrom(windowStart);
             retryPending.set(false);
             log.info("환율 수집 후 거래 재계산 완료. date={}, saved={}, recalculated={}", date, saved, recalculated);
         } catch (RuntimeException e) {

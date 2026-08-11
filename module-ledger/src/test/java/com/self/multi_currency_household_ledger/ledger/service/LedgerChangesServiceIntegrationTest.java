@@ -87,7 +87,7 @@ class LedgerChangesServiceIntegrationTest {
         insertRate(staleRate);
         insertRate(confirmedRate);
 
-        int recalculated = ledgerRecalculationService.recalculateRecentForeignEntries();
+        int recalculated = ledgerRecalculationService.recalculateForeignEntriesFrom(TODAY.minusDays(30));
         LedgerChangesResponse response = ledgerService.getChanges(
                 MEMBER_ID, previousCursorUpdatedAt, synced.ledgerEntry().id(), 500);
 
