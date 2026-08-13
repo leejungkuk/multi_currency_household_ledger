@@ -38,6 +38,10 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, Long> 
             """)
     int deleteByMemberIdAndClientEntryId(@Param("memberId") UUID memberId, @Param("clientEntryId") UUID clientEntryId);
 
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query("delete from LedgerEntry entry where entry.memberId = :memberId")
+    int deleteAllByMemberId(@Param("memberId") UUID memberId);
+
     @Query(
             """
             select coalesce(sum(entry.krwAmount), 0)

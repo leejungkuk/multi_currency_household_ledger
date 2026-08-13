@@ -16,6 +16,7 @@ import com.self.multi_currency_household_ledger.ledger.dto.AssetResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.CategoryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.CreateLedgerEntryRequest;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerEntryResponse;
+import com.self.multi_currency_household_ledger.ledger.service.LedgerPurgeService;
 import com.self.multi_currency_household_ledger.ledger.service.LedgerService;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -62,6 +63,10 @@ class CurrentMemberIdArgumentResolverTest {
 
     @MockitoBean
     private LedgerService ledgerService;
+
+    @MockitoBean
+    @SuppressWarnings("UnusedVariable")
+    private LedgerPurgeService ledgerPurgeService;
 
     @Test
     @DisplayName("거래 생성은 토큰 없으면 401 ErrorResponse를 반환한다")
