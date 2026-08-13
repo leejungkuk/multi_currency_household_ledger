@@ -12,6 +12,7 @@ import com.self.multi_currency_household_ledger.ledger.dto.LedgerReportResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerRestoreResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryRequest;
 import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryResponse;
+import com.self.multi_currency_household_ledger.ledger.service.LedgerPurgeService;
 import com.self.multi_currency_household_ledger.ledger.service.LedgerService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -40,6 +41,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class LedgerController {
 
     private final LedgerService ledgerService;
+    private final LedgerPurgeService ledgerPurgeService;
 
     @PostMapping
     public ApiResponse<LedgerEntryResponse> createLedgerEntry(
@@ -66,6 +68,12 @@ public class LedgerController {
     public ApiResponse<Void> deleteSyncedLedgerEntry(
             @CurrentMemberId UUID memberId, @PathVariable("clientEntryId") UUID clientEntryId) {
         ledgerService.deleteSyncedEntry(clientEntryId, memberId);
+        return ApiResponse.success(null);
+    }
+
+    @DeleteMapping
+    public ApiResponse<Void> deleteAllLedgerEntries(@CurrentMemberId UUID memberId) {
+        ledgerPurgeService.purge(memberId);
         return ApiResponse.success(null);
     }
 

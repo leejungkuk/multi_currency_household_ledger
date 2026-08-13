@@ -28,6 +28,7 @@ import com.self.multi_currency_household_ledger.ledger.dto.LedgerRestoreResponse
 import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryRequest;
 import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryResponse;
 import com.self.multi_currency_household_ledger.ledger.exception.LedgerErrorCode;
+import com.self.multi_currency_household_ledger.ledger.service.LedgerPurgeService;
 import com.self.multi_currency_household_ledger.ledger.service.LedgerService;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -65,6 +66,10 @@ class LedgerControllerTest {
 
     @MockitoBean
     private LedgerService ledgerService;
+
+    @MockitoBean
+    @SuppressWarnings("UnusedVariable")
+    private LedgerPurgeService ledgerPurgeService;
 
     @Test
     @DisplayName("가계부 내역을 정상적으로 생성한다")
