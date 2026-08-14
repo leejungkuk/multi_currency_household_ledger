@@ -100,7 +100,7 @@ class LedgerServiceTest {
         CreateLedgerEntryRequest request =
                 new CreateLedgerEntryRequest(BigDecimal.valueOf(5000), CurrencyCode.KRW, 1L, 1L, TODAY, "커피");
 
-        given(categoryRepository.findById(1L)).willReturn(Optional.of(category));
+        given(categoryRepository.findUsableCategory(1L, MEMBER_ID)).willReturn(Optional.of(category));
         given(assetRepository.findById(1L)).willReturn(Optional.of(asset));
         given(ledgerEntryRepository.save(any(LedgerEntry.class))).willAnswer(invocation -> invocation.getArgument(0));
 
@@ -123,7 +123,7 @@ class LedgerServiceTest {
 
         ExchangeRate exchangeRate = ExchangeRate.of(CurrencyCode.USD, BigDecimal.valueOf(1300), TODAY);
 
-        given(categoryRepository.findById(1L)).willReturn(Optional.of(category));
+        given(categoryRepository.findUsableCategory(1L, MEMBER_ID)).willReturn(Optional.of(category));
         given(assetRepository.findById(1L)).willReturn(Optional.of(asset));
         given(exchangeRateService.getRateOnOrBefore(any(), any())).willReturn(exchangeRate);
         given(ledgerEntryRepository.save(any(LedgerEntry.class))).willAnswer(invocation -> invocation.getArgument(0));
@@ -146,7 +146,7 @@ class LedgerServiceTest {
         given(ledgerEntryRepository.findByMemberIdAndClientEntryIdIn(MEMBER_ID, Set.of(clientEntryId)))
                 .willReturn(List.of());
         given(ledgerEntryRepository.countByMemberId(MEMBER_ID)).willReturn(0L);
-        given(categoryRepository.findById(1L)).willReturn(Optional.of(category));
+        given(categoryRepository.findUsableCategory(1L, MEMBER_ID)).willReturn(Optional.of(category));
         given(assetRepository.findById(1L)).willReturn(Optional.of(asset));
         given(ledgerEntryRepository.save(any(LedgerEntry.class)))
                 .willThrow(constraintViolation("uq_ledger_entry_member_client_entry"));
@@ -174,7 +174,7 @@ class LedgerServiceTest {
         given(ledgerEntryRepository.findByMemberIdAndClientEntryIdIn(MEMBER_ID, Set.of(clientEntryId)))
                 .willReturn(List.of());
         given(ledgerEntryRepository.countByMemberId(MEMBER_ID)).willReturn(0L);
-        given(categoryRepository.findById(1L)).willReturn(Optional.of(category));
+        given(categoryRepository.findUsableCategory(1L, MEMBER_ID)).willReturn(Optional.of(category));
         given(assetRepository.findById(1L)).willReturn(Optional.of(asset));
         given(ledgerEntryRepository.save(any(LedgerEntry.class))).willThrow(memberFkViolation);
 
@@ -206,7 +206,7 @@ class LedgerServiceTest {
                 .willReturn(Optional.of(racedEntry));
         given(ledgerSyncInsertService.create(MEMBER_ID, request))
                 .willThrow(new DataIntegrityViolationException("duplicate client entry"));
-        given(categoryRepository.findById(1L)).willReturn(Optional.of(category));
+        given(categoryRepository.findUsableCategory(1L, MEMBER_ID)).willReturn(Optional.of(category));
         given(assetRepository.findById(1L)).willReturn(Optional.of(asset));
 
         SyncLedgerEntryResponse response = ledgerService.sync(request, MEMBER_ID);
@@ -233,7 +233,7 @@ class LedgerServiceTest {
         CreateLedgerEntryRequest request = new CreateLedgerEntryRequest(
                 BigDecimal.valueOf(100), CurrencyCode.USD, 1L, 1L, TODAY.plusDays(1), "점심 식사");
 
-        given(categoryRepository.findById(1L)).willReturn(Optional.of(category));
+        given(categoryRepository.findUsableCategory(1L, MEMBER_ID)).willReturn(Optional.of(category));
         given(assetRepository.findById(1L)).willReturn(Optional.of(asset));
         given(exchangeRateService.getRateOnOrBefore(any(), any()))
                 .willReturn(ExchangeRate.of(CurrencyCode.USD, BigDecimal.valueOf(1300), TODAY));
@@ -264,7 +264,7 @@ class LedgerServiceTest {
         ExchangeRate newRate = ExchangeRate.of(CurrencyCode.EUR, new BigDecimal("1400.000000"), TODAY);
 
         given(ledgerEntryRepository.findByIdAndMemberId(1L, MEMBER_ID)).willReturn(Optional.of(entry));
-        given(categoryRepository.findById(2L)).willReturn(Optional.of(incomeCategory));
+        given(categoryRepository.findUsableCategory(2L, MEMBER_ID)).willReturn(Optional.of(incomeCategory));
         given(assetRepository.findById(2L)).willReturn(Optional.of(card));
         given(exchangeRateService.getRateOnOrBefore(CurrencyCode.EUR, TODAY)).willReturn(newRate);
 
@@ -312,7 +312,7 @@ class LedgerServiceTest {
                 new CreateLedgerEntryRequest(new BigDecimal("5000.00"), CurrencyCode.KRW, 1L, 1L, TODAY, null);
 
         given(ledgerEntryRepository.findByIdAndMemberId(1L, MEMBER_ID)).willReturn(Optional.of(entry));
-        given(categoryRepository.findById(1L)).willReturn(Optional.of(category));
+        given(categoryRepository.findUsableCategory(1L, MEMBER_ID)).willReturn(Optional.of(category));
         given(assetRepository.findById(1L)).willReturn(Optional.of(asset));
 
         LedgerEntryResponse response = ledgerService.update(1L, request, MEMBER_ID);

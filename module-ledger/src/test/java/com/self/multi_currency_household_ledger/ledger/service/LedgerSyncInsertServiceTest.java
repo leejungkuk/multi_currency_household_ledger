@@ -71,7 +71,7 @@ class LedgerSyncInsertServiceTest {
         SyncLedgerEntryRequest request = new SyncLedgerEntryRequest(
                 CLIENT_ENTRY_ID, new BigDecimal("100.00"), CurrencyCode.USD, 1L, 3L, TODAY, "  점심  ");
         ExchangeRate exchangeRate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1320.000000"), TODAY);
-        given(categoryRepository.findById(1L)).willReturn(Optional.of(category));
+        given(categoryRepository.findUsableCategory(1L, MEMBER_ID)).willReturn(Optional.of(category));
         given(assetRepository.findById(3L)).willReturn(Optional.of(asset));
         given(exchangeRateService.getRateOnOrBefore(CurrencyCode.USD, TODAY)).willReturn(exchangeRate);
         given(ledgerEntryRepository.saveAndFlush(any(LedgerEntry.class)))

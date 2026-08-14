@@ -11,7 +11,10 @@ import com.self.multi_currency_household_ledger.exchange.service.ExchangeRateSer
 import com.self.multi_currency_household_ledger.ledger.AuthUserFixture;
 import com.self.multi_currency_household_ledger.ledger.TestJpaConfig;
 import com.self.multi_currency_household_ledger.ledger.TestLedgerApplication;
+import com.self.multi_currency_household_ledger.ledger.domain.Category;
+import com.self.multi_currency_household_ledger.ledger.domain.CategoryRepository;
 import com.self.multi_currency_household_ledger.ledger.domain.LedgerEntryRepository;
+import com.self.multi_currency_household_ledger.ledger.domain.TransactionType;
 import com.self.multi_currency_household_ledger.ledger.dto.CreateLedgerEntryRequest;
 import com.self.multi_currency_household_ledger.ledger.dto.ImportLedgerEntriesRequest;
 import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryRequest;
@@ -71,6 +74,9 @@ class LedgerQuotaIntegrationTest {
     private LedgerEntryRepository ledgerEntryRepository;
 
     @Autowired
+    private CategoryRepository categoryRepository;
+
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @MockitoBean
@@ -80,6 +86,61 @@ class LedgerQuotaIntegrationTest {
     @BeforeEach
     void setUp() {
         new AuthUserFixture(jdbcTemplate).reset(MEMBER_ID, OTHER_MEMBER_ID);
+    }
+
+    @Test
+    @DisplayName("타 회원의 활성 커스텀 카테고리로 거래 생성 시 404이고 저장하지 않는다")
+    void create_rejects_other_members_custom_category() {
+        Category otherCategory = categoryRepository.saveAndFlush(
+                Category.custom(OTHER_MEMBER_ID, TransactionType.EXPENSE, "타 회원 카테고리", null));
+
+        assertThatThrownBy(() -> ledgerService.create(krwEntry(otherCategory.getId()), MEMBER_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", LedgerErrorCode.CATEGORY_NOT_FOUND.getCode());
+        assertThat(ledgerEntryRepository.countByMemberId(MEMBER_ID)).isZero();
+    }
+
+    @Test
+    @DisplayName("내 비활성 커스텀 카테고리로 거래 생성 시 404이고 저장하지 않는다")
+    void create_rejects_inactive_own_custom_category() {
+        Category inactiveCategory = Category.custom(MEMBER_ID, TransactionType.EXPENSE, "삭제한 카테고리", null);
+        inactiveCategory.deactivate();
+        categoryRepository.saveAndFlush(inactiveCategory);
+
+        assertThatThrownBy(() -> ledgerService.create(krwEntry(inactiveCategory.getId()), MEMBER_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", LedgerErrorCode.CATEGORY_NOT_FOUND.getCode());
+        assertThat(ledgerEntryRepository.countByMemberId(MEMBER_ID)).isZero();
+    }
+
+    @Test
+    @DisplayName("내 활성 커스텀 카테고리로 거래를 생성할 수 있다")
+    void create_accepts_active_own_custom_category() {
+        Category ownCategory =
+                categoryRepository.saveAndFlush(Category.custom(MEMBER_ID, TransactionType.EXPENSE, "내 카테고리", null));
+
+        var response = ledgerService.create(krwEntry(ownCategory.getId()), MEMBER_ID);
+
+        assertThat(response.category().id()).isEqualTo(ownCategory.getId());
+        assertThat(ledgerEntryRepository.countByMemberId(MEMBER_ID)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("타 회원의 활성 커스텀 카테고리로 거래 수정 시 404이고 기존 거래를 유지한다")
+    void update_rejects_other_members_custom_category() {
+        var created = ledgerService.create(krwEntry(), MEMBER_ID);
+        Category otherCategory = categoryRepository.saveAndFlush(
+                Category.custom(OTHER_MEMBER_ID, TransactionType.EXPENSE, "타 회원 카테고리", null));
+
+        assertThatThrownBy(() -> ledgerService.update(created.id(), krwEntry(otherCategory.getId()), MEMBER_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", LedgerErrorCode.CATEGORY_NOT_FOUND.getCode());
+        assertThat(ledgerEntryRepository
+                        .findById(created.id())
+                        .orElseThrow()
+                        .getCategory()
+                        .getId())
+                .isEqualTo(CATEGORY_ID);
     }
 
     @Test
@@ -182,8 +243,12 @@ class LedgerQuotaIntegrationTest {
     }
 
     private static CreateLedgerEntryRequest krwEntry() {
+        return krwEntry(CATEGORY_ID);
+    }
+
+    private static CreateLedgerEntryRequest krwEntry(long categoryId) {
         return new CreateLedgerEntryRequest(
-                new BigDecimal("5000.00"), CurrencyCode.KRW, CATEGORY_ID, ASSET_ID, TODAY, null);
+                new BigDecimal("5000.00"), CurrencyCode.KRW, categoryId, ASSET_ID, TODAY, null);
     }
 
     private static ImportLedgerEntriesRequest.ImportLedgerEntryItem importItem(UUID clientEntryId) {

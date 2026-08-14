@@ -67,7 +67,7 @@ public class LedgerService {
         ledgerQuotaPolicy.assertCanCreate(memberId, 1);
 
         Category category = categoryRepository
-                .findById(request.categoryId())
+                .findUsableCategory(request.categoryId(), memberId)
                 .orElseThrow(() -> new BusinessException(LedgerErrorCode.CATEGORY_NOT_FOUND));
 
         Asset asset = assetRepository
@@ -143,7 +143,7 @@ public class LedgerService {
                 .orElseThrow(() -> new BusinessException(LedgerErrorCode.LEDGER_ENTRY_NOT_FOUND));
 
         Category category = categoryRepository
-                .findById(request.categoryId())
+                .findUsableCategory(request.categoryId(), memberId)
                 .orElseThrow(() -> new BusinessException(LedgerErrorCode.CATEGORY_NOT_FOUND));
 
         Asset asset = assetRepository
@@ -280,7 +280,7 @@ public class LedgerService {
     private ImportLedgerEntriesResponse.ImportedLedgerEntry createImportedEntry(
             UUID memberId, ImportLedgerEntriesRequest.ImportLedgerEntryItem item, String payloadHash) {
         Category category = categoryRepository
-                .findById(item.categoryId())
+                .findUsableCategory(item.categoryId(), memberId)
                 .orElseThrow(() -> new BusinessException(LedgerErrorCode.CATEGORY_NOT_FOUND));
 
         Asset asset = assetRepository
@@ -331,7 +331,7 @@ public class LedgerService {
 
     private LedgerEntry replaceSyncedEntry(LedgerEntry entry, SyncLedgerEntryRequest request) {
         Category category = categoryRepository
-                .findById(request.categoryId())
+                .findUsableCategory(request.categoryId(), entry.getMemberId())
                 .orElseThrow(() -> new BusinessException(LedgerErrorCode.CATEGORY_NOT_FOUND));
 
         Asset asset = assetRepository
