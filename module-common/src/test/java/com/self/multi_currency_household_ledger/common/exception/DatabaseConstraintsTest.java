@@ -24,6 +24,17 @@ class DatabaseConstraintsTest {
     }
 
     @Test
+    @DisplayName("카테고리 owner FK는 별도 검사만 식별하고 기존 ledger FK 검사는 false를 유지한다")
+    void identifies_category_owner_foreign_key_without_widening_ledger_check() {
+        DataIntegrityViolationException exception = constraintViolation("fk_category_owner_member");
+
+        assertThat(DatabaseConstraints.isCategoryOwnerMemberForeignKeyViolation(exception))
+                .isTrue();
+        assertThat(DatabaseConstraints.isLedgerEntryMemberForeignKeyViolation(exception))
+                .isFalse();
+    }
+
+    @Test
     @DisplayName("cause 사슬이 순환해도 순회가 끝난다")
     void terminates_on_cyclic_cause_chain() {
         SQLException first = new SQLException("first");

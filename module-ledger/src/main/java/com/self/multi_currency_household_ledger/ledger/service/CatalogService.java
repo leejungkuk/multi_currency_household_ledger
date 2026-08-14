@@ -20,7 +20,9 @@ public class CatalogService {
     private final AssetRepository assetRepository;
 
     public List<CategoryResponse> getCategories(TransactionType transactionType) {
-        return categoryRepository.findByTransactionTypeAndIsActiveTrueOrderBySortOrder(transactionType).stream()
+        return categoryRepository
+                .findByOwnerMemberIdIsNullAndTransactionTypeAndIsActiveTrueOrderBySortOrder(transactionType)
+                .stream()
                 .map(CategoryResponse::from)
                 .toList();
     }

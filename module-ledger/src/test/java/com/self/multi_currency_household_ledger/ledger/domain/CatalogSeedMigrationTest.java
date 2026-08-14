@@ -61,9 +61,11 @@ class CatalogSeedMigrationTest {
     @DisplayName("Flyway 시드는 디자인 정본 카테고리 21개와 자산 6개를 명시 id로 저장한다")
     void catalog_seed_matches_design_canonical_rows() {
         List<Category> expenseCategories =
-                categoryRepository.findByTransactionTypeAndIsActiveTrueOrderBySortOrder(TransactionType.EXPENSE);
+                categoryRepository.findByOwnerMemberIdIsNullAndTransactionTypeAndIsActiveTrueOrderBySortOrder(
+                        TransactionType.EXPENSE);
         List<Category> incomeCategories =
-                categoryRepository.findByTransactionTypeAndIsActiveTrueOrderBySortOrder(TransactionType.INCOME);
+                categoryRepository.findByOwnerMemberIdIsNullAndTransactionTypeAndIsActiveTrueOrderBySortOrder(
+                        TransactionType.INCOME);
         List<Asset> assets = assetRepository.findByIsActiveTrueOrderBySortOrder();
 
         assertThat(expenseCategories)
@@ -105,6 +107,7 @@ class CatalogSeedMigrationTest {
                         tuple(19L, "TRANSFER", "이체", "Transfer", "💸", 6),
                         tuple(20L, "INVESTMENT", "투자 수익", "Investment", "📈", 7),
                         tuple(21L, "OTHER_INCOME", "기타", "Other", "📥", 8));
+        assertThat(categoryRepository.findAll()).hasSize(21).allMatch(category -> category.getOwnerMemberId() == null);
         assertThat(assets)
                 .extracting(
                         Asset::getId,
@@ -122,12 +125,13 @@ class CatalogSeedMigrationTest {
     }
 
     @Test
-    @DisplayName("카탈로그 테이블은 KO/EN 표시명을 갖고 owner 컬럼과 자산 icon 컬럼을 갖지 않는다")
-    void catalog_schema_uses_shared_ko_en_names_without_owner_or_asset_icon() {
+    @DisplayName("카테고리는 nullable owner UUID를 갖고 자산은 owner와 icon 컬럼을 갖지 않는다")
+    void catalog_schema_adds_category_owner_without_changing_asset_schema() {
         assertThat(columnExists("category", "display_name_ko")).isTrue();
         assertThat(columnExists("category", "display_name_en")).isTrue();
         assertThat(columnExists("category", "display_name")).isFalse();
-        assertThat(columnExists("category", "owner_member_id")).isFalse();
+        assertThat(columnExists("category", "owner_member_id")).isTrue();
+        assertThat(columnType("category", "owner_member_id")).isEqualTo("uuid");
         assertThat(columnExists("asset", "display_name_ko")).isTrue();
         assertThat(columnExists("asset", "display_name_en")).isTrue();
         assertThat(columnExists("asset", "display_name")).isFalse();
@@ -144,7 +148,7 @@ class CatalogSeedMigrationTest {
         assertThat(characterMaximumLength("ledger_entry", "client_payload_hash"))
                 .isEqualTo(64);
 
-        String indexDefinition = indexDefinition("uq_ledger_entry_member_client_entry");
+        String indexDefinition = indexDefinition("ledger_entry", "uq_ledger_entry_member_client_entry");
         assertThat(indexDefinition).isNotNull();
         assertThat(indexDefinition.toLowerCase(Locale.ROOT))
                 .contains("create unique index uq_ledger_entry_member_client_entry")
@@ -158,11 +162,36 @@ class CatalogSeedMigrationTest {
         assertThat(columnExists("ledger_entry", "updated_at")).isTrue();
         assertThat(isNullable("ledger_entry", "updated_at")).isEqualTo("NO");
 
-        String indexDefinition = indexDefinition("idx_ledger_member_updated_at_id");
+        String indexDefinition = indexDefinition("ledger_entry", "idx_ledger_member_updated_at_id");
         assertThat(indexDefinition).isNotNull();
         assertThat(indexDefinition.toLowerCase(Locale.ROOT))
                 .contains("create index idx_ledger_member_updated_at_id")
                 .contains("(member_id, updated_at, id)");
+    }
+
+    @Test
+    @DisplayName("카테고리는 owner 인덱스와 시스템 행 한정 타입·코드 unique 인덱스를 갖는다")
+    void category_schema_has_owner_and_partial_system_catalog_indexes() {
+        String ownerIndex = indexDefinition("category", "idx_category_owner");
+        assertThat(ownerIndex).isNotNull();
+        assertThat(ownerIndex.toLowerCase(Locale.ROOT))
+                .contains("create index idx_category_owner")
+                .contains("(owner_member_id)");
+
+        String uniqueIndex = indexDefinition("category", "uk_category_type_code");
+        assertThat(uniqueIndex).isNotNull();
+        assertThat(uniqueIndex.toLowerCase(Locale.ROOT))
+                .contains("create unique index uk_category_type_code")
+                .contains("(transaction_type, code)")
+                .contains("where (owner_member_id is null)");
+    }
+
+    @Test
+    @DisplayName("카테고리 identity 시퀀스는 커스텀 전용 id 10000부터 시작한다")
+    void category_identity_sequence_reserves_system_id_range() {
+        Long lastValue = jdbcTemplate.queryForObject("select last_value from category_id_seq", Long.class);
+
+        assertThat(lastValue).isGreaterThanOrEqualTo(10_000L);
     }
 
     @Test
@@ -284,16 +313,17 @@ class CatalogSeedMigrationTest {
                 columnName);
     }
 
-    private String indexDefinition(String indexName) {
+    private String indexDefinition(String tableName, String indexName) {
         return jdbcTemplate.queryForObject(
                 """
                 select indexdef
                 from pg_indexes
                 where schemaname = 'public'
-                  and tablename = 'ledger_entry'
+                  and tablename = ?
                   and indexname = ?
                 """,
                 String.class,
+                tableName,
                 indexName);
     }
 

@@ -3,6 +3,7 @@ package com.self.multi_currency_household_ledger.common.exception;
 public final class DatabaseConstraints {
 
     public static final String LEDGER_ENTRY_MEMBER_FOREIGN_KEY = "fk_ledger_entry_member";
+    public static final String CATEGORY_OWNER_MEMBER_FOREIGN_KEY = "fk_category_owner_member";
 
     private DatabaseConstraints() {}
 
@@ -15,6 +16,18 @@ public final class DatabaseConstraints {
         for (int depth = 0; cause != null && depth < MAX_CAUSE_DEPTH; depth++) {
             if (cause instanceof org.hibernate.exception.ConstraintViolationException constraintViolation
                     && LEDGER_ENTRY_MEMBER_FOREIGN_KEY.equals(constraintViolation.getConstraintName())) {
+                return true;
+            }
+            cause = cause.getCause();
+        }
+        return false;
+    }
+
+    public static boolean isCategoryOwnerMemberForeignKeyViolation(Throwable exception) {
+        Throwable cause = exception;
+        for (int depth = 0; cause != null && depth < MAX_CAUSE_DEPTH; depth++) {
+            if (cause instanceof org.hibernate.exception.ConstraintViolationException constraintViolation
+                    && CATEGORY_OWNER_MEMBER_FOREIGN_KEY.equals(constraintViolation.getConstraintName())) {
                 return true;
             }
             cause = cause.getCause();

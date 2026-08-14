@@ -36,7 +36,8 @@ class CatalogServiceTest {
     @DisplayName("거래 유형별 카테고리 목록을 조회해 응답 DTO로 반환한다")
     void get_categories() {
         Category category = new Category(TransactionType.EXPENSE, "FOOD_DINING", "식비", "Food & Dining", "🍽️", 1);
-        given(categoryRepository.findByTransactionTypeAndIsActiveTrueOrderBySortOrder(TransactionType.EXPENSE))
+        given(categoryRepository.findByOwnerMemberIdIsNullAndTransactionTypeAndIsActiveTrueOrderBySortOrder(
+                        TransactionType.EXPENSE))
                 .willReturn(List.of(category));
 
         List<CategoryResponse> responses = catalogService.getCategories(TransactionType.EXPENSE);
@@ -45,7 +46,9 @@ class CatalogServiceTest {
         assertThat(responses.get(0).code()).isEqualTo("FOOD_DINING");
         assertThat(responses.get(0).displayNameKo()).isEqualTo("식비");
         assertThat(responses.get(0).displayNameEn()).isEqualTo("Food & Dining");
-        then(categoryRepository).should().findByTransactionTypeAndIsActiveTrueOrderBySortOrder(TransactionType.EXPENSE);
+        then(categoryRepository)
+                .should()
+                .findByOwnerMemberIdIsNullAndTransactionTypeAndIsActiveTrueOrderBySortOrder(TransactionType.EXPENSE);
     }
 
     // 자산 목록을 DTO로 변환해 반환한다.

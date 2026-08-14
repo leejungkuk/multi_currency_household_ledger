@@ -115,6 +115,17 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    @DisplayName("삭제된 회원의 카테고리 owner FK 위반도 401 UNAUTHORIZED로 변환된다")
+    void handleDataIntegrityViolation_maps_category_owner_fk_to_401() {
+        ResponseEntity<ErrorResponse> response =
+                handler.handleDataIntegrityViolation(constraintViolation("fk_category_owner_member"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().code()).isEqualTo("UNAUTHORIZED");
+    }
+
+    @Test
     @DisplayName("알 수 없는 무결성 위반은 기존처럼 500을 반환하고 ERROR 로그를 남긴다")
     void handleDataIntegrityViolation_preserves_catch_all_for_unknown_constraint() {
         Logger logger = (Logger) LoggerFactory.getLogger(GlobalExceptionHandler.class);
