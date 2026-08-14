@@ -17,6 +17,8 @@ public enum LedgerErrorCode implements ErrorCode {
     INVALID_AMOUNT("INVALID_AMOUNT", "금액은 0보다 크고 99,999,999 이하여야 합니다.", HttpStatus.BAD_REQUEST),
     INVALID_FUTURE_DATE("INVALID_FUTURE_DATE", "외화 거래는 미래 날짜를 입력할 수 없습니다.", HttpStatus.BAD_REQUEST),
     // 재시도해도 달라지지 않고 회원이 행을 지워야 해소되므로 429(재시도 유도)가 아니라 403 이다.
+    CUSTOM_CATEGORY_LIMIT_EXCEEDED(
+            "CUSTOM_CATEGORY_LIMIT_EXCEEDED", "생성 가능한 커스텀 카테고리 수를 초과했습니다.", HttpStatus.FORBIDDEN),
     LEDGER_QUOTA_EXCEEDED("LEDGER_QUOTA_EXCEEDED", "저장 가능한 가계부 내역 수를 초과했습니다.", HttpStatus.FORBIDDEN);
 
     private final String code;
