@@ -14,8 +14,11 @@ import com.self.multi_currency_household_ledger.exchange.service.ExchangeRateSer
 import com.self.multi_currency_household_ledger.ledger.AuthUserFixture;
 import com.self.multi_currency_household_ledger.ledger.TestJpaConfig;
 import com.self.multi_currency_household_ledger.ledger.TestLedgerApplication;
+import com.self.multi_currency_household_ledger.ledger.domain.Category;
+import com.self.multi_currency_household_ledger.ledger.domain.CategoryRepository;
 import com.self.multi_currency_household_ledger.ledger.domain.LedgerEntry;
 import com.self.multi_currency_household_ledger.ledger.domain.LedgerEntryRepository;
+import com.self.multi_currency_household_ledger.ledger.domain.TransactionType;
 import com.self.multi_currency_household_ledger.ledger.dto.CreateLedgerEntryRequest;
 import com.self.multi_currency_household_ledger.ledger.dto.ImportLedgerEntriesRequest;
 import com.self.multi_currency_household_ledger.ledger.dto.ImportLedgerEntriesResponse;
@@ -71,6 +74,9 @@ class LedgerImportServiceIntegrationTest {
     private LedgerEntryRepository ledgerEntryRepository;
 
     @Autowired
+    private CategoryRepository categoryRepository;
+
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     @MockitoBean
@@ -79,6 +85,28 @@ class LedgerImportServiceIntegrationTest {
     @BeforeEach
     void setUp() {
         new AuthUserFixture(jdbcTemplate).reset(MEMBER_ID, OTHER_MEMBER_ID);
+    }
+
+    @Test
+    @DisplayName("정상 항목과 타 회원 커스텀 카테고리가 섞인 import는 404이고 배치 전체를 롤백한다")
+    void import_rejects_other_members_custom_category_and_rolls_back_entire_batch() {
+        Category otherCategory = categoryRepository.saveAndFlush(
+                Category.custom(OTHER_MEMBER_ID, TransactionType.EXPENSE, "타 회원 카테고리", null));
+        ImportLedgerEntriesRequest request = new ImportLedgerEntriesRequest(List.of(
+                item(UUID.randomUUID(), new BigDecimal("1000.00"), CurrencyCode.KRW, TODAY, "정상 1"),
+                item(UUID.randomUUID(), new BigDecimal("2000.00"), CurrencyCode.KRW, TODAY, "정상 2"),
+                item(
+                        UUID.randomUUID(),
+                        new BigDecimal("3000.00"),
+                        CurrencyCode.KRW,
+                        TODAY,
+                        "타 회원 카테고리",
+                        otherCategory.getId())));
+
+        assertThatThrownBy(() -> ledgerService.importEntries(request, MEMBER_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", LedgerErrorCode.CATEGORY_NOT_FOUND.getCode());
+        assertThat(ledgerEntryRepository.countByMemberId(MEMBER_ID)).isZero();
     }
 
     @Test
@@ -363,8 +391,18 @@ class LedgerImportServiceIntegrationTest {
 
     private ImportLedgerEntriesRequest.ImportLedgerEntryItem item(
             UUID clientEntryId, BigDecimal amount, CurrencyCode currencyCode, LocalDate transactionDate, String memo) {
+        return item(clientEntryId, amount, currencyCode, transactionDate, memo, 1L);
+    }
+
+    private ImportLedgerEntriesRequest.ImportLedgerEntryItem item(
+            UUID clientEntryId,
+            BigDecimal amount,
+            CurrencyCode currencyCode,
+            LocalDate transactionDate,
+            String memo,
+            long categoryId) {
         return new ImportLedgerEntriesRequest.ImportLedgerEntryItem(
-                clientEntryId, amount, currencyCode, 1L, 3L, transactionDate, memo);
+                clientEntryId, amount, currencyCode, categoryId, 3L, transactionDate, memo);
     }
 
     @TestConfiguration

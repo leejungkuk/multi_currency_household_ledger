@@ -103,7 +103,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ErrorResponse> handleDataIntegrityViolation(DataIntegrityViolationException e) {
-        if (DatabaseConstraints.isLedgerEntryMemberForeignKeyViolation(e)) {
+        if (DatabaseConstraints.isLedgerEntryMemberForeignKeyViolation(e)
+                || DatabaseConstraints.isCategoryOwnerMemberForeignKeyViolation(e)) {
             ErrorCode errorCode = ErrorCode.Common.UNAUTHORIZED;
             return ResponseEntity.status(errorCode.getHttpStatus())
                     .body(ErrorResponse.of(errorCode.getCode(), errorCode.getMessage()));

@@ -36,7 +36,7 @@ class LedgerSyncInsertService {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     LedgerEntry create(UUID memberId, SyncLedgerEntryRequest request) {
         Category category = categoryRepository
-                .findById(request.categoryId())
+                .findUsableCategory(request.categoryId(), memberId)
                 .orElseThrow(() -> new BusinessException(LedgerErrorCode.CATEGORY_NOT_FOUND));
 
         Asset asset = assetRepository

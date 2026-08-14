@@ -1,20 +1,26 @@
 package com.self.multi_currency_household_ledger.ledger.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase.Replace.NONE;
 
+import com.self.multi_currency_household_ledger.common.exception.BusinessException;
 import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
 import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRate;
 import com.self.multi_currency_household_ledger.exchange.service.ExchangeRateService;
 import com.self.multi_currency_household_ledger.ledger.AuthUserFixture;
 import com.self.multi_currency_household_ledger.ledger.TestJpaConfig;
 import com.self.multi_currency_household_ledger.ledger.TestLedgerApplication;
+import com.self.multi_currency_household_ledger.ledger.domain.Category;
+import com.self.multi_currency_household_ledger.ledger.domain.CategoryRepository;
 import com.self.multi_currency_household_ledger.ledger.domain.LedgerEntry;
 import com.self.multi_currency_household_ledger.ledger.domain.LedgerEntryRepository;
+import com.self.multi_currency_household_ledger.ledger.domain.TransactionType;
 import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryRequest;
 import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryResponse;
+import com.self.multi_currency_household_ledger.ledger.exception.LedgerErrorCode;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -76,12 +82,64 @@ class LedgerSyncServiceIntegrationTest {
     @Autowired
     private LedgerEntryRepository ledgerEntryRepository;
 
+    @Autowired
+    private CategoryRepository categoryRepository;
+
     @MockitoBean
     private ExchangeRateService exchangeRateService;
 
     @BeforeEach
     void setUp() {
         new AuthUserFixture(jdbcTemplate).reset(MEMBER_ID, OTHER_MEMBER_ID);
+    }
+
+    @Test
+    @DisplayName("sync 신규 삽입은 타 회원의 활성 커스텀 카테고리를 404로 숨긴다")
+    void sync_insert_rejects_other_members_custom_category() {
+        Category otherCategory = categoryRepository.saveAndFlush(
+                Category.custom(OTHER_MEMBER_ID, TransactionType.EXPENSE, "타 회원 카테고리", null));
+
+        assertThatThrownBy(() -> ledgerService.sync(
+                        request(
+                                UUID.randomUUID(),
+                                new BigDecimal("1000.00"),
+                                CurrencyCode.KRW,
+                                TODAY,
+                                "신규",
+                                otherCategory.getId()),
+                        MEMBER_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", LedgerErrorCode.CATEGORY_NOT_FOUND.getCode());
+        assertThat(ledgerEntryRepository.countByMemberId(MEMBER_ID)).isZero();
+    }
+
+    @Test
+    @DisplayName("sync 기존 행 갱신은 타 회원의 활성 커스텀 카테고리를 404로 숨기고 기존 값을 유지한다")
+    void sync_replace_rejects_other_members_custom_category() {
+        UUID clientEntryId = UUID.randomUUID();
+        ledgerService.sync(request(clientEntryId, new BigDecimal("1000.00"), CurrencyCode.KRW, TODAY, "기존"), MEMBER_ID);
+        Category otherCategory = categoryRepository.saveAndFlush(
+                Category.custom(OTHER_MEMBER_ID, TransactionType.EXPENSE, "타 회원 카테고리", null));
+
+        assertThatThrownBy(() -> ledgerService.sync(
+                        request(
+                                clientEntryId,
+                                new BigDecimal("2000.00"),
+                                CurrencyCode.KRW,
+                                TODAY,
+                                "변경",
+                                otherCategory.getId()),
+                        MEMBER_ID))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", LedgerErrorCode.CATEGORY_NOT_FOUND.getCode());
+
+        LedgerEntry saved = ledgerEntryRepository
+                .findByMemberIdAndClientEntryId(MEMBER_ID, clientEntryId)
+                .orElseThrow();
+        assertThat(saved.getCategory().getId()).isEqualTo(1L);
+        assertThat(saved.getOriginalAmount()).isEqualByComparingTo(new BigDecimal("1000.00"));
+        assertThat(saved.getMemo()).isEqualTo("기존");
+        assertThat(ledgerEntryRepository.countByMemberId(MEMBER_ID)).isEqualTo(1);
     }
 
     @Test
@@ -348,7 +406,17 @@ class LedgerSyncServiceIntegrationTest {
 
     private SyncLedgerEntryRequest request(
             UUID clientEntryId, BigDecimal amount, CurrencyCode currencyCode, LocalDate transactionDate, String memo) {
-        return new SyncLedgerEntryRequest(clientEntryId, amount, currencyCode, 1L, 3L, transactionDate, memo);
+        return request(clientEntryId, amount, currencyCode, transactionDate, memo, 1L);
+    }
+
+    private SyncLedgerEntryRequest request(
+            UUID clientEntryId,
+            BigDecimal amount,
+            CurrencyCode currencyCode,
+            LocalDate transactionDate,
+            String memo,
+            long categoryId) {
+        return new SyncLedgerEntryRequest(clientEntryId, amount, currencyCode, categoryId, 3L, transactionDate, memo);
     }
 
     @TestConfiguration

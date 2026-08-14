@@ -134,6 +134,23 @@ class MemberWithdrawalControllerIntegrationTest {
     }
 
     @Test
+    @DisplayName("탈퇴는 회원의 커스텀 카테고리와 그 거래를 삭제하고 시스템 시드와 타 회원 카테고리를 보존한다")
+    void withdraw_cascades_custom_category_and_ledger_without_touching_shared_or_other_member_categories()
+            throws Exception {
+        long memberACategoryId = createCustomCategory(MEMBER_A, "회원 A 카테고리");
+        long memberBCategoryId = createCustomCategory(MEMBER_B, "회원 B 카테고리");
+        createLedger(MEMBER_A, memberACategoryId);
+
+        withdraw(MEMBER_A).andExpect(status().isOk());
+
+        assertThat(ledgerCount(MEMBER_A)).isZero();
+        assertThat(customCategoryCount(MEMBER_A)).isZero();
+        assertThat(systemCategoryCount()).isEqualTo(21L);
+        assertThat(customCategoryCount(MEMBER_B)).isEqualTo(1L);
+        assertThat(categoryCount(memberBCategoryId)).isEqualTo(1L);
+    }
+
+    @Test
     @DisplayName("회원 A 토큰에 회원 B의 것이라고 주장하는 코드를 붙여도 A 데이터만 삭제한다")
     void withdraw_isolated_by_jwt_subject_even_with_code_claimed_for_another_member() throws Exception {
         createLedger(MEMBER_A);
@@ -352,11 +369,42 @@ class MemberWithdrawalControllerIntegrationTest {
     }
 
     private void createLedger(UUID memberId) throws Exception {
+        createLedger(memberId, 1L);
+    }
+
+    private void createLedger(UUID memberId, long categoryId) throws Exception {
+        String request = CREATE_LEDGER_REQUEST.replace("\"categoryId\": 1", "\"categoryId\": " + categoryId);
         mockMvc.perform(post("/api/v1/ledgers")
                         .with(memberJwt(memberId))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(CREATE_LEDGER_REQUEST))
+                        .content(request))
                 .andExpect(status().isOk());
+    }
+
+    private long createCustomCategory(UUID ownerMemberId, String name) {
+        Long id = jdbcTemplate.queryForObject(
+                """
+                insert into category (
+                    transaction_type,
+                    code,
+                    display_name_ko,
+                    display_name_en,
+                    icon,
+                    sort_order,
+                    owner_member_id,
+                    is_active
+                )
+                values ('EXPENSE', 'CUSTOM', ?, ?, null, 1000, ?, true)
+                returning id
+                """,
+                Long.class,
+                name,
+                name,
+                ownerMemberId);
+        if (id == null) {
+            throw new IllegalStateException("커스텀 카테고리 id가 생성되지 않았습니다.");
+        }
+        return id;
     }
 
     private ResultActions withdraw(UUID memberId) throws Exception {
@@ -394,6 +442,23 @@ class MemberWithdrawalControllerIntegrationTest {
     private long ledgerCount(UUID memberId) {
         Long count = jdbcTemplate.queryForObject(
                 "select count(*) from ledger_entry where member_id = ?", Long.class, memberId);
+        return count == null ? 0L : count;
+    }
+
+    private long customCategoryCount(UUID memberId) {
+        Long count = jdbcTemplate.queryForObject(
+                "select count(*) from category where owner_member_id = ?", Long.class, memberId);
+        return count == null ? 0L : count;
+    }
+
+    private long systemCategoryCount() {
+        Long count =
+                jdbcTemplate.queryForObject("select count(*) from category where owner_member_id is null", Long.class);
+        return count == null ? 0L : count;
+    }
+
+    private long categoryCount(long categoryId) {
+        Long count = jdbcTemplate.queryForObject("select count(*) from category where id = ?", Long.class, categoryId);
         return count == null ? 0L : count;
     }
 
