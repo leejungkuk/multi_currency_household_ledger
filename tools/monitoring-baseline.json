@@ -87,7 +87,7 @@
             "GF_SECURITY_ADMIN_USER": "${GRAFANA_ADMIN_USER:-admin}",
             "GF_USERS_ALLOW_SIGN_UP": "false"
           },
-          "image": "grafana/grafana:13.1.2",
+          "image": "grafana/grafana:13.1.3",
           "logging": {
             "driver": "json-file",
             "options": {
@@ -211,7 +211,7 @@
     "monitoring/.env.example": "8bf1c03867d08343bddaa9fdf1cd8787a6c3bb6fa1008a19ab792d9a56726044",
     "monitoring/alloy/config.alloy": "e94ff5b39fc4b3e45b5416ce51a6818ba5a743a476d85315fcf8b7ccecfed402",
     "monitoring/docker-compose.deploy.yml": "a3e37ecdba0ee459710d9a14d9839336dc0dc236bc1ab999478005c2f7c4233a",
-    "monitoring/docker-compose.yml": "fe65c522a204b6597cb716b65c8d3fcb36ddd2d47b03b90f3e96be82dc0d2664",
+    "monitoring/docker-compose.yml": "bf75fae491ad12af0f191e387031e9aebfd1e4f66bb08cc62d46535bcbd6216e",
     "monitoring/grafana/dashboards/spring-boot-statistics.json": "5be5d6fef06e33620b66165df023a2f96e8c01f7349e0636245552f6eb8cf5fb",
     "monitoring/grafana/dashboards/woni-overview.json": "98b7f25045e8a29deca615831d0a142886002e4344ce7c3c945f7f5bd46cf848",
     "monitoring/grafana/provisioning/dashboards/dashboards.yml": "30ac6561713af10a691afe2a3da36d7f4609c8d16513e026a7305b6a8ae5b160",
