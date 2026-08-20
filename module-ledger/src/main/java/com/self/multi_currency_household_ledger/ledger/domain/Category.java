@@ -13,10 +13,13 @@ import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.DynamicUpdate;
 
 @Entity
 @Getter
 @Table(name = "category")
+// 전컬럼 UPDATE면 수정 트랜잭션이 들고 있던 옛 is_active 스냅샷이 동시 삭제 커밋을 덮어써 삭제된 행이 되살아난다.
+@DynamicUpdate
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Category extends BaseEntity {
 
@@ -69,6 +72,12 @@ public class Category extends BaseEntity {
         Category category = new Category(type, "CUSTOM", name, name, icon, 1000);
         category.ownerMemberId = ownerMemberId;
         return category;
+    }
+
+    public void rename(String name, String icon) {
+        this.displayNameKo = name;
+        this.displayNameEn = name;
+        this.icon = icon;
     }
 
     public void deactivate() {

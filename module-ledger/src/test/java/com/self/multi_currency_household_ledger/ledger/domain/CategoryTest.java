@@ -40,4 +40,30 @@ class CategoryTest {
         assertThat(category.isActive()).isTrue();
         assertThat(category.getTransactionType()).isEqualTo(transactionType);
     }
+
+    @Test
+    @DisplayName("커스텀 카테고리를 수정하면 표시명 KO/EN이 모두 새 이름으로 교체된다")
+    void rename_replaces_display_names_and_icon() {
+        Category category = Category.custom(UUID.randomUUID(), TransactionType.EXPENSE, "햄스장", "🐶");
+
+        category.rename("헬스장", "🏋️");
+
+        assertThat(category.getDisplayNameKo()).isEqualTo("헬스장");
+        assertThat(category.getDisplayNameEn()).isEqualTo("헬스장");
+        assertThat(category.getIcon()).isEqualTo("🏋️");
+        assertThat(category.getCode()).isEqualTo("CUSTOM");
+        assertThat(category.getTransactionType()).isEqualTo(TransactionType.EXPENSE);
+        assertThat(category.isActive()).isTrue();
+    }
+
+    @Test
+    @DisplayName("수정 시 아이콘을 생략하면 기존 아이콘이 null로 교체된다")
+    void rename_clears_icon_when_null_given() {
+        Category category = Category.custom(UUID.randomUUID(), TransactionType.EXPENSE, "반려동물", "🐶");
+
+        category.rename("반려견", null);
+
+        assertThat(category.getDisplayNameKo()).isEqualTo("반려견");
+        assertThat(category.getIcon()).isNull();
+    }
 }

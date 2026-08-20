@@ -92,6 +92,27 @@ class CategoryRepositoryTest {
     }
 
     @Test
+    @DisplayName("수정 대상 조회는 내 활성 커스텀만 반환하고 비활성·타 회원·시스템 행을 숨긴다")
+    void find_editable_custom_category_applies_owner_and_active_predicates() {
+        Category mine =
+                categoryRepository.saveAndFlush(Category.custom(MEMBER_A, TransactionType.EXPENSE, "반려견", "🐶"));
+        Category other =
+                categoryRepository.saveAndFlush(Category.custom(MEMBER_B, TransactionType.EXPENSE, "타 회원", null));
+        Category inactive = Category.custom(MEMBER_A, TransactionType.EXPENSE, "숨김", null);
+        inactive.deactivate();
+        categoryRepository.saveAndFlush(inactive);
+
+        assertThat(categoryRepository.findByIdAndOwnerMemberIdAndIsActiveTrue(mine.getId(), MEMBER_A))
+                .contains(mine);
+        assertThat(categoryRepository.findByIdAndOwnerMemberIdAndIsActiveTrue(inactive.getId(), MEMBER_A))
+                .isEmpty();
+        assertThat(categoryRepository.findByIdAndOwnerMemberIdAndIsActiveTrue(other.getId(), MEMBER_A))
+                .isEmpty();
+        assertThat(categoryRepository.findByIdAndOwnerMemberIdAndIsActiveTrue(1L, MEMBER_A))
+                .isEmpty();
+    }
+
+    @Test
     @DisplayName("사용 가능 카테고리는 시스템 또는 내 활성 커스텀만 허용한다")
     void find_usable_category_applies_owner_and_active_predicates() {
         Category mine =

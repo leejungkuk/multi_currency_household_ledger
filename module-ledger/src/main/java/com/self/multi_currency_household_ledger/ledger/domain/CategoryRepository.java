@@ -18,6 +18,8 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
 
     Optional<Category> findByIdAndOwnerMemberId(Long id, UUID ownerMemberId);
 
+    Optional<Category> findByIdAndOwnerMemberIdAndIsActiveTrue(Long id, UUID ownerMemberId);
+
     @Query(
             "select c from Category c where c.id = :id and c.isActive = true and (c.ownerMemberId is null or c.ownerMemberId = :memberId)")
     Optional<Category> findUsableCategory(@Param("id") Long id, @Param("memberId") UUID memberId);

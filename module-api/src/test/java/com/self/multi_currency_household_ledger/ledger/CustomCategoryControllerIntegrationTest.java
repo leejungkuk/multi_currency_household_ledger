@@ -5,6 +5,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -33,6 +34,9 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.ResultActions;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -61,6 +65,9 @@ class CustomCategoryControllerIntegrationTest {
     @Autowired
     private CategoryRepository categoryRepository;
 
+    @Autowired
+    private PlatformTransactionManager transactionManager;
+
     @MockitoBean
     @SuppressWarnings("UnusedVariable")
     private JwtDecoder jwtDecoder;
@@ -75,13 +82,17 @@ class CustomCategoryControllerIntegrationTest {
     }
 
     @Test
-    @DisplayName("커스텀 카테고리 조회·생성·삭제는 인증 없이는 모두 401이다")
+    @DisplayName("커스텀 카테고리 조회·생성·수정·삭제는 인증 없이는 모두 401이다")
     void custom_category_endpoints_require_authentication() throws Exception {
         mockMvc.perform(get("/api/v1/categories/custom").param("transactionType", "EXPENSE"))
                 .andExpect(status().isUnauthorized());
         mockMvc.perform(post("/api/v1/categories/custom")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(categoryRequest("반려견")))
+                .andExpect(status().isUnauthorized());
+        mockMvc.perform(put("/api/v1/categories/custom/{id}", 10_000L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(updateRequest("반려견")))
                 .andExpect(status().isUnauthorized());
         mockMvc.perform(delete("/api/v1/categories/custom/{id}", 10_000L)).andExpect(status().isUnauthorized());
     }
@@ -128,6 +139,7 @@ class CustomCategoryControllerIntegrationTest {
         deleteCategory(MEMBER_A, categoryId).andExpect(status().isOk());
 
         assertThat(customCategories(MEMBER_A)).isEmpty();
+        assertThat(isActive(categoryId)).isFalse();
     }
 
     @Test
@@ -210,6 +222,134 @@ class CustomCategoryControllerIntegrationTest {
         });
     }
 
+    @Test
+    @DisplayName("커스텀 카테고리를 수정하면 기존 거래·월 리포트 표시가 새 이름으로 소급되고 재전송도 200이다")
+    void rename_is_reflected_in_existing_entries_and_is_idempotent() throws Exception {
+        long categoryId = createCategory(MEMBER_A, "햄스장");
+        long ledgerId = createLedger(MEMBER_A, categoryId);
+
+        updateCategory(MEMBER_A, categoryId, updateRequest("헬스장"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.id").value(categoryId))
+                .andExpect(jsonPath("$.data.displayNameKo").value("헬스장"))
+                .andExpect(jsonPath("$.data.displayNameEn").value("헬스장"))
+                .andExpect(jsonPath("$.data.icon").value("🏋️"));
+
+        mockMvc.perform(get("/api/v1/ledgers")
+                        .with(memberJwt(MEMBER_A))
+                        .param("year", "2026")
+                        .param("month", "4"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].id").value(ledgerId))
+                .andExpect(jsonPath("$.data[0].category.id").value(categoryId))
+                .andExpect(jsonPath("$.data[0].category.displayNameKo").value("헬스장"));
+        mockMvc.perform(get("/api/v1/ledgers/report")
+                        .with(memberJwt(MEMBER_A))
+                        .param("year", "2026")
+                        .param("month", "4"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.categorySubtotals[0].category.displayNameKo")
+                        .value("헬스장"));
+
+        updateCategory(MEMBER_A, categoryId, updateRequest("헬스장"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.displayNameKo").value("헬스장"));
+
+        JsonNode data = customCategories(MEMBER_A);
+        assertThat(data).hasSize(1);
+        assertThat(data.get(0).path("displayNameKo").asString()).isEqualTo("헬스장");
+    }
+
+    @Test
+    @DisplayName("삭제된·타 회원·시스템·미존재 카테고리 수정은 모두 404로 존재를 숨긴다")
+    void update_hides_deleted_other_member_and_system_categories() throws Exception {
+        long deletedId = createCategory(MEMBER_A, "삭제 대상");
+        deleteCategory(MEMBER_A, deletedId).andExpect(status().isOk());
+        long memberBCategoryId = createCategory(MEMBER_B, "회원 B");
+
+        assertUpdateNotFound(deletedId);
+        assertUpdateNotFound(memberBCategoryId);
+        assertUpdateNotFound(1L);
+        assertUpdateNotFound(999_999L);
+
+        assertThat(customCategories(MEMBER_B).get(0).path("displayNameKo").asString())
+                .isEqualTo("회원 B");
+    }
+
+    @Test
+    @DisplayName("삭제된 auth.users의 잔여 JWT로 수정하면 커스텀 행이 이미 물리 삭제돼 404다")
+    void remaining_jwt_after_user_deletion_returns_not_found_on_update() throws Exception {
+        long categoryId = createCategory(MEMBER_A, "잔여 토큰");
+
+        jdbcTemplate.update("delete from auth.users where id = ?", MEMBER_A);
+
+        assertUpdateNotFound(categoryId);
+    }
+
+    @Test
+    @DisplayName("수정 요청 본문의 여분 필드는 무시하고 거래 유형은 바뀌지 않는다")
+    void update_ignores_unknown_fields_and_keeps_transaction_type() throws Exception {
+        long categoryId = createCategory(MEMBER_A, "햄스장");
+
+        String bodyWithUnknownFields =
+                """
+                {
+                  "transactionType": "INCOME",
+                  "name": "헬스장",
+                  "icon": "🏋️",
+                  "sortOrder": 1
+                }
+                """;
+        updateCategory(MEMBER_A, categoryId, bodyWithUnknownFields)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.displayNameKo").value("헬스장"))
+                .andExpect(jsonPath("$.data.sortOrder").value(1000));
+
+        assertThat(customCategories(MEMBER_A, TransactionType.EXPENSE)).hasSize(1);
+        assertThat(customCategories(MEMBER_A, TransactionType.INCOME)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("수정 트랜잭션이 로드한 뒤 다른 트랜잭션이 삭제를 커밋해도 삭제가 되살아나지 않는다")
+    void concurrent_delete_survives_rename_commit() throws Exception {
+        long categoryId = createCategory(MEMBER_A, "햄스장");
+        TransactionTemplate renameTx = new TransactionTemplate(transactionManager);
+        TransactionTemplate deleteTx = new TransactionTemplate(transactionManager);
+        deleteTx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+
+        renameTx.executeWithoutResult(renameStatus -> {
+            Category loaded = categoryRepository.findById(categoryId).orElseThrow();
+            assertThat(loaded.isActive()).isTrue();
+            deleteTx.executeWithoutResult(deleteStatus ->
+                    categoryRepository.findById(categoryId).orElseThrow().deactivate());
+            loaded.rename("헬스장", "🏋️");
+        });
+
+        assertThat(isActive(categoryId)).isFalse();
+        assertThat(jdbcTemplate.queryForObject(
+                        "select display_name_ko from category where id = ?", String.class, categoryId))
+                .isEqualTo("헬스장");
+        assertThat(customCategories(MEMBER_A)).isEmpty();
+    }
+
+    private void assertUpdateNotFound(long categoryId) throws Exception {
+        updateCategory(MEMBER_A, categoryId, updateRequest("헬스장"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("CATEGORY_NOT_FOUND"));
+    }
+
+    private ResultActions updateCategory(UUID memberId, long categoryId, String body) throws Exception {
+        return mockMvc.perform(put("/api/v1/categories/custom/{id}", categoryId)
+                .with(memberJwt(memberId))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body));
+    }
+
+    private Boolean isActive(long categoryId) {
+        return jdbcTemplate.queryForObject("select is_active from category where id = ?", Boolean.class, categoryId);
+    }
+
     private long createCategory(UUID memberId, String name) throws Exception {
         MvcResult result = createCategoryRequest(memberId, name)
                 .andExpect(status().isOk())
@@ -230,9 +370,13 @@ class CustomCategoryControllerIntegrationTest {
     }
 
     private JsonNode customCategories(UUID memberId) throws Exception {
+        return customCategories(memberId, TransactionType.EXPENSE);
+    }
+
+    private JsonNode customCategories(UUID memberId, TransactionType transactionType) throws Exception {
         String body = mockMvc.perform(get("/api/v1/categories/custom")
                         .with(memberJwt(memberId))
-                        .param("transactionType", "EXPENSE"))
+                        .param("transactionType", transactionType.name()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andReturn()
@@ -270,6 +414,16 @@ class CustomCategoryControllerIntegrationTest {
                 .path("data")
                 .path("id")
                 .asLong();
+    }
+
+    private static String updateRequest(String name) {
+        return """
+                {
+                  "name": "%s",
+                  "icon": "🏋️"
+                }
+                """
+                .formatted(name);
     }
 
     private static String categoryRequest(String name) {

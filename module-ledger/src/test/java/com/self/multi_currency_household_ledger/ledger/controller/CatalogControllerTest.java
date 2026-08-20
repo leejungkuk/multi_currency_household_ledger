@@ -7,6 +7,7 @@ import static org.mockito.BDDMockito.then;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -17,6 +18,7 @@ import com.self.multi_currency_household_ledger.ledger.domain.TransactionType;
 import com.self.multi_currency_household_ledger.ledger.dto.AssetResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.CategoryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.CreateCustomCategoryRequest;
+import com.self.multi_currency_household_ledger.ledger.dto.UpdateCustomCategoryRequest;
 import com.self.multi_currency_household_ledger.ledger.service.CatalogService;
 import java.util.List;
 import java.util.UUID;
@@ -115,6 +117,23 @@ class CatalogControllerTest {
     }
 
     @Test
+    @DisplayName("커스텀 카테고리를 수정해 200 응답 봉투로 반환한다")
+    void update_custom_category_success() throws Exception {
+        UpdateCustomCategoryRequest request = new UpdateCustomCategoryRequest("헬스장", "🏋️");
+        given(catalogService.updateCustomCategory(eq(MEMBER_ID), eq(10_000L), any(UpdateCustomCategoryRequest.class)))
+                .willReturn(new CategoryResponse(10_000L, "CUSTOM", "헬스장", "헬스장", "🏋️", 1000));
+
+        mockMvc.perform(put("/api/v1/categories/custom/{id}", 10_000L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.id").value(10_000L))
+                .andExpect(jsonPath("$.data.displayNameKo").value("헬스장"))
+                .andExpect(jsonPath("$.data.icon").value("🏋️"));
+    }
+
+    @Test
     @DisplayName("커스텀 카테고리 삭제는 null data를 포함한 200 응답이다")
     void delete_custom_category_success() throws Exception {
         mockMvc.perform(delete("/api/v1/categories/custom/{id}", 10_000L))
@@ -147,6 +166,33 @@ class CatalogControllerTest {
     @DisplayName("커스텀 카테고리 거래 유형이 누락되면 400이다")
     void create_custom_category_rejects_missing_transaction_type() throws Exception {
         assertInvalidRequest(new CreateCustomCategoryRequest(null, "반려견", null));
+    }
+
+    @Test
+    @DisplayName("커스텀 카테고리 수정 이름이 공백이면 400이다")
+    void update_custom_category_rejects_blank_name() throws Exception {
+        assertInvalidRequest(new UpdateCustomCategoryRequest(" ", null));
+    }
+
+    @Test
+    @DisplayName("커스텀 카테고리 수정 이름이 51자면 400이다")
+    void update_custom_category_rejects_name_over_50_characters() throws Exception {
+        assertInvalidRequest(new UpdateCustomCategoryRequest("가".repeat(51), null));
+    }
+
+    @Test
+    @DisplayName("커스텀 카테고리 수정 아이콘이 21자면 400이다")
+    void update_custom_category_rejects_icon_over_20_characters() throws Exception {
+        assertInvalidRequest(new UpdateCustomCategoryRequest("헬스장", "가".repeat(21)));
+    }
+
+    private void assertInvalidRequest(UpdateCustomCategoryRequest request) throws Exception {
+        mockMvc.perform(put("/api/v1/categories/custom/{id}", 10_000L)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
     }
 
     private void assertInvalidRequest(CreateCustomCategoryRequest request) throws Exception {

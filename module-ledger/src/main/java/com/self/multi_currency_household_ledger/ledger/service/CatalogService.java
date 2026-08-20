@@ -8,6 +8,7 @@ import com.self.multi_currency_household_ledger.ledger.domain.TransactionType;
 import com.self.multi_currency_household_ledger.ledger.dto.AssetResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.CategoryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.CreateCustomCategoryRequest;
+import com.self.multi_currency_household_ledger.ledger.dto.UpdateCustomCategoryRequest;
 import com.self.multi_currency_household_ledger.ledger.exception.LedgerErrorCode;
 import java.util.List;
 import java.util.UUID;
@@ -53,6 +54,15 @@ public class CatalogService {
         }
         Category category = Category.custom(memberId, request.transactionType(), request.name(), request.icon());
         return CategoryResponse.from(categoryRepository.save(category));
+    }
+
+    @Transactional
+    public CategoryResponse updateCustomCategory(UUID memberId, Long categoryId, UpdateCustomCategoryRequest request) {
+        Category category = categoryRepository
+                .findByIdAndOwnerMemberIdAndIsActiveTrue(categoryId, memberId)
+                .orElseThrow(() -> new BusinessException(LedgerErrorCode.CATEGORY_NOT_FOUND));
+        category.rename(request.name(), request.icon());
+        return CategoryResponse.from(category);
     }
 
     @Transactional

@@ -16,6 +16,7 @@ import com.self.multi_currency_household_ledger.ledger.domain.TransactionType;
 import com.self.multi_currency_household_ledger.ledger.dto.AssetResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.CategoryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.CreateCustomCategoryRequest;
+import com.self.multi_currency_household_ledger.ledger.dto.UpdateCustomCategoryRequest;
 import com.self.multi_currency_household_ledger.ledger.exception.LedgerErrorCode;
 import java.util.List;
 import java.util.Optional;
@@ -124,6 +125,35 @@ class CatalogServiceTest {
                     assertThat(businessException.getHttpStatus().value()).isEqualTo(403);
                 });
         then(categoryRepository).should(never()).save(any(Category.class));
+    }
+
+    @Test
+    @DisplayName("커스텀 카테고리를 수정하면 새 이름과 아이콘을 응답한다")
+    void update_custom_category() {
+        Category category = Category.custom(MEMBER_ID, TransactionType.EXPENSE, "햄스장", "🐶");
+        given(categoryRepository.findByIdAndOwnerMemberIdAndIsActiveTrue(10_000L, MEMBER_ID))
+                .willReturn(Optional.of(category));
+
+        CategoryResponse response =
+                catalogService.updateCustomCategory(MEMBER_ID, 10_000L, new UpdateCustomCategoryRequest("헬스장", "🏋️"));
+
+        assertThat(response.displayNameKo()).isEqualTo("헬스장");
+        assertThat(response.displayNameEn()).isEqualTo("헬스장");
+        assertThat(response.icon()).isEqualTo("🏋️");
+        assertThat(response.code()).isEqualTo("CUSTOM");
+    }
+
+    @Test
+    @DisplayName("수정 대상이 없거나 타 회원 소유·비활성이면 CATEGORY_NOT_FOUND를 반환한다")
+    void update_custom_category_rejects_missing_category() {
+        given(categoryRepository.findByIdAndOwnerMemberIdAndIsActiveTrue(10_000L, MEMBER_ID))
+                .willReturn(Optional.empty());
+        UpdateCustomCategoryRequest request = new UpdateCustomCategoryRequest("헬스장", null);
+
+        assertThatThrownBy(() -> catalogService.updateCustomCategory(MEMBER_ID, 10_000L, request))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getCode())
+                .isEqualTo(LedgerErrorCode.CATEGORY_NOT_FOUND.getCode());
     }
 
     @Test
