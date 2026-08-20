@@ -919,6 +919,31 @@
                 },
                 "type": "object"
             },
+            "ReorderCustomCategoriesRequest": {
+                "properties": {
+                    "orderedIds": {
+                        "items": {
+                            "format": "int64",
+                            "type": "integer"
+                        },
+                        "maxItems": 100,
+                        "minItems": 1,
+                        "type": "array"
+                    },
+                    "transactionType": {
+                        "enum": [
+                            "EXPENSE",
+                            "INCOME"
+                        ],
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "orderedIds",
+                    "transactionType"
+                ],
+                "type": "object"
+            },
             "RestoreCursor": {
                 "properties": {
                     "id": {
@@ -1253,6 +1278,71 @@
                             "*/*": {
                                 "schema": {
                                     "$ref": "#/components/schemas/ApiResponseCategoryResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "413": {
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "code": "REQUEST_BODY_TOO_LARGE",
+                                    "message": "\uc694\uccad \ubcf8\ubb38\uc774 \ub108\ubb34 \ud07d\ub2c8\ub2e4. \ub098\ub220\uc11c \ubcf4\ub0b4 \uc8fc\uc138\uc694.",
+                                    "success": false,
+                                    "timestamp": "2026-01-01T00:00:00"
+                                },
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Content Too Large"
+                    },
+                    "429": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Too Many Requests",
+                        "headers": {
+                            "Retry-After": {
+                                "description": "Seconds to wait before retrying.",
+                                "schema": {
+                                    "format": "int32",
+                                    "type": "integer"
+                                }
+                            }
+                        }
+                    }
+                },
+                "tags": [
+                    "catalog-controller"
+                ]
+            }
+        },
+        "/api/v1/categories/custom/order": {
+            "put": {
+                "operationId": "reorderCustomCategories",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/ReorderCustomCategoriesRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiResponseListCategoryResponse"
                                 }
                             }
                         },

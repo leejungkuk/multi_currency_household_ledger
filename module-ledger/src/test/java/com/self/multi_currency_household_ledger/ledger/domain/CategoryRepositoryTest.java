@@ -79,16 +79,38 @@ class CategoryRepositoryTest {
         categoryRepository.saveAndFlush(Category.custom(MEMBER_B, TransactionType.EXPENSE, "타 회원", null));
         categoryRepository.saveAndFlush(Category.custom(MEMBER_A, TransactionType.INCOME, "부수입", null));
 
-        List<Category> categories = categoryRepository.findByOwnerMemberIdAndTransactionTypeAndIsActiveTrueOrderById(
-                MEMBER_A, TransactionType.EXPENSE);
+        List<Category> categories = customCategories();
 
-        assertThat(categories).extracting(Category::getId).containsExactly(first.getId(), second.getId());
+        assertThat(categories).extracting(Category::getId).containsExactly(second.getId(), first.getId());
         assertThat(categoryRepository.countByOwnerMemberIdAndIsActiveTrue(MEMBER_A))
                 .isEqualTo(3L);
         assertThat(categoryRepository.findByIdAndOwnerMemberId(first.getId(), MEMBER_A))
                 .contains(first);
         assertThat(categoryRepository.findByIdAndOwnerMemberId(first.getId(), MEMBER_B))
                 .isEmpty();
+    }
+
+    @Test
+    @DisplayName("커스텀 목록은 sort_order 오름차순·id 내림차순으로 정렬하고 재정렬 값을 반영한다")
+    void custom_catalog_orders_by_sort_order_then_id_desc() {
+        Category first =
+                categoryRepository.saveAndFlush(Category.custom(MEMBER_A, TransactionType.EXPENSE, "첫째", null));
+        Category second =
+                categoryRepository.saveAndFlush(Category.custom(MEMBER_A, TransactionType.EXPENSE, "둘째", null));
+        Category third =
+                categoryRepository.saveAndFlush(Category.custom(MEMBER_A, TransactionType.EXPENSE, "셋째", null));
+
+        assertThat(customCategories())
+                .extracting(Category::getId)
+                .containsExactly(third.getId(), second.getId(), first.getId());
+
+        first.applySortOrder(1001);
+        second.applySortOrder(1002);
+        categoryRepository.saveAllAndFlush(List.of(first, second));
+
+        assertThat(customCategories())
+                .extracting(Category::getId)
+                .containsExactly(third.getId(), first.getId(), second.getId());
     }
 
     @Test
@@ -143,5 +165,10 @@ class CategoryRepositoryTest {
         assertThat(first.getCode()).isEqualTo("CUSTOM");
         assertThat(second.getCode()).isEqualTo("CUSTOM");
         assertThat(second.getId()).isGreaterThan(first.getId());
+    }
+
+    private List<Category> customCategories() {
+        return categoryRepository.findByOwnerMemberIdAndTransactionTypeAndIsActiveTrueOrderBySortOrderAscIdDesc(
+                MEMBER_A, TransactionType.EXPENSE);
     }
 }

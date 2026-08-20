@@ -23,6 +23,9 @@ import org.hibernate.annotations.DynamicUpdate;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Category extends BaseEntity {
 
+    /** 회원 한 명이 가질 수 있는 활성 커스텀 카테고리 수. 재정렬 요청 길이 상한도 같은 값이다. */
+    public static final int CUSTOM_LIMIT = 100;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -78,6 +81,10 @@ public class Category extends BaseEntity {
         this.displayNameKo = name;
         this.displayNameEn = name;
         this.icon = icon;
+    }
+
+    public void applySortOrder(int sortOrder) {
+        this.sortOrder = sortOrder;
     }
 
     public void deactivate() {

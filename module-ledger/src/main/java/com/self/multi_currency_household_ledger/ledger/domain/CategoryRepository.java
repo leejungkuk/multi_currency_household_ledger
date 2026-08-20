@@ -11,7 +11,7 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
 
     List<Category> findByOwnerMemberIdIsNullAndTransactionTypeAndIsActiveTrueOrderBySortOrder(TransactionType type);
 
-    List<Category> findByOwnerMemberIdAndTransactionTypeAndIsActiveTrueOrderById(
+    List<Category> findByOwnerMemberIdAndTransactionTypeAndIsActiveTrueOrderBySortOrderAscIdDesc(
             UUID ownerMemberId, TransactionType type);
 
     long countByOwnerMemberIdAndIsActiveTrue(UUID ownerMemberId);

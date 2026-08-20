@@ -14,8 +14,11 @@ import com.self.multi_currency_household_ledger.exchange.service.ExchangeRateSer
 import com.self.multi_currency_household_ledger.ledger.domain.Category;
 import com.self.multi_currency_household_ledger.ledger.domain.CategoryRepository;
 import com.self.multi_currency_household_ledger.ledger.domain.TransactionType;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -46,7 +49,10 @@ import tools.jackson.databind.ObjectMapper;
 @TestPropertySource(
         properties = {
             "spring.security.oauth2.resourceserver.jwt.issuer-uri=https://example.supabase.co/auth/v1",
-            "exchange.eximbank.api-key=test-api-key"
+            "exchange.eximbank.api-key=test-api-key",
+            // 이 클래스의 쓰기 요청 수가 기본 버킷(60/min·IP)을 넘어서 429가 섞이면 산발 실패한다.
+            // 필터는 체인에 그대로 두고(순서 회귀는 여전히 드러난다) 한도만 올린다.
+            "woni.security.rate-limit.write-limit=1000"
         })
 class CustomCategoryControllerIntegrationTest {
 
@@ -82,32 +88,36 @@ class CustomCategoryControllerIntegrationTest {
     }
 
     @Test
-    @DisplayName("커스텀 카테고리 조회·생성·수정·삭제는 인증 없이는 모두 401이다")
+    @DisplayName("커스텀 카테고리 조회·생성·수정·재정렬·삭제는 인증 없이는 모두 401이다")
     void custom_category_endpoints_require_authentication() throws Exception {
         mockMvc.perform(get("/api/v1/categories/custom").param("transactionType", "EXPENSE"))
                 .andExpect(status().isUnauthorized());
         mockMvc.perform(post("/api/v1/categories/custom")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(categoryRequest("반려견")))
+                        .content(categoryRequest(TransactionType.EXPENSE, "반려견")))
                 .andExpect(status().isUnauthorized());
         mockMvc.perform(put("/api/v1/categories/custom/{id}", 10_000L)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(updateRequest("반려견")))
                 .andExpect(status().isUnauthorized());
+        mockMvc.perform(put("/api/v1/categories/custom/order")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(reorderRequest(TransactionType.EXPENSE, 10_000L)))
+                .andExpect(status().isUnauthorized());
         mockMvc.perform(delete("/api/v1/categories/custom/{id}", 10_000L)).andExpect(status().isUnauthorized());
     }
 
     @Test
-    @DisplayName("같은 이름을 연속 생성하면 모두 성공하고 내 목록에 생성순으로 나타난다")
-    void duplicate_names_are_allowed_and_listed_in_creation_order() throws Exception {
+    @DisplayName("같은 이름을 연속 생성하면 모두 성공하고 내 목록에 최신순으로 나타난다")
+    void duplicate_names_are_allowed_and_listed_latest_first() throws Exception {
         long firstId = createCategory(MEMBER_A, "반려견");
         long secondId = createCategory(MEMBER_A, "반려견");
 
         JsonNode data = customCategories(MEMBER_A);
 
         assertThat(data).hasSize(2);
-        assertThat(data.get(0).path("id").asLong()).isEqualTo(firstId);
-        assertThat(data.get(1).path("id").asLong()).isEqualTo(secondId);
+        assertThat(data.get(0).path("id").asLong()).isEqualTo(secondId);
+        assertThat(data.get(1).path("id").asLong()).isEqualTo(firstId);
         assertThat(data.get(0).path("displayNameKo").asString()).isEqualTo("반려견");
         assertThat(data.get(1).path("displayNameKo").asString()).isEqualTo("반려견");
     }
@@ -311,6 +321,104 @@ class CustomCategoryControllerIntegrationTest {
     }
 
     @Test
+    @DisplayName("재정렬하면 응답 본문과 이후 목록 조회가 모두 지정 순서를 따르고 재전송해도 같다")
+    void reorder_applies_requested_order_and_is_idempotent() throws Exception {
+        long first = createCategory(MEMBER_A, "첫째");
+        long second = createCategory(MEMBER_A, "둘째");
+        long third = createCategory(MEMBER_A, "셋째");
+
+        reorderCategories(MEMBER_A, TransactionType.EXPENSE, second, third, first)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.length()").value(3))
+                .andExpect(jsonPath("$.data[0].id").value(second))
+                .andExpect(jsonPath("$.data[0].sortOrder").value(1001))
+                .andExpect(jsonPath("$.data[1].id").value(third))
+                .andExpect(jsonPath("$.data[1].sortOrder").value(1002))
+                .andExpect(jsonPath("$.data[2].id").value(first))
+                .andExpect(jsonPath("$.data[2].sortOrder").value(1003));
+
+        assertThat(customCategoryIds(MEMBER_A, TransactionType.EXPENSE)).containsExactly(second, third, first);
+
+        reorderCategories(MEMBER_A, TransactionType.EXPENSE, second, third, first)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].id").value(second))
+                .andExpect(jsonPath("$.data[0].sortOrder").value(1001));
+
+        assertThat(customCategoryIds(MEMBER_A, TransactionType.EXPENSE)).containsExactly(second, third, first);
+    }
+
+    @Test
+    @DisplayName("타 회원·타 유형·시스템·삭제된 id가 섞인 재정렬은 404이고 양쪽 유형 순서가 그대로다")
+    void reorder_rejects_foreign_ids_without_partial_apply() throws Exception {
+        long expenseFirst = createCategory(MEMBER_A, "지출 첫째");
+        long expenseSecond = createCategory(MEMBER_A, "지출 둘째");
+        long incomeFirst = createCategory(MEMBER_A, TransactionType.INCOME, "수입 첫째");
+        createCategory(MEMBER_A, TransactionType.INCOME, "수입 둘째");
+        long memberBCategoryId = createCategory(MEMBER_B, "회원 B");
+        long deletedId = createCategory(MEMBER_A, "삭제 대상");
+        deleteCategory(MEMBER_A, deletedId).andExpect(status().isOk());
+        List<Long> expenseBefore = customCategoryIds(MEMBER_A, TransactionType.EXPENSE);
+        List<Long> incomeBefore = customCategoryIds(MEMBER_A, TransactionType.INCOME);
+
+        assertReorderNotFound(expenseFirst, memberBCategoryId, expenseSecond);
+        assertSortOrders(1000, expenseFirst, expenseSecond);
+        assertReorderNotFound(expenseFirst, incomeFirst, expenseSecond);
+        assertSortOrders(1000, expenseFirst, expenseSecond);
+        assertReorderNotFound(expenseFirst, 1L, expenseSecond);
+        assertSortOrders(1000, expenseFirst, expenseSecond);
+        assertReorderNotFound(expenseFirst, deletedId, expenseSecond);
+        assertSortOrders(1000, expenseFirst, expenseSecond);
+
+        assertThat(customCategoryIds(MEMBER_A, TransactionType.EXPENSE)).isEqualTo(expenseBefore);
+        assertThat(customCategoryIds(MEMBER_A, TransactionType.INCOME)).isEqualTo(incomeBefore);
+    }
+
+    @Test
+    @DisplayName("내 커스텀 일부만 담은 재정렬은 200이고 빠진 항목은 기존 순서 값을 유지한다")
+    void reorder_allows_missing_items_and_keeps_their_sort_order() throws Exception {
+        long first = createCategory(MEMBER_A, "첫째");
+        long second = createCategory(MEMBER_A, "둘째");
+        long third = createCategory(MEMBER_A, "셋째");
+
+        reorderCategories(MEMBER_A, TransactionType.EXPENSE, third, first)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(3))
+                .andExpect(jsonPath("$.data[0].id").value(second))
+                .andExpect(jsonPath("$.data[0].sortOrder").value(1000))
+                .andExpect(jsonPath("$.data[1].id").value(third))
+                .andExpect(jsonPath("$.data[2].id").value(first));
+
+        assertThat(customCategoryIds(MEMBER_A, TransactionType.EXPENSE)).containsExactly(second, third, first);
+    }
+
+    @Test
+    @DisplayName("재정렬 목록에 중복 id가 있으면 첫 등장 위치를 따른다")
+    void reorder_keeps_first_occurrence_of_duplicated_id() throws Exception {
+        long first = createCategory(MEMBER_A, "첫째");
+        long second = createCategory(MEMBER_A, "둘째");
+
+        reorderCategories(MEMBER_A, TransactionType.EXPENSE, second, first, second)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data[0].id").value(second))
+                .andExpect(jsonPath("$.data[0].sortOrder").value(1001))
+                .andExpect(jsonPath("$.data[1].id").value(first))
+                .andExpect(jsonPath("$.data[1].sortOrder").value(1002));
+    }
+
+    @Test
+    @DisplayName("재정렬 뒤에 만든 커스텀 카테고리는 목록 맨 앞에 온다")
+    void category_created_after_reorder_leads_the_list() throws Exception {
+        long first = createCategory(MEMBER_A, "첫째");
+        long second = createCategory(MEMBER_A, "둘째");
+        reorderCategories(MEMBER_A, TransactionType.EXPENSE, first, second).andExpect(status().isOk());
+
+        long created = createCategory(MEMBER_A, "신규");
+
+        assertThat(customCategoryIds(MEMBER_A, TransactionType.EXPENSE)).containsExactly(created, first, second);
+    }
+
+    @Test
     @DisplayName("수정 트랜잭션이 로드한 뒤 다른 트랜잭션이 삭제를 커밋해도 삭제가 되살아나지 않는다")
     void concurrent_delete_survives_rename_commit() throws Exception {
         long categoryId = createCategory(MEMBER_A, "햄스장");
@@ -333,6 +441,29 @@ class CustomCategoryControllerIntegrationTest {
         assertThat(customCategories(MEMBER_A)).isEmpty();
     }
 
+    private void assertReorderNotFound(long... orderedIds) throws Exception {
+        reorderCategories(MEMBER_A, TransactionType.EXPENSE, orderedIds)
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("CATEGORY_NOT_FOUND"));
+    }
+
+    private void assertSortOrders(int expectedSortOrder, long... categoryIds) {
+        for (long categoryId : categoryIds) {
+            assertThat(jdbcTemplate.queryForObject(
+                            "select sort_order from category where id = ?", Integer.class, categoryId))
+                    .as("category %s sortOrder", categoryId)
+                    .isEqualTo(expectedSortOrder);
+        }
+    }
+
+    private ResultActions reorderCategories(UUID memberId, TransactionType transactionType, long... orderedIds)
+            throws Exception {
+        return mockMvc.perform(put("/api/v1/categories/custom/order")
+                .with(memberJwt(memberId))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(reorderRequest(transactionType, orderedIds)));
+    }
+
     private void assertUpdateNotFound(long categoryId) throws Exception {
         updateCategory(MEMBER_A, categoryId, updateRequest("헬스장"))
                 .andExpect(status().isNotFound())
@@ -351,7 +482,11 @@ class CustomCategoryControllerIntegrationTest {
     }
 
     private long createCategory(UUID memberId, String name) throws Exception {
-        MvcResult result = createCategoryRequest(memberId, name)
+        return createCategory(memberId, TransactionType.EXPENSE, name);
+    }
+
+    private long createCategory(UUID memberId, TransactionType transactionType, String name) throws Exception {
+        MvcResult result = createCategoryRequest(memberId, transactionType, name)
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.success").value(true))
                 .andReturn();
@@ -363,14 +498,27 @@ class CustomCategoryControllerIntegrationTest {
     }
 
     private ResultActions createCategoryRequest(UUID memberId, String name) throws Exception {
+        return createCategoryRequest(memberId, TransactionType.EXPENSE, name);
+    }
+
+    private ResultActions createCategoryRequest(UUID memberId, TransactionType transactionType, String name)
+            throws Exception {
         return mockMvc.perform(post("/api/v1/categories/custom")
                 .with(memberJwt(memberId))
                 .contentType(MediaType.APPLICATION_JSON)
-                .content(categoryRequest(name)));
+                .content(categoryRequest(transactionType, name)));
     }
 
     private JsonNode customCategories(UUID memberId) throws Exception {
         return customCategories(memberId, TransactionType.EXPENSE);
+    }
+
+    private List<Long> customCategoryIds(UUID memberId, TransactionType transactionType) throws Exception {
+        List<Long> ids = new ArrayList<>();
+        for (JsonNode category : customCategories(memberId, transactionType)) {
+            ids.add(category.path("id").asLong());
+        }
+        return ids;
     }
 
     private JsonNode customCategories(UUID memberId, TransactionType transactionType) throws Exception {
@@ -426,15 +574,27 @@ class CustomCategoryControllerIntegrationTest {
                 .formatted(name);
     }
 
-    private static String categoryRequest(String name) {
+    private static String categoryRequest(TransactionType transactionType, String name) {
         return """
                 {
-                  "transactionType": "EXPENSE",
+                  "transactionType": "%s",
                   "name": "%s",
                   "icon": "🐶"
                 }
                 """
-                .formatted(name);
+                .formatted(transactionType.name(), name);
+    }
+
+    private static String reorderRequest(TransactionType transactionType, long... orderedIds) {
+        return """
+                {
+                  "transactionType": "%s",
+                  "orderedIds": [%s]
+                }
+                """
+                .formatted(
+                        transactionType.name(),
+                        Arrays.stream(orderedIds).mapToObj(Long::toString).collect(Collectors.joining(", ")));
     }
 
     private static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors

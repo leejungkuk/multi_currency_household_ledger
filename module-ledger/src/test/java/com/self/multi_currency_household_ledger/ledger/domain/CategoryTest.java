@@ -66,4 +66,17 @@ class CategoryTest {
         assertThat(category.getDisplayNameKo()).isEqualTo("반려견");
         assertThat(category.getIcon()).isNull();
     }
+
+    @Test
+    @DisplayName("재정렬 값을 적용하면 sort_order만 바뀌고 나머지 상태는 유지된다")
+    void apply_sort_order_replaces_only_sort_order() {
+        Category category = Category.custom(UUID.randomUUID(), TransactionType.EXPENSE, "반려견", "🐶");
+
+        category.applySortOrder(1001);
+
+        assertThat(category.getSortOrder()).isEqualTo(1001);
+        assertThat(category.getDisplayNameKo()).isEqualTo("반려견");
+        assertThat(category.getIcon()).isEqualTo("🐶");
+        assertThat(category.isActive()).isTrue();
+    }
 }
