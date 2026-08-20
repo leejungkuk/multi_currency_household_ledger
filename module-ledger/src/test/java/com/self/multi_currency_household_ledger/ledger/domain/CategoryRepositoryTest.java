@@ -79,15 +79,58 @@ class CategoryRepositoryTest {
         categoryRepository.saveAndFlush(Category.custom(MEMBER_B, TransactionType.EXPENSE, "타 회원", null));
         categoryRepository.saveAndFlush(Category.custom(MEMBER_A, TransactionType.INCOME, "부수입", null));
 
-        List<Category> categories = categoryRepository.findByOwnerMemberIdAndTransactionTypeAndIsActiveTrueOrderById(
-                MEMBER_A, TransactionType.EXPENSE);
+        List<Category> categories = customCategories();
 
-        assertThat(categories).extracting(Category::getId).containsExactly(first.getId(), second.getId());
+        assertThat(categories).extracting(Category::getId).containsExactly(second.getId(), first.getId());
         assertThat(categoryRepository.countByOwnerMemberIdAndIsActiveTrue(MEMBER_A))
                 .isEqualTo(3L);
         assertThat(categoryRepository.findByIdAndOwnerMemberId(first.getId(), MEMBER_A))
                 .contains(first);
         assertThat(categoryRepository.findByIdAndOwnerMemberId(first.getId(), MEMBER_B))
+                .isEmpty();
+    }
+
+    @Test
+    @DisplayName("커스텀 목록은 sort_order 오름차순·id 내림차순으로 정렬하고 재정렬 값을 반영한다")
+    void custom_catalog_orders_by_sort_order_then_id_desc() {
+        Category first =
+                categoryRepository.saveAndFlush(Category.custom(MEMBER_A, TransactionType.EXPENSE, "첫째", null));
+        Category second =
+                categoryRepository.saveAndFlush(Category.custom(MEMBER_A, TransactionType.EXPENSE, "둘째", null));
+        Category third =
+                categoryRepository.saveAndFlush(Category.custom(MEMBER_A, TransactionType.EXPENSE, "셋째", null));
+
+        assertThat(customCategories())
+                .extracting(Category::getId)
+                .containsExactly(third.getId(), second.getId(), first.getId());
+
+        first.applySortOrder(1001);
+        second.applySortOrder(1002);
+        categoryRepository.saveAllAndFlush(List.of(first, second));
+
+        assertThat(customCategories())
+                .extracting(Category::getId)
+                .containsExactly(third.getId(), first.getId(), second.getId());
+    }
+
+    @Test
+    @DisplayName("수정 대상 조회는 내 활성 커스텀만 반환하고 비활성·타 회원·시스템 행을 숨긴다")
+    void find_editable_custom_category_applies_owner_and_active_predicates() {
+        Category mine =
+                categoryRepository.saveAndFlush(Category.custom(MEMBER_A, TransactionType.EXPENSE, "반려견", "🐶"));
+        Category other =
+                categoryRepository.saveAndFlush(Category.custom(MEMBER_B, TransactionType.EXPENSE, "타 회원", null));
+        Category inactive = Category.custom(MEMBER_A, TransactionType.EXPENSE, "숨김", null);
+        inactive.deactivate();
+        categoryRepository.saveAndFlush(inactive);
+
+        assertThat(categoryRepository.findByIdAndOwnerMemberIdAndIsActiveTrue(mine.getId(), MEMBER_A))
+                .contains(mine);
+        assertThat(categoryRepository.findByIdAndOwnerMemberIdAndIsActiveTrue(inactive.getId(), MEMBER_A))
+                .isEmpty();
+        assertThat(categoryRepository.findByIdAndOwnerMemberIdAndIsActiveTrue(other.getId(), MEMBER_A))
+                .isEmpty();
+        assertThat(categoryRepository.findByIdAndOwnerMemberIdAndIsActiveTrue(1L, MEMBER_A))
                 .isEmpty();
     }
 
@@ -122,5 +165,10 @@ class CategoryRepositoryTest {
         assertThat(first.getCode()).isEqualTo("CUSTOM");
         assertThat(second.getCode()).isEqualTo("CUSTOM");
         assertThat(second.getId()).isGreaterThan(first.getId());
+    }
+
+    private List<Category> customCategories() {
+        return categoryRepository.findByOwnerMemberIdAndTransactionTypeAndIsActiveTrueOrderBySortOrderAscIdDesc(
+                MEMBER_A, TransactionType.EXPENSE);
     }
 }

@@ -7,6 +7,8 @@ import com.self.multi_currency_household_ledger.ledger.domain.TransactionType;
 import com.self.multi_currency_household_ledger.ledger.dto.AssetResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.CategoryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.CreateCustomCategoryRequest;
+import com.self.multi_currency_household_ledger.ledger.dto.ReorderCustomCategoriesRequest;
+import com.self.multi_currency_household_ledger.ledger.dto.UpdateCustomCategoryRequest;
 import com.self.multi_currency_household_ledger.ledger.service.CatalogService;
 import jakarta.validation.Valid;
 import java.util.List;
@@ -18,6 +20,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -46,6 +49,20 @@ public class CatalogController {
     public ApiResponse<CategoryResponse> createCustomCategory(
             @CurrentMemberId UUID memberId, @Valid @RequestBody CreateCustomCategoryRequest request) {
         return ApiResponse.success(catalogService.createCustomCategory(memberId, request));
+    }
+
+    @PutMapping("/categories/custom/{id}")
+    public ApiResponse<CategoryResponse> updateCustomCategory(
+            @CurrentMemberId UUID memberId,
+            @PathVariable("id") Long categoryId,
+            @Valid @RequestBody UpdateCustomCategoryRequest request) {
+        return ApiResponse.success(catalogService.updateCustomCategory(memberId, categoryId, request));
+    }
+
+    @PutMapping("/categories/custom/order")
+    public ApiResponse<List<CategoryResponse>> reorderCustomCategories(
+            @CurrentMemberId UUID memberId, @Valid @RequestBody ReorderCustomCategoriesRequest request) {
+        return ApiResponse.success(catalogService.reorderCustomCategories(memberId, request));
     }
 
     @DeleteMapping("/categories/custom/{id}")

@@ -16,6 +16,8 @@ import com.self.multi_currency_household_ledger.ledger.domain.TransactionType;
 import com.self.multi_currency_household_ledger.ledger.dto.AssetResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.CategoryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.CreateCustomCategoryRequest;
+import com.self.multi_currency_household_ledger.ledger.dto.ReorderCustomCategoriesRequest;
+import com.self.multi_currency_household_ledger.ledger.dto.UpdateCustomCategoryRequest;
 import com.self.multi_currency_household_ledger.ledger.exception.LedgerErrorCode;
 import java.util.List;
 import java.util.Optional;
@@ -78,10 +80,10 @@ class CatalogServiceTest {
     }
 
     @Test
-    @DisplayName("내 활성 커스텀 카테고리를 거래 유형별 생성순으로 조회한다")
+    @DisplayName("내 활성 커스텀 카테고리를 거래 유형별 정렬 계약(sort_order asc, id desc)으로 조회한다")
     void get_custom_categories() {
         Category category = Category.custom(MEMBER_ID, TransactionType.EXPENSE, "반려견", "🐶");
-        given(categoryRepository.findByOwnerMemberIdAndTransactionTypeAndIsActiveTrueOrderById(
+        given(categoryRepository.findByOwnerMemberIdAndTransactionTypeAndIsActiveTrueOrderBySortOrderAscIdDesc(
                         MEMBER_ID, TransactionType.EXPENSE))
                 .willReturn(List.of(category));
 
@@ -90,7 +92,8 @@ class CatalogServiceTest {
         assertThat(responses).extracting(CategoryResponse::displayNameKo).containsExactly("반려견");
         then(categoryRepository)
                 .should()
-                .findByOwnerMemberIdAndTransactionTypeAndIsActiveTrueOrderById(MEMBER_ID, TransactionType.EXPENSE);
+                .findByOwnerMemberIdAndTransactionTypeAndIsActiveTrueOrderBySortOrderAscIdDesc(
+                        MEMBER_ID, TransactionType.EXPENSE);
     }
 
     @Test
@@ -124,6 +127,50 @@ class CatalogServiceTest {
                     assertThat(businessException.getHttpStatus().value()).isEqualTo(403);
                 });
         then(categoryRepository).should(never()).save(any(Category.class));
+    }
+
+    @Test
+    @DisplayName("커스텀 카테고리를 수정하면 새 이름과 아이콘을 응답한다")
+    void update_custom_category() {
+        Category category = Category.custom(MEMBER_ID, TransactionType.EXPENSE, "햄스장", "🐶");
+        given(categoryRepository.findByIdAndOwnerMemberIdAndIsActiveTrue(10_000L, MEMBER_ID))
+                .willReturn(Optional.of(category));
+
+        CategoryResponse response =
+                catalogService.updateCustomCategory(MEMBER_ID, 10_000L, new UpdateCustomCategoryRequest("헬스장", "🏋️"));
+
+        assertThat(response.displayNameKo()).isEqualTo("헬스장");
+        assertThat(response.displayNameEn()).isEqualTo("헬스장");
+        assertThat(response.icon()).isEqualTo("🏋️");
+        assertThat(response.code()).isEqualTo("CUSTOM");
+    }
+
+    @Test
+    @DisplayName("수정 대상이 없거나 타 회원 소유·비활성이면 CATEGORY_NOT_FOUND를 반환한다")
+    void update_custom_category_rejects_missing_category() {
+        given(categoryRepository.findByIdAndOwnerMemberIdAndIsActiveTrue(10_000L, MEMBER_ID))
+                .willReturn(Optional.empty());
+        UpdateCustomCategoryRequest request = new UpdateCustomCategoryRequest("헬스장", null);
+
+        assertThatThrownBy(() -> catalogService.updateCustomCategory(MEMBER_ID, 10_000L, request))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getCode())
+                .isEqualTo(LedgerErrorCode.CATEGORY_NOT_FOUND.getCode());
+    }
+
+    @Test
+    @DisplayName("재정렬 목록에 내 활성 커스텀이 아닌 id가 섞이면 CATEGORY_NOT_FOUND로 전체를 거부한다")
+    void reorder_custom_categories_rejects_unknown_id() {
+        given(categoryRepository.findByOwnerMemberIdAndTransactionTypeAndIsActiveTrueOrderBySortOrderAscIdDesc(
+                        MEMBER_ID, TransactionType.EXPENSE))
+                .willReturn(List.of());
+        ReorderCustomCategoriesRequest request =
+                new ReorderCustomCategoriesRequest(TransactionType.EXPENSE, List.of(10_000L));
+
+        assertThatThrownBy(() -> catalogService.reorderCustomCategories(MEMBER_ID, request))
+                .isInstanceOf(BusinessException.class)
+                .extracting(exception -> ((BusinessException) exception).getCode())
+                .isEqualTo(LedgerErrorCode.CATEGORY_NOT_FOUND.getCode());
     }
 
     @Test

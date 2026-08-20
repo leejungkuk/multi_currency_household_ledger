@@ -11,12 +11,14 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
 
     List<Category> findByOwnerMemberIdIsNullAndTransactionTypeAndIsActiveTrueOrderBySortOrder(TransactionType type);
 
-    List<Category> findByOwnerMemberIdAndTransactionTypeAndIsActiveTrueOrderById(
+    List<Category> findByOwnerMemberIdAndTransactionTypeAndIsActiveTrueOrderBySortOrderAscIdDesc(
             UUID ownerMemberId, TransactionType type);
 
     long countByOwnerMemberIdAndIsActiveTrue(UUID ownerMemberId);
 
     Optional<Category> findByIdAndOwnerMemberId(Long id, UUID ownerMemberId);
+
+    Optional<Category> findByIdAndOwnerMemberIdAndIsActiveTrue(Long id, UUID ownerMemberId);
 
     @Query(
             "select c from Category c where c.id = :id and c.isActive = true and (c.ownerMemberId is null or c.ownerMemberId = :memberId)")
