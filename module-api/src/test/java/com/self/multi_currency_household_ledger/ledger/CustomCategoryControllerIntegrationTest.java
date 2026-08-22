@@ -202,16 +202,15 @@ class CustomCategoryControllerIntegrationTest {
     }
 
     @Test
-    @DisplayName("가계부 전체 삭제 후에도 커스텀 카테고리 목록은 유지된다")
-    void ledger_purge_preserves_custom_categories() throws Exception {
-        long categoryId = createCategory(MEMBER_A, "보존 대상");
+    @DisplayName("가계부 전체 삭제는 커스텀 카테고리도 함께 물리 삭제한다")
+    void ledger_purge_deletes_custom_categories() throws Exception {
+        long categoryId = createCategory(MEMBER_A, "삭제 대상");
         createLedger(MEMBER_A, categoryId);
 
         mockMvc.perform(delete("/api/v1/ledgers").with(memberJwt(MEMBER_A))).andExpect(status().isOk());
 
-        JsonNode data = customCategories(MEMBER_A);
-        assertThat(data).hasSize(1);
-        assertThat(data.get(0).path("id").asLong()).isEqualTo(categoryId);
+        assertThat(customCategories(MEMBER_A)).isEmpty();
+        assertThat(categoryRowCount(categoryId)).isZero();
     }
 
     @Test
@@ -479,6 +478,11 @@ class CustomCategoryControllerIntegrationTest {
 
     private Boolean isActive(long categoryId) {
         return jdbcTemplate.queryForObject("select is_active from category where id = ?", Boolean.class, categoryId);
+    }
+
+    private long categoryRowCount(long categoryId) {
+        Long count = jdbcTemplate.queryForObject("select count(*) from category where id = ?", Long.class, categoryId);
+        return count == null ? 0L : count;
     }
 
     private long createCategory(UUID memberId, String name) throws Exception {

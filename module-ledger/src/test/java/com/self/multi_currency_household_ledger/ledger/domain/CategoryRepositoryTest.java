@@ -167,6 +167,33 @@ class CategoryRepositoryTest {
         assertThat(second.getId()).isGreaterThan(first.getId());
     }
 
+    @Test
+    @DisplayName("소유자 커스텀 카테고리 물리 삭제는 활성·비활성을 모두 지우고 시스템·타 회원 행은 보존한다")
+    void delete_all_by_owner_member_id_removes_owner_rows_only() {
+        Category active =
+                categoryRepository.saveAndFlush(Category.custom(MEMBER_A, TransactionType.EXPENSE, "활성", "🐶"));
+        Category inactive = Category.custom(MEMBER_A, TransactionType.INCOME, "비활성", null);
+        inactive.deactivate();
+        categoryRepository.saveAndFlush(inactive);
+        Category otherMember =
+                categoryRepository.saveAndFlush(Category.custom(MEMBER_B, TransactionType.EXPENSE, "타 회원", null));
+        long systemCategoriesBefore = systemCategoryCount();
+
+        int deleted = categoryRepository.deleteAllByOwnerMemberId(MEMBER_A);
+
+        assertThat(deleted).isEqualTo(2);
+        assertThat(categoryRepository.findById(active.getId())).isEmpty();
+        assertThat(categoryRepository.findById(inactive.getId())).isEmpty();
+        assertThat(categoryRepository.findById(otherMember.getId())).isPresent();
+        assertThat(systemCategoryCount()).isEqualTo(systemCategoriesBefore);
+    }
+
+    private long systemCategoryCount() {
+        Long count =
+                jdbcTemplate.queryForObject("select count(*) from category where owner_member_id is null", Long.class);
+        return count == null ? 0L : count;
+    }
+
     private List<Category> customCategories() {
         return categoryRepository.findByOwnerMemberIdAndTransactionTypeAndIsActiveTrueOrderBySortOrderAscIdDesc(
                 MEMBER_A, TransactionType.EXPENSE);

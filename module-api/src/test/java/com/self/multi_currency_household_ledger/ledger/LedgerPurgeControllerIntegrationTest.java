@@ -11,6 +11,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.self.multi_currency_household_ledger.AuthUserFixture;
 import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
 import com.self.multi_currency_household_ledger.exchange.service.ExchangeRateService;
+import com.self.multi_currency_household_ledger.ledger.domain.Category;
+import com.self.multi_currency_household_ledger.ledger.domain.CategoryRepository;
+import com.self.multi_currency_household_ledger.ledger.domain.TransactionType;
 import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryRequest;
 import com.self.multi_currency_household_ledger.ledger.service.LedgerService;
 import java.math.BigDecimal;
@@ -52,6 +55,7 @@ class LedgerPurgeControllerIntegrationTest {
     private static final UUID MEMBER_B = UUID.fromString("00000000-0000-0000-0000-000000000002");
     private static final UUID CLIENT_ENTRY_ID = UUID.fromString("10000000-0000-0000-0000-000000000601");
     private static final LocalDate TRANSACTION_DATE = LocalDate.of(2026, 4, 6);
+    private static final long SYSTEM_CATEGORY_ID = 1L;
 
     @Autowired
     private MockMvc mockMvc;
@@ -64,6 +68,9 @@ class LedgerPurgeControllerIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private CategoryRepository categoryRepository;
 
     @MockitoBean
     @SuppressWarnings("UnusedVariable")
@@ -99,6 +106,49 @@ class LedgerPurgeControllerIntegrationTest {
         assertThat(ledgerCount(MEMBER_A)).isZero();
         assertThat(ledgerCount(MEMBER_B)).isEqualTo(1L);
         assertThat(memberEntrySnapshot(MEMBER_B)).isEqualTo(memberBBefore);
+    }
+
+    @Test
+    @DisplayName("purge는 커스텀 카테고리를 참조하는 거래까지 지우고 그 커스텀 카테고리를 물리 삭제한다")
+    void purge_hard_deletes_custom_categories_referenced_by_entries() throws Exception {
+        long customCategoryId = createCustomCategory(MEMBER_A, "커스텀 지출", true);
+        sync(MEMBER_A, CLIENT_ENTRY_ID, "커스텀 카테고리 거래", customCategoryId);
+        long systemCategoriesBefore = systemCategoryCount();
+        long assetsBefore = assetCount();
+
+        purge(MEMBER_A).andExpect(status().isOk());
+
+        assertThat(ledgerCount(MEMBER_A)).isZero();
+        assertThat(customCategoryCount(MEMBER_A)).isZero();
+        assertThat(categoryRowCount(customCategoryId)).isZero();
+        assertThat(systemCategoryCount()).isEqualTo(systemCategoriesBefore);
+        assertThat(assetCount()).isEqualTo(assetsBefore);
+    }
+
+    @Test
+    @DisplayName("purge는 거래가 없어도 비활성 커스텀 카테고리까지 물리 삭제한다")
+    void purge_hard_deletes_inactive_custom_categories() throws Exception {
+        long inactiveCategoryId = createCustomCategory(MEMBER_A, "삭제된 커스텀", false);
+
+        purge(MEMBER_A).andExpect(status().isOk());
+
+        assertThat(categoryRowCount(inactiveCategoryId)).isZero();
+        assertThat(customCategoryCount(MEMBER_A)).isZero();
+    }
+
+    @Test
+    @DisplayName("회원 A의 purge는 회원 B의 활성·비활성 커스텀 카테고리를 모두 보존한다")
+    void purge_preserves_custom_categories_of_other_member() throws Exception {
+        long memberACategoryId = createCustomCategory(MEMBER_A, "회원 A 커스텀", true);
+        long memberBActiveId = createCustomCategory(MEMBER_B, "회원 B 활성", true);
+        long memberBInactiveId = createCustomCategory(MEMBER_B, "회원 B 비활성", false);
+
+        purge(MEMBER_A).andExpect(status().isOk());
+
+        assertThat(categoryRowCount(memberACategoryId)).isZero();
+        assertThat(categoryRowCount(memberBActiveId)).isEqualTo(1L);
+        assertThat(categoryRowCount(memberBInactiveId)).isEqualTo(1L);
+        assertThat(customCategoryCount(MEMBER_B)).isEqualTo(2L);
     }
 
     @Test
@@ -181,12 +231,28 @@ class LedgerPurgeControllerIntegrationTest {
     }
 
     private void sync(UUID memberId, UUID clientEntryId, String memo) {
-        ledgerService.sync(request(clientEntryId, memo), memberId);
+        sync(memberId, clientEntryId, memo, SYSTEM_CATEGORY_ID);
+    }
+
+    private void sync(UUID memberId, UUID clientEntryId, String memo, long categoryId) {
+        ledgerService.sync(request(clientEntryId, memo, categoryId), memberId);
     }
 
     private static SyncLedgerEntryRequest request(UUID clientEntryId, String memo) {
+        return request(clientEntryId, memo, SYSTEM_CATEGORY_ID);
+    }
+
+    private static SyncLedgerEntryRequest request(UUID clientEntryId, String memo, long categoryId) {
         return new SyncLedgerEntryRequest(
-                clientEntryId, new BigDecimal("1000.00"), CurrencyCode.KRW, 1L, 3L, TRANSACTION_DATE, memo);
+                clientEntryId, new BigDecimal("1000.00"), CurrencyCode.KRW, categoryId, 3L, TRANSACTION_DATE, memo);
+    }
+
+    private long createCustomCategory(UUID memberId, String name, boolean active) {
+        Category category = Category.custom(memberId, TransactionType.EXPENSE, name, null);
+        if (!active) {
+            category.deactivate();
+        }
+        return categoryRepository.saveAndFlush(category).getId();
     }
 
     private JsonNode getChanges(UUID memberId) throws Exception {
@@ -216,6 +282,27 @@ class LedgerPurgeControllerIntegrationTest {
     private long ledgerCount(UUID memberId) {
         Long count = jdbcTemplate.queryForObject(
                 "select count(*) from ledger_entry where member_id = ?", Long.class, memberId);
+        return count == null ? 0L : count;
+    }
+
+    private long customCategoryCount(UUID memberId) {
+        return count("select count(*) from category where owner_member_id = ?", memberId);
+    }
+
+    private long categoryRowCount(long categoryId) {
+        return count("select count(*) from category where id = ?", categoryId);
+    }
+
+    private long systemCategoryCount() {
+        return count("select count(*) from category where owner_member_id is null");
+    }
+
+    private long assetCount() {
+        return count("select count(*) from asset");
+    }
+
+    private long count(String sql, Object... args) {
+        Long count = jdbcTemplate.queryForObject(sql, Long.class, args);
         return count == null ? 0L : count;
     }
 
