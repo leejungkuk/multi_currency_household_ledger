@@ -103,6 +103,17 @@ exchange:
     connect-timeout: ${EXIMBANK_CONNECT_TIMEOUT:2s}
     read-timeout: ${EXIMBANK_READ_TIMEOUT:5s}
 
+member:
+  anonymous-cleanup:
+    # false = 관측 전용 모드다("아무것도 안 함"이 아니라 후보 SELECT·카운트는 돌고 DELETE 만 생략).
+    # 운영 Supabase 는 별도 프로젝트라 스키마·권한 실측이 남아 있고, 배치가 지운 계정의 앱이 살아 있을 때
+    # iOS 가 신원 재발급을 감지해 로컬을 보존하는 배선(G2)도 아직 없다. 둘이 끝나기 전에 켜면
+    # 그 사용자의 서버 백업이 조용히 끊긴다 — 두 확인이 끝난 뒤에만 true 로 올린다.
+    enabled: ${MEMBER_ANONYMOUS_CLEANUP_ENABLED:false}
+    retention-days: ${MEMBER_ANONYMOUS_CLEANUP_RETENTION_DAYS:365}
+    # 계정 수 상한(행 수 상한이 아니다 — 계정 단위로 트랜잭션을 끊는다). 초과분은 다음 주기가 이어받는다.
+    batch-limit: ${MEMBER_ANONYMOUS_CLEANUP_BATCH_LIMIT:500}
+
 apple:
   siwa:
     client-id: ${APPLE_SIWA_CLIENT_ID:}
