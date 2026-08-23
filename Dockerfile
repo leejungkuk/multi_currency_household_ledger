@@ -10,7 +10,9 @@ RUN --mount=type=cache,target=/root/.gradle \
 
 FROM eclipse-temurin:21-jre-jammy
 
-# 로그 타임스탬프를 KST 로 맞춘다. 앱의 "오늘" 판정은 Clock(Asia/Seoul) 빈이 담당하므로 이 값에 의존하지 않는다.
+# 로그 타임스탬프를 KST 로 맞춘다. 앱의 "오늘" 판정은 Clock(Asia/Seoul) 빈이 담당하므로 이 값에 의존하지 않지만,
+# JpaAuditing 이 기록하는 naive timestamp(ledger_entry·category 의 created_at/updated_at)는 JVM 기본 존을 쓴다.
+# 익명 계정 정리 배치의 cutoff 가 그 컬럼과 비교되므로(ZoneId.systemDefault()), 이 값은 Clock 과 같은 존이어야 한다.
 ENV TZ=Asia/Seoul
 
 # curl 은 HEALTHCHECK 전용이다. 루트로 돌릴 이유가 없으므로 전용 계정을 만든다.
