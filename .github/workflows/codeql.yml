@@ -33,7 +33,7 @@ jobs:
 
       # autobuild 는 Gradle 멀티모듈에서 자주 실패한다. 빌드 커맨드를 명시한다.
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd  # v4.37.7
+        uses: github/codeql-action/init@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28  # v4.37.8
         with:
           languages: java-kotlin
           build-mode: manual
