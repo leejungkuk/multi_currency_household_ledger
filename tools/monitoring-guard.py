@@ -739,12 +739,22 @@ def run_self_test() -> int:
     else:
         print("FAIL 회귀 | 태그 범프 트리에서 기본 검사와 self-test 사전 게이트 | 차단(오류)")
 
-    expected_transition = [
-        "monitoring/docker-compose.yml prometheus: v3.13.2 → self-test-workflow"
-    ]
+    # 태그 범프 트리(Dependabot PR)에서도 돌아야 하므로 pristine 전이는 그대로 기대하고
+    # prometheus 전이만 합성분으로 바꾼다. 기준선의 prometheus 태그를 읽어 하드코딩을 피한다.
+    synthetic_prefix = f"{COMPOSE_PATHS[0]} prometheus: "
+    baseline_prometheus = split_image_tag(
+        baseline.compose[COMPOSE_PATHS[0]]["services"]["prometheus"]["image"]
+    )
+    expected_transition = sorted(
+        [t for t in pristine.tag_transitions if not t.startswith(synthetic_prefix)]
+        + [
+            f"{synthetic_prefix}"
+            f"{baseline_prometheus[1] if baseline_prometheus else '?'} → self-test-workflow"
+        ]
+    )
     total += 1
-    if tag_evaluation.tag_transitions == expected_transition:
-        print("PASS 회귀 | 태그 범프 전이 내용 | " + expected_transition[0])
+    if sorted(tag_evaluation.tag_transitions) == expected_transition:
+        print("PASS 회귀 | 태그 범프 전이 내용 | " + " ; ".join(expected_transition))
         passed += 1
     else:
         print("FAIL 회귀 | 태그 범프 전이 내용 | 누락/불일치(오류)")
