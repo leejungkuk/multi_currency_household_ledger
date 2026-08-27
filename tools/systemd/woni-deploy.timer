@@ -9,6 +9,8 @@ OnFailure=woni-deploy-alert@%n.service
 # 다음 발화가 예약되지 않을 수 있는데, S9("인스턴스 중지 중 승인 → 켜면 그때 반영")가 그 동작에 의존한다.
 OnBootSec=2min
 OnUnitInactiveSec=300
+# 여기에는 RandomizedDelaySec 를 넣지 않는다 — 300초 폴링은 문서·플랜에 명시된 계약이다.
+# woni-monitoring-sync.timer 와의 위상 겹침은 그쪽 지터가 푼다(사유는 그 파일의 주석).
 
 [Install]
 WantedBy=timers.target
