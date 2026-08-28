@@ -1,0 +1,21 @@
+[Unit]
+Description=woni 운영 DB 백업 (pg_dump → age → OCI Object Storage)
+Documentation=https://github.com/leejungkuk/multi_currency_household_ledger/blob/main/tools/backup-db.sh
+After=docker.service
+Requires=docker.service
+OnFailure=woni-backup-alert@%n.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+# node_exporter 의 textfile 컬렉터가 읽는 디렉터리를 서비스 사용자 소유로 만들어 준다.
+# 스크립트가 mkdir 로도 만들지만, 그 경로는 root 소유 /var/lib 아래라 여기서 잡아주는 것이 정본이다.
+StateDirectory=woni-metrics
+# 호스트 고유값(토픽·PAR URL·age recipient·compose 경로)은 유닛에 박지 않는다. 설정 파일 경로만 넘긴다.
+Environment=WONI_AGENT_CONF=/home/ubuntu/woni/deploy/agent.conf
+ExecStart=/home/ubuntu/woni/repo/tools/backup-db.sh
+# 덤프 + 업로드가 느려질 수 있어 oneshot 기본 90초로는 부족하다. curl 자체 상한이 600초다.
+TimeoutStartSec=1800
+
+[Install]
+WantedBy=multi-user.target
