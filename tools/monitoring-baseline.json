@@ -85,7 +85,8 @@
             "GF_NEWS_NEWS_FEED_ENABLED": "false",
             "GF_SECURITY_ADMIN_PASSWORD": "${GRAFANA_ADMIN_PASSWORD:?monitoring/.env 에 GRAFANA_ADMIN_PASSWORD 를 설정하세요}",
             "GF_SECURITY_ADMIN_USER": "${GRAFANA_ADMIN_USER:-admin}",
-            "GF_USERS_ALLOW_SIGN_UP": "false"
+            "GF_USERS_ALLOW_SIGN_UP": "false",
+            "WONI_NTFY_TOPIC": "${WONI_NTFY_TOPIC:?monitoring/.env 에 WONI_NTFY_TOPIC 을 설정하세요}"
           },
           "image": "grafana/grafana:13.2.0",
           "logging": {
@@ -130,7 +131,8 @@
         },
         "node-exporter": {
           "command": [
-            "--path.rootfs=/host"
+            "--path.rootfs=/host",
+            "--collector.textfile.directory=/host/var/lib/woni-metrics"
           ],
           "container_name": "woni-node-exporter",
           "image": "prom/node-exporter:v1.12.1",
@@ -211,9 +213,12 @@
     "monitoring/.env.example": "8bf1c03867d08343bddaa9fdf1cd8787a6c3bb6fa1008a19ab792d9a56726044",
     "monitoring/alloy/config.alloy": "e94ff5b39fc4b3e45b5416ce51a6818ba5a743a476d85315fcf8b7ccecfed402",
     "monitoring/docker-compose.deploy.yml": "a3e37ecdba0ee459710d9a14d9839336dc0dc236bc1ab999478005c2f7c4233a",
-    "monitoring/docker-compose.yml": "31c600cf02ab5633229d5b7e7924e2fd1c5c382cc896ab975956bdd95fbbdd4d",
+    "monitoring/docker-compose.yml": "bb3bf91f920c1c7ee0abc3ca42272cdd926ecdf4ea9c6c4f56ab1e12cd7dda5a",
     "monitoring/grafana/dashboards/spring-boot-statistics.json": "5be5d6fef06e33620b66165df023a2f96e8c01f7349e0636245552f6eb8cf5fb",
     "monitoring/grafana/dashboards/woni-overview.json": "98b7f25045e8a29deca615831d0a142886002e4344ce7c3c945f7f5bd46cf848",
+    "monitoring/grafana/provisioning/alerting/contact-points.yml": "972dca22f1724a335c17b792f96d7d8980f6767cab1dbd77c9dbecd50f425dd3",
+    "monitoring/grafana/provisioning/alerting/policies.yml": "b6f6b249982b028e51c2f905b9a3be82807ea4d5987ab04ede18d2921cf5d585",
+    "monitoring/grafana/provisioning/alerting/rules.yml": "a750a406de5bf4ef76b7fef015f813bdd6413eb5b2858aba83cf2a68e5e564ea",
     "monitoring/grafana/provisioning/dashboards/dashboards.yml": "30ac6561713af10a691afe2a3da36d7f4609c8d16513e026a7305b6a8ae5b160",
     "monitoring/grafana/provisioning/datasources/datasources.yml": "f40c32f73ee478b7900ec5a3f524a41e79ee6051f2e485ffa77ea9f37df2ebdb",
     "monitoring/loki/loki-config.yml": "ba1f49d5f68522d19a56481d877312dadf228b397fb5f36a866db4d85f774293",

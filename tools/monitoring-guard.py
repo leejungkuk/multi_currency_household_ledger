@@ -121,8 +121,11 @@ def load_compose_contents() -> dict[str, bytes]:
 def compose_services() -> list[str]:
     environment = os.environ.copy()
     # config 해석에만 쓰는 비시크릿 값이다. CI에는 monitoring/.env가 없어도 검사가 돌아야 한다.
-    if not environment.get("GRAFANA_ADMIN_PASSWORD"):
-        environment["GRAFANA_ADMIN_PASSWORD"] = "monitoring-guard-config-only"
+    # compose가 `${VAR:?...}`로 필수 선언한 값을 여기에 넣지 않으면 검사가 위반이 아니라
+    # **실행 불가**로 떨어져, 정작 기준선 이탈을 못 본다. 필수 변수를 늘리면 여기도 늘린다.
+    for key in ("GRAFANA_ADMIN_PASSWORD", "WONI_NTFY_TOPIC"):
+        if not environment.get(key):
+            environment[key] = "monitoring-guard-config-only"
     try:
         result = subprocess.run(
             [

@@ -1,0 +1,16 @@
+[Unit]
+Description=woni 운영 DB 백업 주기 실행 (매일 03:20 KST)
+OnFailure=woni-backup-alert@%n.service
+
+[Timer]
+# 03:20 KST. 환율 스케줄러 창(11:00~14:00)과 배포 에이전트 보류 창(10:40~14:05)을 모두 피하고,
+# Supabase 무료 티어의 낮 시간 부하와도 겹치지 않는다.
+OnCalendar=*-*-* 03:20:00 Asia/Seoul
+# 호스트가 꺼져 있던 날의 백업을 켜자마자 회수한다. 백업은 거를수록 손실 위험이 커진다.
+Persistent=true
+# 배포·관측 타이머와 같은 초에 몰리지 않게 한다. 세 타이머가 위상이 겹치면 공용 자원(docker·
+# 네트워크)을 동시에 쓰고, 무엇보다 Persistent=true 로 밀린 실행이 재부팅 직후 한꺼번에 몰린다.
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

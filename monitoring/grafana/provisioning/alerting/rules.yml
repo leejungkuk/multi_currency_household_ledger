@@ -1,0 +1,133 @@
+apiVersion: 1
+
+# 규칙은 넷뿐이다. "무엇이 조용히 망가지면 사람이 끝까지 모르는가"만 넣는다 —
+# 대시보드로 보면 되는 것을 알림으로 올리면 전부 무시하게 된다.
+groups:
+  - orgId: 1
+    name: woni
+    folder: woni
+    interval: 1m
+    rules:
+      # ── 백업 ────────────────────────────────────────────────────────────────
+      # 백업은 실패해도 서비스가 멀쩡히 돌아 아무도 모른다. 그런데 Supabase 무료 티어에는
+      # 자동 백업이 없어 이게 유일한 복구 수단이다 — 침묵이 가장 비싼 축이다.
+      - uid: woni-backup-stale
+        title: DB 백업이 36시간 넘게 성공하지 않았습니다
+        condition: THRESHOLD
+        # 메트릭 자체가 사라지는 경우(textfile 유실·node-exporter 중단·타이머 비활성)도
+        # 반드시 울려야 하므로 NoData 를 Alerting 으로 둔다. 기본값(NoData)이면 정작
+        # 백업 체계가 통째로 죽었을 때 조용해진다.
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 10m
+        data:
+          - refId: QUERY
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: QUERY
+              instant: true
+              expr: time() - woni_backup_last_success_timestamp_seconds
+          - refId: THRESHOLD
+            datasourceUid: __expr__
+            model:
+              refId: THRESHOLD
+              type: threshold
+              expression: QUERY
+              conditions:
+                - evaluator: { type: gt, params: [129600] } # 36h
+        labels:
+          severity: critical
+        annotations:
+          summary: 마지막 성공 백업이 36시간을 넘었습니다. journalctl -u woni-backup.service 를 확인하세요.
+
+      - uid: woni-backup-failed
+        title: 마지막 DB 백업 실행이 실패했습니다
+        condition: THRESHOLD
+        # 이쪽은 NoData 를 울리지 않는다 — 위 규칙이 같은 상황을 이미 잡고, 둘 다 울리면
+        # 한 사건에 알림이 2건씩 간다.
+        noDataState: OK
+        execErrState: Alerting
+        for: 5m
+        data:
+          - refId: QUERY
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: QUERY
+              instant: true
+              expr: woni_backup_last_run_success
+          - refId: THRESHOLD
+            datasourceUid: __expr__
+            model:
+              refId: THRESHOLD
+              type: threshold
+              expression: QUERY
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        labels:
+          severity: critical
+        annotations:
+          summary: 백업 스크립트가 실패로 끝났습니다. 다음 주기까지 복구 지점이 늘지 않습니다.
+
+      # ── 서비스 ──────────────────────────────────────────────────────────────
+      # 호스트가 통째로 죽으면 이 Grafana 도 함께 죽어 알리지 못한다. 그 축은 외부
+      # 워치독(UptimeRobot)이 담당한다 — 이 규칙은 "호스트는 살아 있는데 앱만 죽은" 경우다.
+      - uid: woni-api-down
+        title: woni-api 스크레이프가 실패하고 있습니다
+        condition: THRESHOLD
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 5m
+        data:
+          - refId: QUERY
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: QUERY
+              instant: true
+              expr: up{job="woni-api"}
+          - refId: THRESHOLD
+            datasourceUid: __expr__
+            model:
+              refId: THRESHOLD
+              type: threshold
+              expression: QUERY
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        labels:
+          severity: critical
+        annotations:
+          summary: api 컨테이너가 내려갔거나 actuator(9091)가 응답하지 않습니다.
+
+      # ── 호스트 ──────────────────────────────────────────────────────────────
+      # 디스크가 차면 배포 에이전트가 preflight 에서 멈추고 컨테이너 로그도 쓰지 못한다.
+      # 에이전트의 DISK_MIN_MB 검사는 배포 순간에만 돌므로 배포 사이의 고갈을 못 본다.
+      - uid: woni-disk-low
+        title: 루트 파일시스템 여유가 15% 미만입니다
+        condition: THRESHOLD
+        noDataState: OK
+        execErrState: Alerting
+        for: 15m
+        data:
+          - refId: QUERY
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: QUERY
+              instant: true
+              expr: >-
+                min(node_filesystem_avail_bytes{mountpoint="/host",fstype!~"tmpfs|overlay"}
+                / node_filesystem_size_bytes{mountpoint="/host",fstype!~"tmpfs|overlay"})
+          - refId: THRESHOLD
+            datasourceUid: __expr__
+            model:
+              refId: THRESHOLD
+              type: threshold
+              expression: QUERY
+              conditions:
+                - evaluator: { type: lt, params: [0.15] }
+        labels:
+          severity: warning
+        annotations:
+          summary: 디스크 여유가 15% 아래입니다. 이미지 정리(§이미지 정리)를 검토하세요.

@@ -53,6 +53,10 @@ services:
     logging: *logging
     command:
       - --path.rootfs=/host
+      # tools/backup-db.sh 가 쓰는 백업 성공 메트릭을 읽는다. rootfs 가 /host 로 마운트돼 있으므로
+      # 호스트의 /var/lib/woni-metrics 는 컨테이너 안에서 /host/var/lib/woni-metrics 다.
+      # 디렉터리가 없어도 node-exporter 는 기동한다(수집만 비어 있다).
+      - --collector.textfile.directory=/host/var/lib/woni-metrics
     # 호스트의 CPU·메모리·디스크를 보려면 네임스페이스와 루트 파일시스템이 필요하다(읽기 전용).
     # 흔히 쓰는 rslave(마운트 전파)는 macOS Docker Desktop 이 거부하므로 붙이지 않는다 — 마운트 구성이
     # 고정된 단일 서버에서는 전파 없이도 디스크 지표가 정확하다.
@@ -114,6 +118,10 @@ services:
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?monitoring/.env 에 GRAFANA_ADMIN_PASSWORD 를 설정하세요}
+      # 알림 contact point 가 ${WONI_NTFY_TOPIC} 로 참조한다. 토픽은 호스트 고유값이라
+      # 리포에 두지 않고 monitoring/.env 에서 온다 — 비면 Grafana 가 기동은 하되 알림 전송이
+      # https://ntfy.sh/ 로 나가 조용히 버려지므로, 필수 선언(:?)으로 기동을 막는다.
+      WONI_NTFY_TOPIC: ${WONI_NTFY_TOPIC:?monitoring/.env 에 WONI_NTFY_TOPIC 을 설정하세요}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"

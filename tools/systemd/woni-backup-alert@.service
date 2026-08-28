@@ -1,0 +1,9 @@
+[Unit]
+Description=woni DB 백업 실패 알림 (%i)
+
+[Service]
+Type=oneshot
+User=ubuntu
+# ntfy 로직을 두 곳에 두지 않으려고 스크립트의 전용 모드를 쓴다(유닛 인라인 셸은 shellcheck·verify.sh 밖이다).
+Environment=WONI_AGENT_CONF=/home/ubuntu/woni/deploy/agent.conf
+ExecStart=/home/ubuntu/woni/repo/tools/backup-db.sh --notify-failure %i

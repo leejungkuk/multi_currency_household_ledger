@@ -1,0 +1,28 @@
+# 알림 정의를 파일 provisioning 으로 두는 이유: UI 로 만들면 grafana-data 볼륨에만 남아
+# 호스트를 옮기거나 볼륨을 버리는 순간 통째로 사라진다(A1 이관에서 관측 볼륨을 실제로 버렸다).
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: ntfy
+    receivers:
+      - uid: ntfy-webhook
+        type: webhook
+        settings:
+          # 토픽은 호스트 고유값이라 리포에 넣지 않는다 — monitoring/.env 의 WONI_NTFY_TOPIC 을
+          # Grafana 가 기동 시 치환한다(monitoring/docker-compose.yml 이 컨테이너 환경변수로 넘긴다).
+          url: https://ntfy.sh/${WONI_NTFY_TOPIC}
+          httpMethod: POST
+          # ⚠️ `title`·`message` 설정만으로는 안 된다. 그 둘은 **Grafana 기본 JSON 페이로드 안의
+          # 필드**로 들어갈 뿐이고 HTTP 본문 자체는 여전히 JSON 전문이다. ntfy 는 본문을 그대로
+          # 알림 문구로 쓰므로 폰에 JSON 이 통째로 뜬다(2026-08-28 실측으로 확인했다).
+          # `payload` 로 본문을 평문으로 덮어써야 사람이 읽을 수 있는 알림이 된다.
+          payload:
+            template: |
+              {{ range .Alerts }}{{ if eq .Status "firing" }}🚨{{ else }}✅{{ end }} {{ .Labels.alertname }}
+              {{ .Annotations.summary }}
+              {{ end }}
+          headers:
+            # ntfy 는 헤더를 ASCII 로 다루므로 한글을 넣지 않는다. 우선순위만 올린다 —
+            # 이 네 규칙은 전부 사람이 밤중에라도 알아야 하는 축이다.
+            X-Priority: high
