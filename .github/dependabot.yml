@@ -21,6 +21,14 @@ updates:
       day: "monday"
       time: "09:00"
       timezone: "Asia/Seoul"
+    # codeql-action 의 서브액션(init·analyze·upload-sarif)은 **한 PR 로 묶는다.**
+    # 따로 오면 순차 머지 중 init 과 analyze 의 버전이 어긋나는 구간이 생기고, 그 사이 커밋의
+    # codeql 이 "Loaded a configuration file for version 'X', but running version 'Y'" 로 죽는다
+    # (2026-09-01 실측 — PR #111·#112·#113 세 커밋이 연속 실패했고 init 범프가 머지되며 자동 해소됐다).
+    groups:
+      codeql-action:
+        patterns:
+          - "github/codeql-action*"
 
   # 관측 스택 이미지 6종(prometheus·node-exporter·loki·docker-socket-proxy·alloy·grafana).
   # 여기만 일상 버전범프를 허용하는 이유: 컨테이너 이미지는 GitHub Advisory Database 대상이 아니라
