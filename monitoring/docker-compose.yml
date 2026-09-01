@@ -95,7 +95,7 @@ services:
     networks: [monitoring]
 
   alloy:
-    image: grafana/alloy:v1.18.1
+    image: grafana/alloy:v1.19.2
     container_name: woni-alloy
     restart: unless-stopped
     logging: *logging
