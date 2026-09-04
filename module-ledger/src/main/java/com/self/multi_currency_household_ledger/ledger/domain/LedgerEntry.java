@@ -123,7 +123,7 @@ public class LedgerEntry extends BaseEntity {
             ExchangeRate exchangeRate,
             Clock clock) {
         assertValidOriginalAmount(originalAmount);
-        assertFutureDateOnlyKrw(currencyCode, transactionDate, clock);
+        assertNotBeyondFutureLimit(transactionDate, clock);
         AmountSnapshot amountSnapshot = calculateAmountSnapshot(originalAmount, currencyCode, exchangeRate);
 
         return new LedgerEntry(
@@ -149,7 +149,7 @@ public class LedgerEntry extends BaseEntity {
             ExchangeRate exchangeRate,
             Clock clock) {
         assertValidOriginalAmount(originalAmount);
-        assertFutureDateOnlyKrw(currencyCode, transactionDate, clock);
+        assertNotBeyondFutureLimit(transactionDate, clock);
         AmountSnapshot amountSnapshot = calculateAmountSnapshot(originalAmount, currencyCode, exchangeRate);
 
         this.transactionType = category.getTransactionType();
@@ -212,8 +212,8 @@ public class LedgerEntry extends BaseEntity {
         }
     }
 
-    private static void assertFutureDateOnlyKrw(CurrencyCode currencyCode, LocalDate transactionDate, Clock clock) {
-        if (!currencyCode.isBase() && transactionDate.isAfter(LocalDate.now(clock))) {
+    private static void assertNotBeyondFutureLimit(LocalDate transactionDate, Clock clock) {
+        if (ExchangeRate.isBeyondFutureLimit(transactionDate, LocalDate.now(clock))) {
             throw new BusinessException(LedgerErrorCode.INVALID_FUTURE_DATE);
         }
     }
