@@ -1,11 +1,13 @@
 package com.self.multi_currency_household_ledger.exchange.controller;
 
 import com.self.multi_currency_household_ledger.common.dto.ApiResponse;
+import com.self.multi_currency_household_ledger.common.exception.BusinessException;
 import com.self.multi_currency_household_ledger.common.web.CacheControlHeaders;
 import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
 import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRate;
 import com.self.multi_currency_household_ledger.exchange.dto.ExchangeRateResponse;
 import com.self.multi_currency_household_ledger.exchange.dto.ExchangeRateStatusResponse;
+import com.self.multi_currency_household_ledger.exchange.exception.ExchangeErrorCode;
 import com.self.multi_currency_household_ledger.exchange.service.ExchangeRateService;
 import java.time.Clock;
 import java.time.LocalDate;
@@ -65,10 +67,14 @@ public class ExchangeRateController {
             @PathVariable("currencyCode") CurrencyCode currencyCode,
             @RequestParam(value = "date", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
                     LocalDate date) {
+        LocalDate today = LocalDate.now(clock);
+        if (date != null && ExchangeRate.isBeyondFutureLimit(date, today)) {
+            throw new BusinessException(ExchangeErrorCode.INVALID_DATE);
+        }
         ExchangeRate rate = date != null
                 ? exchangeRateService.getRateOnOrBefore(currencyCode, date)
                 : exchangeRateService.getLatestRate(currencyCode);
-        LocalDate effectiveDate = date != null ? date : LocalDate.now(clock);
+        LocalDate effectiveDate = date != null ? date : today;
         return publicRead(ExchangeRateResponse.from(rate, effectiveDate));
     }
 
