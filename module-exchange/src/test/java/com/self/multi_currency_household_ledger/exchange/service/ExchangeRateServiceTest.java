@@ -205,6 +205,42 @@ class ExchangeRateServiceTest {
     }
 
     @Nested
+    @DisplayName("getRateOnOrBefore()")
+    class GetRateOnOrBefore {
+
+        @Test
+        @DisplayName("미래 날짜는 오늘로 clamp해 최신 환율을 조회한다")
+        void clamps_future_date_to_today() {
+            LocalDate today = LocalDate.now(FIXED_CLOCK);
+            var rate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), today);
+            given(exchangeRateRepository.findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(
+                            CurrencyCode.USD, today))
+                    .willReturn(Optional.of(rate));
+
+            ExchangeRate result = exchangeRateService.getRateOnOrBefore(CurrencyCode.USD, today.plusDays(1));
+
+            assertThat(result).isSameAs(rate);
+            verify(exchangeRateRepository)
+                    .findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(CurrencyCode.USD, today);
+        }
+
+        @Test
+        @DisplayName("과거 날짜는 그대로 조회한다")
+        void queries_past_date_without_clamping() {
+            var rate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), DATE);
+            given(exchangeRateRepository.findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(
+                            CurrencyCode.USD, DATE))
+                    .willReturn(Optional.of(rate));
+
+            ExchangeRate result = exchangeRateService.getRateOnOrBefore(CurrencyCode.USD, DATE);
+
+            assertThat(result).isSameAs(rate);
+            verify(exchangeRateRepository)
+                    .findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(CurrencyCode.USD, DATE);
+        }
+    }
+
+    @Nested
     @DisplayName("getSnapshot()")
     class GetSnapshot {
 
@@ -302,17 +338,19 @@ class ExchangeRateServiceTest {
         }
 
         @Test
-        @DisplayName("미래 날짜 조회 시 BusinessException을 던지고 repository를 호출하지 않는다")
-        void throws_for_future_date() {
-            LocalDate future = DATE.plusDays(4);
+        @DisplayName("미래 날짜는 오늘로 clamp해 최신 환율을 조회한다")
+        void clamps_future_date_to_today() {
+            LocalDate today = LocalDate.now(FIXED_CLOCK);
+            var rate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), today);
+            given(exchangeRateRepository.findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(
+                            CurrencyCode.USD, today))
+                    .willReturn(Optional.of(rate));
 
-            assertThatThrownBy(() -> exchangeRateService.getRateOnOrBeforeOrOldest(CurrencyCode.USD, future))
-                    .isInstanceOf(BusinessException.class)
-                    .satisfies(
-                            ex -> assertThat(((BusinessException) ex).getCode()).isEqualTo("INVALID_DATE"));
+            ExchangeRate result = exchangeRateService.getRateOnOrBeforeOrOldest(CurrencyCode.USD, today.plusDays(1));
 
-            verify(exchangeRateRepository, never())
-                    .findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(any(), any());
+            assertThat(result).isSameAs(rate);
+            verify(exchangeRateRepository)
+                    .findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(CurrencyCode.USD, today);
             verify(exchangeRateRepository, never()).findTopByCurrencyCodeOrderByBaseDateAsc(any());
         }
     }

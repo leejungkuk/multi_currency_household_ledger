@@ -27,6 +27,9 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class ExchangeRate extends BaseEntity {
 
+    /** 거래일 입력·환율 미리보기 공통 미래 상한. ledger 도메인 검증과 미리보기 캡이 이 상수를 공유한다. */
+    public static final int MAX_FUTURE_DAYS = 365;
+
     private static final int MAX_RANGE_DAYS = 400;
 
     @Id
@@ -58,6 +61,10 @@ public class ExchangeRate extends BaseEntity {
         if (date.isAfter(LocalDate.now(clock))) {
             throw new BusinessException(ExchangeErrorCode.INVALID_DATE);
         }
+    }
+
+    public static boolean isBeyondFutureLimit(LocalDate date, LocalDate today) {
+        return date.isAfter(today.plusDays(MAX_FUTURE_DAYS));
     }
 
     public static void assertValidRange(LocalDate from, LocalDate to) {
