@@ -36,6 +36,7 @@ subprojects {
     ext['postgresql.version'] = '42.7.12'      // CVE-2026-54291 (HIGH, 채널 바인딩 조용한 다운그레이드)
     ext['jackson-2-bom.version'] = '2.21.5'    // CVE-2026-59889 · CVE-2026-54515 · GHSA-mhm7-754m-9p8w
     ext['jackson-bom.version'] = '3.1.5'       // CVE-2026-59889
+    ext['tomcat.version'] = '11.0.25'          // CVE-2026-65182 · CVE-2026-65905 · CVE-2026-68525 (CRITICAL, 인증·접근제어 우회)
 
     dependencyManagement {
         imports {
