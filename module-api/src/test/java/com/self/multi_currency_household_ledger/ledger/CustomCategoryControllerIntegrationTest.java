@@ -14,6 +14,11 @@ import com.self.multi_currency_household_ledger.exchange.service.ExchangeRateSer
 import com.self.multi_currency_household_ledger.ledger.domain.Category;
 import com.self.multi_currency_household_ledger.ledger.domain.CategoryRepository;
 import com.self.multi_currency_household_ledger.ledger.domain.TransactionType;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -29,6 +34,8 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -46,18 +53,24 @@ import tools.jackson.databind.ObjectMapper;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
+@Import(CustomCategoryControllerIntegrationTest.FixedClockConfig.class)
 @TestPropertySource(
         properties = {
             "spring.security.oauth2.resourceserver.jwt.issuer-uri=https://example.supabase.co/auth/v1",
             "exchange.eximbank.api-key=test-api-key",
-            // 이 클래스의 쓰기 요청 수가 기본 버킷(60/min·IP)을 넘어서 429가 섞이면 산발 실패한다.
+            // 이 클래스의 요청 수가 기본 버킷(읽기 120·쓰기 60/min·IP)을 넘어서 429가 섞이면 산발 실패한다.
+            // 고정 시계라 필터의 60초 윈도가 롤오버되지 않아 클래스 전체 요청이 한 버킷에 그대로 쌓인다.
             // 필터는 체인에 그대로 두고(순서 회귀는 여전히 드러난다) 한도만 올린다.
+            "woni.security.rate-limit.read-limit=1000",
             "woni.security.rate-limit.write-limit=1000"
         })
 class CustomCategoryControllerIntegrationTest {
 
     private static final UUID MEMBER_A = UUID.fromString("00000000-0000-0000-0000-000000000001");
     private static final UUID MEMBER_B = UUID.fromString("00000000-0000-0000-0000-000000000002");
+
+    @Autowired
+    private Clock clock;
 
     @Autowired
     private MockMvc mockMvc;
@@ -440,6 +453,120 @@ class CustomCategoryControllerIntegrationTest {
         assertThat(customCategories(MEMBER_A)).isEmpty();
     }
 
+    @Test
+    @DisplayName("유예 안의 미참조 비활성 카테고리는 생성 후에도 남고 재삭제는 200이다")
+    void orphan_inactive_category_within_grace_survives_create() throws Exception {
+        long categoryId = createCategory(MEMBER_A, "유예 대상");
+        deleteCategory(MEMBER_A, categoryId).andExpect(status().isOk());
+        setCategoryUpdatedAt(categoryId, cleanupCutoff().plusMinutes(1));
+
+        createCategory(MEMBER_A, "새 카테고리");
+
+        assertThat(categoryRowCount(categoryId)).isEqualTo(1);
+        deleteCategory(MEMBER_A, categoryId).andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("유예를 지난 미참조 비활성 카테고리는 다음 생성에서 실제로 삭제된다")
+    void orphan_inactive_category_past_grace_is_removed_on_create() throws Exception {
+        long categoryId = createCategory(MEMBER_A, "정리 대상");
+        deleteCategory(MEMBER_A, categoryId).andExpect(status().isOk());
+        setCategoryUpdatedAt(categoryId, cleanupCutoff().minusMinutes(1));
+
+        createCategory(MEMBER_A, "새 카테고리");
+
+        assertThat(categoryRowCount(categoryId)).isZero();
+    }
+
+    @Test
+    @DisplayName("감사 시각을 바꾸지 않은 갓 삭제한 카테고리는 생성 후에도 남는다")
+    void freshly_deleted_category_survives_create() throws Exception {
+        long categoryId = createCategory(MEMBER_A, "방금 삭제");
+        deleteCategory(MEMBER_A, categoryId).andExpect(status().isOk());
+
+        createCategory(MEMBER_A, "새 카테고리");
+
+        assertThat(categoryRowCount(categoryId)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("삭제가 updated_at 을 갱신해 24h 유예 기산점을 되돌린다(감사 컬럼 회귀 가드)")
+    void delete_refreshes_updated_at_and_restarts_grace() throws Exception {
+        long categoryId = createCategory(MEMBER_A, "유예 재기산");
+        setCategoryUpdatedAt(categoryId, cleanupCutoff().minusMinutes(1));
+
+        deleteCategory(MEMBER_A, categoryId).andExpect(status().isOk());
+        createCategory(MEMBER_A, "새 카테고리");
+
+        assertThat(categoryRowCount(categoryId))
+                .as("삭제가 updated_at 을 갱신하지 않았다 — @LastModifiedDate·@DynamicUpdate 회귀로 유예 기산점이 무너졌다")
+                .isEqualTo(1);
+        deleteCategory(MEMBER_A, categoryId).andExpect(status().isOk());
+    }
+
+    @Test
+    @DisplayName("유예가 지나도 거래가 참조하는 비활성 카테고리와 리포트 소계는 보존한다")
+    void referenced_inactive_category_survives_cleanup_and_keeps_report_subtotal() throws Exception {
+        long categoryId = createCategory(MEMBER_A, "반려견");
+        createLedger(MEMBER_A, categoryId);
+        deleteCategory(MEMBER_A, categoryId).andExpect(status().isOk());
+        setCategoryUpdatedAt(categoryId, cleanupCutoff().minusMinutes(1));
+
+        createCategory(MEMBER_A, "새 카테고리");
+
+        assertThat(categoryRowCount(categoryId)).isEqualTo(1);
+        mockMvc.perform(get("/api/v1/ledgers/report")
+                        .with(memberJwt(MEMBER_A))
+                        .param("year", "2026")
+                        .param("month", "4"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.categorySubtotals[0].category.id").value(categoryId))
+                .andExpect(jsonPath("$.data.categorySubtotals[0].category.displayNameKo")
+                        .value("반려견"))
+                .andExpect(jsonPath("$.data.categorySubtotals[0].krwAmount").value(1000.00));
+    }
+
+    @Test
+    @DisplayName("IDOR: 회원 A의 정리는 회원 B의 오래된 고아 행과 시스템 카테고리를 건드리지 않는다")
+    void cleanup_never_touches_other_members_or_system_categories() throws Exception {
+        long memberBCategoryId = createCategory(MEMBER_B, "회원 B");
+        deleteCategory(MEMBER_B, memberBCategoryId).andExpect(status().isOk());
+        setCategoryUpdatedAt(memberBCategoryId, cleanupCutoff().minusMinutes(1));
+        var systemCategories = jdbcTemplate.queryForList("select * from category where id < 10000 order by id");
+        assertThat(systemCategories).isNotEmpty();
+
+        createCategory(MEMBER_A, "회원 A");
+
+        assertThat(categoryRowCount(memberBCategoryId)).isEqualTo(1);
+        assertThat(isActive(memberBCategoryId)).isFalse();
+        assertThat(jdbcTemplate.queryForList("select * from category where id < 10000 order by id"))
+                .isEqualTo(systemCategories);
+    }
+
+    @Test
+    @DisplayName("플랜 승인 예외 ①: 유예 경과 후 정리된 id의 재삭제는 CATEGORY_NOT_FOUND다")
+    void redelete_after_cleanup_returns_not_found_documented_exception() throws Exception {
+        // 플랜 승인 예외 ①: 비활성 24h 경과 → 생성(정리) → 같은 id 재삭제만 404로 바뀐다.
+        long categoryId = createCategory(MEMBER_A, "정리 대상");
+        deleteCategory(MEMBER_A, categoryId).andExpect(status().isOk());
+        setCategoryUpdatedAt(categoryId, cleanupCutoff().minusMinutes(1));
+        createCategory(MEMBER_A, "새 카테고리");
+
+        assertThat(categoryRowCount(categoryId)).isZero();
+        deleteCategory(MEMBER_A, categoryId)
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("CATEGORY_NOT_FOUND"));
+    }
+
+    private LocalDateTime cleanupCutoff() {
+        return LocalDateTime.ofInstant(clock.instant().minus(Duration.ofHours(24)), ZoneId.systemDefault());
+    }
+
+    private void setCategoryUpdatedAt(long categoryId, LocalDateTime updatedAt) {
+        // DB now()는 세션 존과 JVM 존이 다르면 경계가 흔들리므로 고정 시계에서 파생한 Java 값을 바인딩한다.
+        jdbcTemplate.update("update category set updated_at = ? where id = ?", updatedAt, categoryId);
+    }
+
     private void assertReorderNotFound(long... orderedIds) throws Exception {
         reorderCategories(MEMBER_A, TransactionType.EXPENSE, orderedIds)
                 .andExpect(status().isNotFound())
@@ -605,6 +732,16 @@ class CustomCategoryControllerIntegrationTest {
                     .JwtRequestPostProcessor
             memberJwt(UUID memberId) {
         return jwt().jwt(token -> token.subject(memberId.toString()).audience(List.of("authenticated")));
+    }
+
+    @TestConfiguration
+    static class FixedClockConfig {
+
+        @Bean
+        @Primary
+        Clock clock() {
+            return Clock.fixed(Instant.parse("2026-04-05T15:00:00Z"), ZoneId.of("Asia/Seoul"));
+        }
     }
 
     @TestConfiguration

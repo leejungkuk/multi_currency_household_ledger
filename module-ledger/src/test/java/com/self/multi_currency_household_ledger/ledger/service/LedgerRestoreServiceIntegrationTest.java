@@ -8,9 +8,12 @@ import com.self.multi_currency_household_ledger.exchange.service.ExchangeRateSer
 import com.self.multi_currency_household_ledger.ledger.AuthUserFixture;
 import com.self.multi_currency_household_ledger.ledger.TestJpaConfig;
 import com.self.multi_currency_household_ledger.ledger.TestLedgerApplication;
+import com.self.multi_currency_household_ledger.ledger.dto.CreateLedgerEntryRequest;
+import com.self.multi_currency_household_ledger.ledger.dto.LedgerEntryResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.LedgerRestoreResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryRequest;
 import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryResponse;
+import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -20,6 +23,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.hibernate.SessionFactory;
+import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -49,6 +54,9 @@ class LedgerRestoreServiceIntegrationTest {
 
     private static final UUID MEMBER_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
     private static final UUID OTHER_MEMBER_ID = UUID.fromString("00000000-0000-0000-0000-000000000002");
+
+    @Autowired
+    private EntityManager entityManager;
 
     @Autowired
     private LedgerService ledgerService;
@@ -132,6 +140,36 @@ class LedgerRestoreServiceIntegrationTest {
             assertThat(entry.memo()).isEqualTo("타 회원");
         });
         assertThat(otherMemberRestore.hasNext()).isFalse();
+    }
+
+    @Test
+    @DisplayName("월별 거래 3건과 카테고리 2종·자산을 SQL 한 번으로 읽는다")
+    void monthly_entries_are_loaded_with_catalog_in_one_statement() {
+        LocalDate date = LocalDate.of(2026, 4, 6);
+        for (long categoryId : List.of(1L, 2L, 1L)) {
+            ledgerService.create(
+                    new CreateLedgerEntryRequest(
+                            new BigDecimal("1000.00"), CurrencyCode.KRW, categoryId, 3L, date, "월별 조회"),
+                    MEMBER_ID);
+        }
+        Statistics stats = entityManager
+                .getEntityManagerFactory()
+                .unwrap(SessionFactory.class)
+                .getStatistics();
+        boolean statisticsEnabled = stats.isStatisticsEnabled();
+        stats.setStatisticsEnabled(true);
+        stats.clear();
+        try {
+            List<LedgerEntryResponse> entries = ledgerService.getMonthlyEntries(MEMBER_ID, 2026, 4);
+
+            assertThat(entries).hasSize(3);
+            assertThat(entries).extracting(entry -> entry.category().id()).containsExactly(1L, 2L, 1L);
+            assertThat(entries)
+                    .allSatisfy(entry -> assertThat(entry.asset().id()).isEqualTo(3L));
+            assertThat(stats.getPrepareStatementCount()).isEqualTo(1);
+        } finally {
+            stats.setStatisticsEnabled(statisticsEnabled);
+        }
     }
 
     private SyncLedgerEntryResponse sync(UUID memberId, String clientEntryId, LocalDate transactionDate, String memo) {

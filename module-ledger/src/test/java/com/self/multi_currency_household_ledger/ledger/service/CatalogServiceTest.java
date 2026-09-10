@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 
 import com.self.multi_currency_household_ledger.common.exception.BusinessException;
@@ -19,13 +20,19 @@ import com.self.multi_currency_household_ledger.ledger.dto.CreateCustomCategoryR
 import com.self.multi_currency_household_ledger.ledger.dto.ReorderCustomCategoriesRequest;
 import com.self.multi_currency_household_ledger.ledger.dto.UpdateCustomCategoryRequest;
 import com.self.multi_currency_household_ledger.ledger.exception.LedgerErrorCode;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -34,14 +41,21 @@ class CatalogServiceTest {
 
     private static final UUID MEMBER_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
 
+    private static final Clock FIXED_CLOCK =
+            Clock.fixed(Instant.parse("2026-04-05T15:00:00Z"), ZoneId.of("Asia/Seoul"));
+
     @Mock
     private CategoryRepository categoryRepository;
 
     @Mock
     private AssetRepository assetRepository;
 
-    @InjectMocks
     private CatalogService catalogService;
+
+    @BeforeEach
+    void setUp() {
+        catalogService = new CatalogService(categoryRepository, assetRepository, FIXED_CLOCK);
+    }
 
     // 거래 유형별 카테고리 목록을 DTO로 변환해 반환한다.
     @Test
@@ -113,6 +127,21 @@ class CatalogServiceTest {
     }
 
     @Test
+    @DisplayName("커스텀 생성은 고정 시계의 24h cutoff로 고아 정리 후 활성 한도를 검사한다")
+    void create_custom_category_cleans_orphans_before_limit_check() {
+        LocalDateTime expectedCutoff =
+                LocalDateTime.ofInstant(FIXED_CLOCK.instant().minus(Duration.ofHours(24)), ZoneId.systemDefault());
+        given(categoryRepository.save(any(Category.class))).willAnswer(invocation -> invocation.getArgument(0));
+
+        catalogService.createCustomCategory(
+                MEMBER_ID, new CreateCustomCategoryRequest(TransactionType.EXPENSE, "반려견", "🐶"));
+
+        InOrder order = inOrder(categoryRepository);
+        order.verify(categoryRepository).deleteOrphanedInactive(MEMBER_ID, expectedCutoff);
+        order.verify(categoryRepository).countByOwnerMemberIdAndIsActiveTrue(MEMBER_ID);
+    }
+
+    @Test
     @DisplayName("활성 커스텀 카테고리가 100개면 생성 요청을 403으로 거부한다")
     void create_custom_category_rejects_limit() {
         CreateCustomCategoryRequest request = new CreateCustomCategoryRequest(TransactionType.EXPENSE, "상한 초과", null);
@@ -126,6 +155,13 @@ class CatalogServiceTest {
                             .isEqualTo(LedgerErrorCode.CUSTOM_CATEGORY_LIMIT_EXCEEDED.getCode());
                     assertThat(businessException.getHttpStatus().value()).isEqualTo(403);
                 });
+        InOrder order = inOrder(categoryRepository);
+        order.verify(categoryRepository)
+                .deleteOrphanedInactive(
+                        MEMBER_ID,
+                        LocalDateTime.ofInstant(
+                                FIXED_CLOCK.instant().minus(Duration.ofHours(24)), ZoneId.systemDefault()));
+        order.verify(categoryRepository).countByOwnerMemberIdAndIsActiveTrue(MEMBER_ID);
         then(categoryRepository).should(never()).save(any(Category.class));
     }
 
