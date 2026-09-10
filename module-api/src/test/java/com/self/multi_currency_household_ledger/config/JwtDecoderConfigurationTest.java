@@ -25,8 +25,8 @@ import org.springframework.security.oauth2.jwt.JwtValidationException;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 
 /**
- * 프로덕션 디코더 설정({@link SecurityConfig#configure})을 네트워크 없이 그대로 태워, 검증기 3종(만료·issuer·audience)이
- * 실제로 실행되는지 확인한다. 기존 통합 테스트는 {@code @MockitoBean JwtDecoder} 로 디코더를 통째로 대체하므로 이 층을 한 번도
+ * 프로덕션 디코더 설정({@link SecurityConfig#configure})을 네트워크 없이 그대로 태워, 검증기 5종(만료·issuer·audience·exp
+ * 필수·role)이 실제로 실행되는지 확인한다. 기존 통합 테스트는 {@code @MockitoBean JwtDecoder} 로 디코더를 통째로 대체하므로 이 층을 한 번도
  * 지나지 않는다.
  */
 class JwtDecoderConfigurationTest {
@@ -34,6 +34,7 @@ class JwtDecoderConfigurationTest {
     private static final String ISSUER = "https://example.supabase.co/auth/v1";
     private static final String AUDIENCE = "authenticated";
     private static final String SUBJECT = "00000000-0000-0000-0000-000000000001";
+    private static final String AUTHENTICATED_ROLE = "authenticated";
 
     private static KeyPair keyPair;
     private static NimbusJwtDecoder decoder;
@@ -105,14 +106,70 @@ class JwtDecoderConfigurationTest {
         assertThatThrownBy(() -> decoder.decode(noAudience)).isInstanceOf(JwtValidationException.class);
     }
 
+    @Test
+    @DisplayName("exp 클레임이 없는 토큰은 거부된다 — JwtTimestampValidator 는 exp 부재를 통과시킨다")
+    void token_without_exp_is_rejected() throws JOSEException {
+        String noExpiry = token(ISSUER, List.of(AUDIENCE), null, AUTHENTICATED_ROLE);
+
+        assertThatThrownBy(() -> decoder.decode(noExpiry)).isInstanceOf(JwtValidationException.class);
+    }
+
+    @Test
+    @DisplayName("role 클레임이 없는 토큰은 거부된다 — Supabase 사용자 토큰은 익명 로그인도 role 을 담는다")
+    void token_without_role_is_rejected() throws JOSEException {
+        String noRole = token(ISSUER, List.of(AUDIENCE), Instant.now().plusSeconds(300), null);
+
+        assertThatThrownBy(() -> decoder.decode(noRole)).isInstanceOf(JwtValidationException.class);
+    }
+
+    @Test
+    @DisplayName("role=service_role 토큰은 거부된다 — 서버 전용 토큰이 사용자 API 를 타지 못한다")
+    void token_with_service_role_is_rejected() throws JOSEException {
+        String serviceRole = token(ISSUER, List.of(AUDIENCE), Instant.now().plusSeconds(300), "service_role");
+
+        assertThatThrownBy(() -> decoder.decode(serviceRole)).isInstanceOf(JwtValidationException.class);
+    }
+
+    @Test
+    @DisplayName("role=anon 토큰은 거부된다 — 로그인 전 anon 키 토큰은 회원 토큰이 아니다")
+    void token_with_anon_role_is_rejected() throws JOSEException {
+        String anonRole = token(ISSUER, List.of(AUDIENCE), Instant.now().plusSeconds(300), "anon");
+
+        assertThatThrownBy(() -> decoder.decode(anonRole)).isInstanceOf(JwtValidationException.class);
+    }
+
+    @Test
+    @DisplayName("role 이 배열로 온 토큰도 검증 실패로 거부된다 — 검증기 타입 인자가 String 이면 ClassCastException 이 500 으로 샌다")
+    void token_with_array_role_is_rejected_not_thrown() throws JOSEException {
+        String arrayRole =
+                token(ISSUER, List.of(AUDIENCE), Instant.now().plusSeconds(300), List.of(AUTHENTICATED_ROLE));
+
+        assertThatThrownBy(() -> decoder.decode(arrayRole)).isInstanceOf(JwtValidationException.class);
+    }
+
     private static String token(String issuer, List<String> audience, Instant expiresAt) throws JOSEException {
+        return token(issuer, audience, expiresAt, AUTHENTICATED_ROLE);
+    }
+
+    /**
+     * @param expiresAt {@code null} 이면 exp 클레임을 아예 싣지 않는다 — {@code JwtTimestampValidator} 는 exp 가 없는
+     *     토큰을 통과시키므로, 그 구멍을 메우는 검증기는 클레임을 생략할 수 있어야 테스트된다.
+     * @param role {@code null} 이면 role 클레임을 싣지 않는다. 타입이 {@code Object} 인 것은 배열처럼 문자열이 아닌 값도
+     *     실어 보내 검증기가 {@code ClassCastException} 없이 거부하는지 보기 위해서다.
+     */
+    private static String token(String issuer, List<String> audience, Instant expiresAt, Object role)
+            throws JOSEException {
+        // exp 가 iat 보다 앞서면 Nimbus 가 검증기 실행 전에 BadJwtException 으로 잘라낸다.
+        // 만료 케이스도 검증기(JwtTimestampValidator)까지 도달해야 하므로 iat 를 exp 기준으로 잡는다.
+        Instant issuedAt = (expiresAt != null ? expiresAt : Instant.now()).minusSeconds(300);
         JWTClaimsSet.Builder claims = new JWTClaimsSet.Builder()
                 .subject(SUBJECT)
                 .issuer(issuer)
-                // exp 가 iat 보다 앞서면 Nimbus 가 검증기 실행 전에 BadJwtException 으로 잘라낸다.
-                // 만료 케이스도 검증기(JwtTimestampValidator)까지 도달해야 하므로 iat 를 exp 기준으로 잡는다.
-                .issueTime(Date.from(expiresAt.minusSeconds(300)))
-                .expirationTime(Date.from(expiresAt));
+                .issueTime(Date.from(issuedAt))
+                .claim("role", role); // null 을 주면 Nimbus 가 그 클레임을 담지 않는다
+        if (expiresAt != null) {
+            claims.expirationTime(Date.from(expiresAt));
+        }
         if (!audience.isEmpty()) {
             claims.audience(audience);
         }

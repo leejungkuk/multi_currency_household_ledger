@@ -52,6 +52,7 @@ logging:
     # 예외 전체(PSQLException 메시지 포함)를 ERROR 로 남긴다. 이 로거를 꺼서 사라지는 것은
     # 의도적으로 삼키는 경로(import 409·sync 유니크 회복·환율 중복 skip)의 중복 기록뿐이고,
     # 셋 다 기대된 조건이라 진단 대상이 아니다.
+    # 캐치올(GlobalExceptionHandler.handleException)은 스택을 문자열화한 뒤 UUID 를 <uuid> 로 마스킹해 남긴다 — 제약명·클래스명은 유지되므로 진단에는 충분하다.
     org.hibernate.orm.jdbc.error: 'OFF'
 
 server:

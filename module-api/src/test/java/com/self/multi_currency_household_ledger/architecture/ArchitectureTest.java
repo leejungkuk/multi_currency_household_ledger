@@ -5,8 +5,14 @@ import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.methods;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import archfixture.BoundUuidControllerFixture;
+import archfixture.InheritedUnboundUuidControllerFixture;
+import archfixture.UnboundUuidControllerFixture;
+import com.self.multi_currency_household_ledger.common.annotation.CurrentMemberId;
 import com.tngtech.archunit.base.HasDescription;
 import com.tngtech.archunit.core.domain.JavaClasses;
+import com.tngtech.archunit.core.domain.JavaMethod;
+import com.tngtech.archunit.core.domain.JavaParameter;
 import com.tngtech.archunit.core.domain.properties.HasAnnotations;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
@@ -14,15 +20,23 @@ import com.tngtech.archunit.lang.ArchCondition;
 import com.tngtech.archunit.lang.ArchRule;
 import com.tngtech.archunit.lang.ConditionEvents;
 import com.tngtech.archunit.lang.SimpleConditionEvent;
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.env.Profiles;
 import org.springframework.mock.env.MockEnvironment;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 
 /**
  * CLAUDE.md 아키텍처 규칙을 빌드 게이트로 강제한다.
@@ -37,7 +51,7 @@ import org.springframework.mock.env.MockEnvironment;
 class ArchitectureTest {
 
     /** 규칙 필드 수. 리플렉션 열거가 규칙을 빠뜨리거나 규칙이 삭제되면 즉시 깨지도록 못박는다. */
-    private static final int RULE_COUNT = 9;
+    private static final int RULE_COUNT = 10;
 
     private static final JavaClasses CLASSES = new ClassFileImporter()
             .withImportOption(new ImportOption.DoNotIncludeTests())
@@ -118,6 +132,27 @@ class ArchitectureTest {
             .should(excludedWhenProdIsActive())
             .allowEmptyShould(true);
 
+    // ── 컨트롤러의 UUID 파라미터는 반드시 명시적으로 바인딩한다 ─────────────────
+
+    /**
+     * 요청 매핑 메서드의 {@code UUID} 파라미터는 {@code @CurrentMemberId}·{@code @PathVariable}·{@code @RequestParam}·
+     * {@code @RequestHeader} 중 하나로 바인딩돼야 한다.
+     *
+     * <p>막으려는 실수는 하나다: {@code @CurrentMemberId} 를 빠뜨린 {@code UUID memberId}. Spring MVC 는 어노테이션이
+     * 없는 단순 타입 파라미터를 <b>쿼리스트링에서 바인딩</b>하므로, 그 한 글자 누락이 곧 "요청자가 회원 id 를 스스로
+     * 고르는" 즉시 IDOR 이다.
+     *
+     * <p>클래스 어노테이션에 관계없이 {@code @RequestMapping} 메타 어노테이션이 붙은 메서드를 검사하므로,
+     * 부모 클래스·인터페이스에 선언된 매핑도 검사한다. 매핑 없는 보조 메서드는 대상에서 제외한다.
+     * {@code Optional<UUID>}·{@code UUID[]}·{@code UUID} 필드를 가진 복합 DTO 파라미터(model attribute)는
+     * 검사하지 못한다.
+     */
+    static final ArchRule controller_uuid_parameters_must_be_explicitly_bound = methods()
+            .that()
+            .areMetaAnnotatedWith(RequestMapping.class)
+            .should(haveExplicitlyBoundUuidParameters())
+            .allowEmptyShould(true);
+
     /**
      * 위 {@code ArchRule} 필드를 리플렉션으로 전부 열거해 실행한다. 수동 나열은 규칙 하나를 빠뜨려도
      * 아무것도 실패하지 않으므로 쓰지 않는다.
@@ -140,6 +175,67 @@ class ArchitectureTest {
         } catch (IllegalAccessException e) {
             throw new IllegalStateException("규칙 필드를 읽지 못했다: " + field.getName(), e);
         }
+    }
+
+    /**
+     * 규칙이 조용히 죽는 것을 막는다 — 실 컨트롤러는 전부 정상이라 규칙을 무력화해도 {@code @TestFactory} 는 그린이다.
+     * 픽스처는 베이스 패키지 밖에 있어 {@link #CLASSES} 에도, 컴포넌트 스캔에도 잡히지 않으므로 여기서 직접 임포트한다.
+     */
+    @Test
+    @DisplayName("어노테이션 없는 UUID 파라미터를 가진 매핑 메서드는 위반으로 잡힌다")
+    void unbound_uuid_parameter_is_reported_as_violation() {
+        JavaClasses fixture = new ClassFileImporter().importClasses(UnboundUuidControllerFixture.class);
+
+        assertThat(controller_uuid_parameters_must_be_explicitly_bound
+                        .evaluate(fixture)
+                        .hasViolation())
+                .isTrue();
+    }
+
+    @Test
+    @DisplayName("컨트롤러가 아닌 부모에서 상속한 매핑의 미바인딩 UUID 파라미터는 위반으로 잡힌다")
+    void inherited_unbound_uuid_parameter_is_reported_as_violation() {
+        JavaClasses fixture = new ClassFileImporter()
+                .importClasses(
+                        InheritedUnboundUuidControllerFixture.Parent.class,
+                        InheritedUnboundUuidControllerFixture.Child.class);
+
+        assertThat(controller_uuid_parameters_must_be_explicitly_bound
+                        .evaluate(fixture)
+                        .hasViolation())
+                .isTrue();
+    }
+
+    @Test
+    @DisplayName("네 바인딩 어노테이션과 매핑 없는 보조 메서드는 위반이 아니다")
+    void bound_uuid_parameters_are_not_reported() {
+        JavaClasses fixture = new ClassFileImporter().importClasses(BoundUuidControllerFixture.class);
+
+        assertThat(controller_uuid_parameters_must_be_explicitly_bound
+                        .evaluate(fixture)
+                        .hasViolation())
+                .isFalse();
+    }
+
+    private static ArchCondition<JavaMethod> haveExplicitlyBoundUuidParameters() {
+        List<Class<? extends Annotation>> allowed =
+                List.of(CurrentMemberId.class, PathVariable.class, RequestParam.class, RequestHeader.class);
+        return new ArchCondition<>(
+                "UUID 파라미터를 " + allowed.stream().map(Class::getSimpleName).toList() + " 중 하나로 바인딩한다") {
+            @Override
+            public void check(JavaMethod method, ConditionEvents events) {
+                for (JavaParameter parameter : method.getParameters()) {
+                    if (!parameter.getRawType().isEquivalentTo(UUID.class)
+                            || allowed.stream().anyMatch(parameter::isAnnotatedWith)) {
+                        continue;
+                    }
+                    events.add(SimpleConditionEvent.violated(
+                            method,
+                            method.getFullName() + " 의 " + parameter.getIndex()
+                                    + "번 UUID 파라미터에 바인딩 어노테이션이 없다 — 쿼리스트링에서 그대로 바인딩돼 IDOR 이 된다"));
+                }
+            }
+        };
     }
 
     private static <T extends HasAnnotations<?> & HasDescription> ArchCondition<T> excludedWhenProdIsActive() {

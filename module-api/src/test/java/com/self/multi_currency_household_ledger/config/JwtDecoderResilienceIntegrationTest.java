@@ -161,6 +161,7 @@ class JwtDecoderResilienceIntegrationTest {
                 .audience(List.of(AUDIENCE))
                 .issueTime(Date.from(Instant.now().minusSeconds(60)))
                 .expirationTime(Date.from(Instant.now().plusSeconds(300)))
+                .claim("role", "authenticated")
                 .build();
 
         SignedJWT signedJwt = new SignedJWT(
