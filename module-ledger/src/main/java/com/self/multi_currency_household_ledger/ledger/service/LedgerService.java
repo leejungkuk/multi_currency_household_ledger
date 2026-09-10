@@ -191,7 +191,7 @@ public class LedgerService {
     public List<LedgerEntryResponse> getMonthlyEntries(UUID memberId, int year, int month) {
         DateRange dateRange = DateRange.of(year, month);
         return ledgerEntryRepository
-                .findByMemberIdAndTransactionDateGreaterThanEqualAndTransactionDateLessThanOrderByTransactionDateDescIdDesc(
+                .findMonthlyEntriesWithCatalog(
                         memberId, dateRange.startDate(), dateRange.endDate(), PageRequest.of(0, MONTHLY_ENTRY_LIMIT))
                 .stream()
                 .map(LedgerEntryResponse::from)
@@ -361,7 +361,11 @@ public class LedgerService {
         Set<UUID> requestedIds = entries.stream()
                 .map(ImportLedgerEntriesRequest.ImportLedgerEntryItem::clientEntryId)
                 .collect(Collectors.toSet());
-        return ledgerEntryRepository.findByMemberIdAndClientEntryIdIn(memberId, requestedIds).stream()
+        // entries 는 빈 리스트도 유효한 요청이라 여기까지 온다. 빈 in 절을 SQL 로 내보내지 않는다.
+        if (requestedIds.isEmpty()) {
+            return Map.of();
+        }
+        return ledgerEntryRepository.findImportEntriesWithCatalog(memberId, requestedIds).stream()
                 .collect(Collectors.toMap(LedgerEntry::getClientEntryId, entry -> entry));
     }
 

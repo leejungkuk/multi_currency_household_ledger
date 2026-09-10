@@ -25,7 +25,18 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, Long> 
     // import 배치가 쓰는 유일한 조회. 항목마다 findByMemberIdAndClientEntryId 를 돌리면 요청 1건이 항목 수만큼
     // 왕복하며 커넥션을 점유한다(풀 크기가 작아 동시 몇 건이면 전 요청이 대기한다). 한 번에 읽어 두면
     // 쿼터 판정("새로 생길 행 수")과 기존 행 조회를 같은 결과로 함께 처리할 수 있다.
-    List<LedgerEntry> findByMemberIdAndClientEntryIdIn(UUID memberId, Collection<UUID> clientEntryIds);
+    // 멱등 재import 는 기존 행을 그대로 응답으로 내보내므로, 카탈로그를 같은 SQL 에서 읽어
+    // 동시 고아 정리와 LAZY 로딩 사이의 조회 경합을 막는다(월별 목록과 같은 창이다).
+    @Query(
+            """
+            select entry from LedgerEntry entry
+            join fetch entry.category
+            join fetch entry.asset
+            where entry.memberId = :memberId
+              and entry.clientEntryId in :clientEntryIds
+            """)
+    List<LedgerEntry> findImportEntriesWithCatalog(
+            @Param("memberId") UUID memberId, @Param("clientEntryIds") Collection<UUID> clientEntryIds);
 
     // JPQL bulk delete 는 영속성 컨텍스트를 우회하므로, 같은 트랜잭션에 관리 중인 LedgerEntry 가 있으면
     // flush 로 선반영하고 삭제 후 컨텍스트를 비워 stale 엔티티를 남기지 않는다(향후 재사용 대비 방어).
@@ -104,9 +115,22 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, Long> 
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate);
 
-    List<LedgerEntry>
-            findByMemberIdAndTransactionDateGreaterThanEqualAndTransactionDateLessThanOrderByTransactionDateDescIdDesc(
-                    UUID memberId, LocalDate startDate, LocalDate endDate, Pageable pageable);
+    // 카탈로그를 같은 SQL 에서 읽어 동시 고아 정리와 LAZY 로딩 사이의 조회 경합을 막는다.
+    @Query(
+            """
+            select entry from LedgerEntry entry
+            join fetch entry.category
+            join fetch entry.asset
+            where entry.memberId = :memberId
+              and entry.transactionDate >= :startDate
+              and entry.transactionDate < :endDate
+            order by entry.transactionDate desc, entry.id desc
+            """)
+    List<LedgerEntry> findMonthlyEntriesWithCatalog(
+            @Param("memberId") UUID memberId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate,
+            Pageable pageable);
 
     @Query(
             """

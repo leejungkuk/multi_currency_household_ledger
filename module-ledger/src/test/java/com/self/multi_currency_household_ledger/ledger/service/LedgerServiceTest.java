@@ -143,7 +143,7 @@ class LedgerServiceTest {
                 new ImportLedgerEntriesRequest(List.of(new ImportLedgerEntriesRequest.ImportLedgerEntryItem(
                         clientEntryId, new BigDecimal("100.00"), CurrencyCode.KRW, 1L, 1L, TODAY, "커피")));
 
-        given(ledgerEntryRepository.findByMemberIdAndClientEntryIdIn(MEMBER_ID, Set.of(clientEntryId)))
+        given(ledgerEntryRepository.findImportEntriesWithCatalog(MEMBER_ID, Set.of(clientEntryId)))
                 .willReturn(List.of());
         given(ledgerEntryRepository.countByMemberId(MEMBER_ID)).willReturn(0L);
         given(categoryRepository.findUsableCategory(1L, MEMBER_ID)).willReturn(Optional.of(category));
@@ -156,7 +156,7 @@ class LedgerServiceTest {
                 .extracting(e -> ((BusinessException) e).getCode())
                 .isEqualTo(LedgerErrorCode.LEDGER_IMPORT_CONFLICT.getCode());
 
-        then(ledgerEntryRepository).should().findByMemberIdAndClientEntryIdIn(MEMBER_ID, Set.of(clientEntryId));
+        then(ledgerEntryRepository).should().findImportEntriesWithCatalog(MEMBER_ID, Set.of(clientEntryId));
         then(ledgerEntryRepository).should().save(any(LedgerEntry.class));
         // 항목별 조회로 되돌아가면 요청 1건이 항목 수만큼 왕복해 커넥션을 붙잡는다.
         then(ledgerEntryRepository).should(never()).findByMemberIdAndClientEntryId(any(), any());
@@ -171,7 +171,7 @@ class LedgerServiceTest {
                         clientEntryId, new BigDecimal("100.00"), CurrencyCode.KRW, 1L, 1L, TODAY, "커피")));
         DataIntegrityViolationException memberFkViolation = constraintViolation("fk_ledger_entry_member");
 
-        given(ledgerEntryRepository.findByMemberIdAndClientEntryIdIn(MEMBER_ID, Set.of(clientEntryId)))
+        given(ledgerEntryRepository.findImportEntriesWithCatalog(MEMBER_ID, Set.of(clientEntryId)))
                 .willReturn(List.of());
         given(ledgerEntryRepository.countByMemberId(MEMBER_ID)).willReturn(0L);
         given(categoryRepository.findUsableCategory(1L, MEMBER_ID)).willReturn(Optional.of(category));
@@ -376,9 +376,8 @@ class LedgerServiceTest {
     void get_monthly_entries_uses_member_period_and_hard_cap() {
         LocalDate startDate = LocalDate.of(2026, 4, 1);
         LocalDate endDate = LocalDate.of(2026, 5, 1);
-        given(ledgerEntryRepository
-                        .findByMemberIdAndTransactionDateGreaterThanEqualAndTransactionDateLessThanOrderByTransactionDateDescIdDesc(
-                                eq(MEMBER_ID), eq(startDate), eq(endDate), any(Pageable.class)))
+        given(ledgerEntryRepository.findMonthlyEntriesWithCatalog(
+                        eq(MEMBER_ID), eq(startDate), eq(endDate), any(Pageable.class)))
                 .willReturn(List.of());
 
         List<LedgerEntryResponse> responses = ledgerService.getMonthlyEntries(MEMBER_ID, 2026, 4);
@@ -387,8 +386,7 @@ class LedgerServiceTest {
         ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
         then(ledgerEntryRepository)
                 .should()
-                .findByMemberIdAndTransactionDateGreaterThanEqualAndTransactionDateLessThanOrderByTransactionDateDescIdDesc(
-                        eq(MEMBER_ID), eq(startDate), eq(endDate), pageableCaptor.capture());
+                .findMonthlyEntriesWithCatalog(eq(MEMBER_ID), eq(startDate), eq(endDate), pageableCaptor.capture());
         assertThat(pageableCaptor.getValue().getPageSize()).isEqualTo(500);
     }
 

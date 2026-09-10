@@ -24,6 +24,7 @@ import com.self.multi_currency_household_ledger.ledger.dto.ImportLedgerEntriesRe
 import com.self.multi_currency_household_ledger.ledger.dto.ImportLedgerEntriesResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryRequest;
 import com.self.multi_currency_household_ledger.ledger.exception.LedgerErrorCode;
+import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
@@ -36,6 +37,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import org.hibernate.SessionFactory;
+import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -66,6 +69,9 @@ class LedgerImportServiceIntegrationTest {
     private static final UUID MEMBER_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
     private static final UUID OTHER_MEMBER_ID = UUID.fromString("00000000-0000-0000-0000-000000000002");
     private static final LocalDate TODAY = LocalDate.of(2026, 4, 6);
+
+    @Autowired
+    private EntityManager entityManager;
 
     @Autowired
     private LedgerService ledgerService;
@@ -159,6 +165,45 @@ class LedgerImportServiceIntegrationTest {
                 .isEqualTo(first.entries().getFirst().ledgerEntry().id());
         assertThat(ledgerEntryRepository.count()).isEqualTo(1);
         then(exchangeRateService).should(times(1)).getRateOnOrBeforeOrOldest(CurrencyCode.USD, TODAY);
+    }
+
+    @Test
+    @DisplayName("멱등 재import는 기존 거래 2건과 카테고리 2종·자산을 SQL 한 번으로 읽는다")
+    void reimport_loads_existing_entries_with_catalog_in_one_statement() {
+        ImportLedgerEntriesRequest request = new ImportLedgerEntriesRequest(List.of(
+                item(
+                        UUID.fromString("10000000-0000-0000-0000-000000000071"),
+                        new BigDecimal("1000.00"),
+                        CurrencyCode.KRW,
+                        TODAY,
+                        "기존 1"),
+                item(
+                        UUID.fromString("10000000-0000-0000-0000-000000000072"),
+                        new BigDecimal("2000.00"),
+                        CurrencyCode.KRW,
+                        TODAY,
+                        "기존 2",
+                        2L)));
+        ledgerService.importEntries(request, MEMBER_ID);
+        Statistics stats = entityManager
+                .getEntityManagerFactory()
+                .unwrap(SessionFactory.class)
+                .getStatistics();
+        boolean statisticsEnabled = stats.isStatisticsEnabled();
+        stats.setStatisticsEnabled(true);
+        stats.clear();
+        try {
+            ImportLedgerEntriesResponse response = ledgerService.importEntries(request, MEMBER_ID);
+
+            assertThat(response.entries()).hasSize(2);
+            assertThat(response.entries())
+                    .extracting(entry -> entry.ledgerEntry().category().id())
+                    .containsExactly(1L, 2L);
+            // 기존 행을 응답으로 내보내며 카탈로그를 LAZY 로 읽으면 동시 고아 정리와 경합해 500 이 된다.
+            assertThat(stats.getPrepareStatementCount()).isEqualTo(1);
+        } finally {
+            stats.setStatisticsEnabled(statisticsEnabled);
+        }
     }
 
     @Test

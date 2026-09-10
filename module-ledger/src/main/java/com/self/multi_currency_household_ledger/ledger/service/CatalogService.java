@@ -11,6 +11,10 @@ import com.self.multi_currency_household_ledger.ledger.dto.CreateCustomCategoryR
 import com.self.multi_currency_household_ledger.ledger.dto.ReorderCustomCategoriesRequest;
 import com.self.multi_currency_household_ledger.ledger.dto.UpdateCustomCategoryRequest;
 import com.self.multi_currency_household_ledger.ledger.exception.LedgerErrorCode;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -27,6 +31,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class CatalogService {
 
+    private static final Duration ORPHAN_GRACE = Duration.ofHours(24);
+
     /** 재정렬 값의 시작점. 신규·미정렬 커스텀은 {@code Category.custom} 의 1000이라 재정렬된 항목보다 항상 앞선다. */
     private static final int REORDERED_SORT_ORDER_BASE = 1001;
 
@@ -36,6 +42,7 @@ public class CatalogService {
 
     private final CategoryRepository categoryRepository;
     private final AssetRepository assetRepository;
+    private final Clock clock;
 
     public List<CategoryResponse> getCategories(TransactionType transactionType) {
         return categoryRepository
@@ -62,6 +69,10 @@ public class CatalogService {
 
     @Transactional
     public CategoryResponse createCustomCategory(UUID memberId, CreateCustomCategoryRequest request) {
+        // 감사 컬럼은 JpaAuditing 이 JVM 기본 존으로 기록한 naive timestamp 다.
+        // 그래서 clock.getZone() 이 아니라 ZoneId.systemDefault() 이 맞는 변환이다.
+        categoryRepository.deleteOrphanedInactive(
+                memberId, LocalDateTime.ofInstant(clock.instant().minus(ORPHAN_GRACE), ZoneId.systemDefault()));
         if (categoryRepository.countByOwnerMemberIdAndIsActiveTrue(memberId) >= Category.CUSTOM_LIMIT) {
             throw new BusinessException(LedgerErrorCode.CUSTOM_CATEGORY_LIMIT_EXCEEDED);
         }

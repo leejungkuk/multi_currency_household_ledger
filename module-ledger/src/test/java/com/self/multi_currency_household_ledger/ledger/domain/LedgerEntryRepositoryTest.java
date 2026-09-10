@@ -235,9 +235,8 @@ class LedgerEntryRepositoryTest {
                 krwEntry(otherMemberId, category, startDate.plusDays(2), "90000.00", "다른 회원 최신 내역")));
         ledgerEntryRepository.flush();
 
-        List<LedgerEntry> entries = ledgerEntryRepository
-                .findByMemberIdAndTransactionDateGreaterThanEqualAndTransactionDateLessThanOrderByTransactionDateDescIdDesc(
-                        MEMBER_ID, startDate, endDate, PageRequest.of(0, 2));
+        List<LedgerEntry> entries = ledgerEntryRepository.findMonthlyEntriesWithCatalog(
+                MEMBER_ID, startDate, endDate, PageRequest.of(0, 2));
 
         assertThat(entries).extracting(LedgerEntry::getMemo).containsExactly("같은날 나중 내역", "같은날 첫 내역");
     }
