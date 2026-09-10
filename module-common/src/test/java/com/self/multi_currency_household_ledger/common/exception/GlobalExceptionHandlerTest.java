@@ -95,6 +95,62 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    @DisplayName("캐치올은 원인 체인의 UUID를 마스킹하고 스택과 500 응답을 유지한다")
+    void handleException_masks_uuids_in_log_but_keeps_stack_trace() {
+        Logger logger = (Logger) LoggerFactory.getLogger(GlobalExceptionHandler.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        ResponseEntity<ErrorResponse> response;
+        try {
+            response = handler.handleException(new RuntimeException(
+                    "outer 550e8400-e29b-41d4-a716-446655440000",
+                    new IllegalStateException(
+                            "Key (member_id)=(123e4567-e89b-12d3-a456-426614174000) is not present")));
+        } finally {
+            logger.detachAppender(appender);
+        }
+
+        assertThat(appender.list).hasSize(1);
+        ILoggingEvent event = appender.list.getFirst();
+        assertThat(event.getLevel()).isEqualTo(Level.ERROR);
+        assertThat(event.getFormattedMessage())
+                .doesNotContain("550e8400-e29b-41d4-a716-446655440000", "123e4567-e89b-12d3-a456-426614174000")
+                .contains("outer <uuid>", "Key (member_id)=(<uuid>) is not present")
+                .contains(
+                        "RuntimeException",
+                        "IllegalStateException",
+                        "\tat " + getClass().getName() + ".");
+        assertThat(event.getFormattedMessage().split("<uuid>", -1)).hasSize(3);
+        assertThat(event.getThrowableProxy()).isNull();
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().code()).isEqualTo("INTERNAL_ERROR");
+        assertThat(response.getBody().message()).isEqualTo("서버 내부 오류가 발생했습니다.");
+    }
+
+    @Test
+    @DisplayName("메시지 없는 예외도 실패 없이 ERROR 한 건과 500 응답을 남긴다")
+    void handleException_without_message_does_not_fail() {
+        Logger logger = (Logger) LoggerFactory.getLogger(GlobalExceptionHandler.class);
+        ListAppender<ILoggingEvent> appender = new ListAppender<>();
+        appender.start();
+        logger.addAppender(appender);
+        ResponseEntity<ErrorResponse> response;
+        try {
+            response = handler.handleException(new RuntimeException());
+        } finally {
+            logger.detachAppender(appender);
+        }
+
+        assertThat(appender.list).hasSize(1);
+        assertThat(appender.list.getFirst().getLevel()).isEqualTo(Level.ERROR);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().code()).isEqualTo("INTERNAL_ERROR");
+    }
+
+    @Test
     @DisplayName("삭제된 회원의 FK 위반은 로그 없이 401 UNAUTHORIZED로 변환된다")
     void handleDataIntegrityViolation_maps_member_fk_to_401_without_logging_member_id() {
         Logger logger = (Logger) LoggerFactory.getLogger(GlobalExceptionHandler.class);
@@ -144,6 +200,9 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getBody().code()).isEqualTo("INTERNAL_ERROR");
         assertThat(appender.list).hasSize(1);
         assertThat(appender.list.getFirst().getLevel()).isEqualTo(Level.ERROR);
+        assertThat(appender.list.getFirst().getFormattedMessage())
+                .doesNotContain("123e4567-e89b-12d3-a456-426614174000")
+                .contains("<uuid>");
     }
 
     @Test
@@ -354,7 +413,8 @@ class GlobalExceptionHandlerTest {
     }
 
     private static DataIntegrityViolationException constraintViolation(String constraintName) {
-        SQLException sqlException = new SQLException("Key (member_id)=(secret-member-id) is not present");
+        SQLException sqlException =
+                new SQLException("Key (member_id)=(123e4567-e89b-12d3-a456-426614174000) is not present");
         var cause = new org.hibernate.exception.ConstraintViolationException(
                 "insert failed", sqlException, "insert into ledger_entry", constraintName);
         return new DataIntegrityViolationException("data integrity violation", cause);

@@ -2,6 +2,8 @@ package com.self.multi_currency_household_ledger.common.exception;
 
 import com.self.multi_currency_household_ledger.common.dto.ErrorResponse;
 import jakarta.validation.ConstraintViolationException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -26,6 +28,8 @@ public class GlobalExceptionHandler {
     private static final Pattern CONTROL_CHARACTERS = Pattern.compile("[\\p{Cc}\\p{Zl}\\p{Zp}]");
 
     private static final int MAX_ECHOED_VALUE_LENGTH = 100;
+
+    private static final Pattern UUID_PATTERN = Pattern.compile("[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}");
 
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ErrorResponse> handleBusinessException(BusinessException e) {
@@ -134,8 +138,15 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleException(Exception e) {
-        log.error("Unexpected exception", e);
+        // Throwable을 로거에 넘기면 logback이 원문 메시지를 다시 기록해 UUID 마스킹이 무효가 된다.
+        log.error("Unexpected exception: {}", maskIdentifiers(e));
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ErrorResponse.of("INTERNAL_ERROR", "서버 내부 오류가 발생했습니다."));
+    }
+
+    private static String maskIdentifiers(Throwable e) {
+        StringWriter out = new StringWriter();
+        e.printStackTrace(new PrintWriter(out));
+        return UUID_PATTERN.matcher(out.toString()).replaceAll("<uuid>").stripTrailing();
     }
 }
