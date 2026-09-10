@@ -17,3 +17,12 @@ create table if not exists auth.sessions (
     created_at timestamptz default now(),
     updated_at timestamptz default now()
 );
+
+-- Supabase 가 프로젝트마다 붙여 주는 API 롤과, postgres 롤이 만드는 public 객체에 그 롤들의 ALL 을 자동 부여하는
+-- 기본 권한을 흉내 낸다(운영 실측 2026-09-10: anon·authenticated·service_role 이 ledger_entry 에 SELECT~TRUNCATE 전권).
+-- 이게 없으면 V12 의 회수 경로가 테스트에서 통째로 건너뛰어져(롤 존재 검사) 회수 SQL 이 틀려도 그린이다.
+create role anon nologin;
+create role authenticated nologin;
+create role service_role nologin;
+alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
