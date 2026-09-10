@@ -1,5 +1,6 @@
 package com.self.multi_currency_household_ledger.config;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -41,6 +42,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.jpa.mapping.JpaMetamodelMappingContext;
+import org.springframework.http.HttpHeaders;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
@@ -78,6 +81,7 @@ import org.springframework.test.web.servlet.MockMvc;
 class JwtDecoderWiringIntegrationTest {
 
     private static final String AUDIENCE = "authenticated";
+    private static final String AUTHENTICATED_ROLE = "authenticated";
     private static final String SUBJECT = "00000000-0000-0000-0000-000000000001";
     private static final String KEY_ID = "test-key";
 
@@ -131,12 +135,47 @@ class JwtDecoderWiringIntegrationTest {
                 .andExpect(status().isUnauthorized());
     }
 
+    @Test
+    @DisplayName("role 이 없는 토큰의 응답은 기존 audience 실패와 같다 — 새 검증기가 entry point 를 바꾸지 않는다")
+    void token_without_role_gets_same_response_as_audience_failure() throws Exception {
+        MockHttpServletResponse noRole = mockMvc.perform(
+                        get("/api/v1/assets").header("Authorization", "Bearer " + token(List.of(AUDIENCE), null)))
+                .andReturn()
+                .getResponse();
+        MockHttpServletResponse wrongAudience = mockMvc.perform(
+                        get("/api/v1/assets").header("Authorization", "Bearer " + token(List.of("service_role"))))
+                .andReturn()
+                .getResponse();
+
+        assertThat(noRole.getStatus()).isEqualTo(wrongAudience.getStatus());
+        assertThat(noRole.getContentAsString()).isEqualTo(wrongAudience.getContentAsString());
+        assertThat(challengeWithoutDescription(noRole)).isEqualTo(challengeWithoutDescription(wrongAudience));
+        assertThat(noRole.getHeader(HttpHeaders.WWW_AUTHENTICATE)).contains("The role claim is not valid");
+    }
+
+    /**
+     * {@code WWW-Authenticate} 에서 {@code error_description} 만 지운다. 그 값은 <b>어느 검증기가 실패했는지</b>를
+     * 담으므로 이 변경 전에도 만료·issuer·audience 실패끼리 서로 달랐다 — 고정할 것은 문구가 아니라 나머지 전부
+     * ({@code error} 코드·{@code error_uri}·{@code resource_metadata}·형식)가 같다는 사실이다. 그것이 곧 "새 검증기도
+     * 기존 실패와 같은 entry point 를 탄다" 이다.
+     */
+    private static String challengeWithoutDescription(MockHttpServletResponse response) {
+        String challenge = response.getHeader(HttpHeaders.WWW_AUTHENTICATE);
+        return challenge == null ? null : challenge.replaceAll("error_description=\"[^\"]*\"", "error_description");
+    }
+
     private static String token(List<String> audience) throws JOSEException {
+        return token(audience, AUTHENTICATED_ROLE);
+    }
+
+    /** @param role {@code null} 이면 role 클레임을 싣지 않는다. */
+    private static String token(List<String> audience, String role) throws JOSEException {
         JWTClaimsSet.Builder claims = new JWTClaimsSet.Builder()
                 .subject(SUBJECT)
                 .issuer(issuer())
                 .issueTime(Date.from(Instant.now().minusSeconds(60)))
-                .expirationTime(Date.from(Instant.now().plusSeconds(300)));
+                .expirationTime(Date.from(Instant.now().plusSeconds(300)))
+                .claim("role", role); // null 을 주면 Nimbus 가 그 클레임을 담지 않는다
         if (!audience.isEmpty()) {
             claims.audience(audience); // 빈 리스트를 넣으면 aud 가 빈 배열로 실려 "클레임 없음"이 아니게 된다
         }

@@ -12,6 +12,7 @@ import java.net.MalformedURLException;
 import java.net.URI;
 import java.time.Duration;
 import java.util.List;
+import java.util.Objects;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -30,6 +31,8 @@ import org.springframework.security.oauth2.core.OAuth2TokenValidator;
 import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
 import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.JwtClaimNames;
+import org.springframework.security.oauth2.jwt.JwtClaimValidator;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtIssuerValidator;
 import org.springframework.security.oauth2.jwt.JwtTimestampValidator;
@@ -51,6 +54,19 @@ public class SecurityConfig {
      * 예산이 좁아서 나던 실패다.
      */
     private static final Duration JWKS_HTTP_TIMEOUT = Duration.ofSeconds(3);
+
+    /**
+     * 사용자 토큰이 담아야 하는 {@code role} 클레임 값. Supabase 가 발급하는 사용자 토큰은 <b>익명 로그인 포함</b> 이
+     * 값을 담으므로 정상 사용자에게는 관찰되지 않고, {@code service_role}·{@code anon} 키로 만든 토큰만 걸러진다.
+     *
+     * <p>{@code exp} 필수와 이 검사를 함께 두는 이유는 <b>방어가 서명 알고리즘 하나뿐이었기 때문</b>이다 —
+     * {@code jwsAlgorithm(ES256)} 고정이 레거시 HS256 키를 막고 있지만, {@link JwtTimestampValidator} 는 {@code exp}
+     * 가 <b>없는</b> 토큰을 통과시키고 {@code role} 은 아무도 보지 않았다. 발급 측(Supabase)이 키·토큰 구성을 바꾸면
+     * 그 한 겹이 곧 전부가 된다.
+     */
+    private static final String REQUIRED_ROLE = "authenticated";
+
+    private static final String ROLE_CLAIM = "role";
 
     /**
      * 캐시가 만료된 뒤 <b>갱신 조회마저 실패할 때만</b> 마지막으로 받은 키로 검증을 이어가는 한도. Supabase JWKS 가
@@ -240,7 +256,9 @@ public class SecurityConfig {
         decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
                 new JwtTimestampValidator(Duration.ofSeconds(60)),
                 new JwtIssuerValidator(issuerUri),
-                new AudienceValidator(audience)));
+                new AudienceValidator(audience),
+                new JwtClaimValidator<Object>(JwtClaimNames.EXP, Objects::nonNull),
+                new JwtClaimValidator<Object>(ROLE_CLAIM, REQUIRED_ROLE::equals)));
         return decoder;
     }
 
