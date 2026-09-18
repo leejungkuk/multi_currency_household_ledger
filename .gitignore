@@ -44,3 +44,6 @@ __pycache__/
 **/application-secret.yml
 ### 하네스 로컬 산출물 (영수증·리뷰 JSON) ###
 .agent/
+### 새 하네스 로컬 산출물 (.dev/ 로그·영수증·러너 출력·handoff · .worktrees/ 플랜별 worktree) ###
+.dev/
+.worktrees/
