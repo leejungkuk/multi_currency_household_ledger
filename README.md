@@ -71,6 +71,8 @@ module-api ──┬──→ module-ledger ───┐
 
 ## 설계 노트
 
+> 사양 정본은 `docs/` 에 있다 — `PRD.md`(무엇을 만드는가) · `DOMAIN.md`(도메인 규칙 정본). 아래는 그 요약이다.
+
 - **금액은 항상 양수로 저장**하고 부호는 `transaction_type`(INCOME/EXPENSE)이 결정한다. 금액은 `numeric(19,2)`, 환율은 `numeric(19,6)`.
 - **"오늘" 은 `Clock` 빈**(`Asia/Seoul`)으로 단일화한다 — 도메인·서비스는 `LocalDate.now(clock)` 을 쓰고 테스트는 `Clock.fixed` 를 주입한다.
 - **스키마 변경은 Flyway 마이그레이션으로만** 한다(운영 `ddl-auto=validate`). 엔티티만 고치고 마이그레이션을 빠뜨리면 기동에서 걸린다.
