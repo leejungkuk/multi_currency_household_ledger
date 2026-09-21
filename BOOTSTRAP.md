@@ -8,7 +8,7 @@ symlink 가 깨져 있으면 아래로 초기화한다.
 git clone https://github.com/leejungkuk/woniApp_ai_settings.git .ai-context
 cd .ai-context
 git sparse-checkout init --cone
-git sparse-checkout set .github backend shared
+git sparse-checkout set .github backend ios shared
 cd ..
 ```
 
@@ -20,8 +20,13 @@ cd ..
 - `.ai-context/backend/.claude/CLAUDE.md` (← `CLAUDE.md`)
 - `.ai-context/backend/AGENTS.md` (← `AGENTS.md`)
 
-sparse-checkout 에 `ios` 가 **없는 것은 의도**다. 이쪽에서 iOS 하네스는 읽기 전용을 넘어 아예 보이지
-않는다(교차 수정 = 푸시 충돌·유실). 양쪽 인계는 `shared/handoff/` 로만 한다.
+sparse-checkout 에 `ios` 가 **있는 것은 의도**다(2026-09-21 추가). 이전에는 빠져 있어서 이쪽에서 iOS
+하네스가 **아예 보이지 않았고**, 그것이 두 하네스가 같은 출발점에서 갈라진 가장 큰 원인이었다 — 비교할
+수가 없었다. iOS 쪽은 처음부터 `backend` 를 갖고 있었으니 이제 대칭이다.
+
+`ios/**` 는 **읽고, 고칠 때는 매번 사용자 승인을 받는다**(`settings.json` ask). 두 클론이 같은 remote 를
+공유하므로 **교차 수정은 반드시 브랜치 + PR** 이다 — 같은 브랜치에 동시에 밀면 충돌·유실이다. bash 로
+쓰는 것은 `guard.py` 가 계속 막는다(Edit/Write 로만). 인계는 그대로 `shared/handoff/` 다.
 
 ## 왜 서브모듈이 아닌가
 
