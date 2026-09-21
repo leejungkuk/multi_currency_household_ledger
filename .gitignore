@@ -47,3 +47,5 @@ __pycache__/
 ### 새 하네스 로컬 산출물 (.dev/ 로그·영수증·러너 출력·handoff · .worktrees/ 플랜별 worktree) ###
 .dev/
 .worktrees/
+### AI 하네스 (별도 private 리포 woniApp_ai_settings 의 일반 클론 — 부트스트랩은 BOOTSTRAP.md) ###
+.ai-context/
