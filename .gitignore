@@ -48,4 +48,6 @@ __pycache__/
 .dev/
 .worktrees/
 ### AI 하네스 (별도 private 리포 woniApp_ai_settings 의 일반 클론 — 부트스트랩은 BOOTSTRAP.md) ###
-.ai-context/
+# 슬래시를 붙이지 마라: worktree 에서는 메인 클론을 가리키는 심링크(=파일)라 `.ai-context/` 가 안 문다.
+# 안 물면 worktree 가 늘 dirty 여서 `execute.py <plan> clean` 이 거절한다.
+.ai-context
