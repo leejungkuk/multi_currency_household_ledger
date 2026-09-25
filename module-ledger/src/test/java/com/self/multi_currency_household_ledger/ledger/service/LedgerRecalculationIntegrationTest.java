@@ -3,30 +3,24 @@ package com.self.multi_currency_household_ledger.ledger.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.BDDMockito.then;
 import static org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase.Replace.NONE;
 
 import com.self.multi_currency_household_ledger.common.exception.BusinessException;
 import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
 import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRate;
-import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRateRepository;
-import com.self.multi_currency_household_ledger.exchange.provider.ExchangeRateProvider;
+import com.self.multi_currency_household_ledger.exchange.exception.ExchangeErrorCode;
 import com.self.multi_currency_household_ledger.exchange.service.ExchangeRateService;
 import com.self.multi_currency_household_ledger.ledger.AuthUserFixture;
 import com.self.multi_currency_household_ledger.ledger.TestJpaConfig;
 import com.self.multi_currency_household_ledger.ledger.TestLedgerApplication;
 import com.self.multi_currency_household_ledger.ledger.domain.LedgerEntry;
 import com.self.multi_currency_household_ledger.ledger.domain.LedgerEntryRepository;
-import com.self.multi_currency_household_ledger.ledger.dto.CreateLedgerEntryRequest;
-import com.self.multi_currency_household_ledger.ledger.dto.LedgerEntryResponse;
-import com.self.multi_currency_household_ledger.ledger.exception.LedgerErrorCode;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
@@ -44,7 +38,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Propagation;
@@ -52,18 +45,14 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * 재계산 배치의 대상 선정은 SQL 술어(적용 가능한 최신 tts 보다 오래된 환율을 쓰는 행)라 실DB에서만 검증된다.
- * exchange_rate 행과 {@link ExchangeRateRepository} 스텁은 같은 값으로 맞춰 둔다 — SQL 술어와 실
- * {@link ExchangeRateService}가 같은 환율을 가리켜야 재계산이 수렴한다.
+ * exchange_rate 행과 {@link ExchangeRateService} 스텁은 같은 값으로 맞춰 둔다 — 술어와 서비스가 같은 환율을
+ * 가리켜야 재계산이 수렴한다.
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = NONE)
 @Import({
     TestLedgerApplication.class,
     TestJpaConfig.class,
-    ExchangeRateService.class,
-    LedgerService.class,
-    LedgerSyncInsertService.class,
-    LedgerQuotaPolicy.class,
     LedgerRecalculationChunkProcessor.class,
     LedgerRecalculationIntegrationTest.ClockConfig.class
 })
@@ -80,9 +69,6 @@ class LedgerRecalculationIntegrationTest {
     @Autowired
     private LedgerRecalculationChunkProcessor chunkProcessor;
 
-    @Autowired
-    private LedgerService ledgerService;
-
     /**
      * 트랜잭션 경계를 보는 테스트만 이 빈을 쓴다. 청크 트랜잭션은 {@code chunkProcessor} 빈에 걸린 프록시가 여는 것이라
      * {@code service(...)} 가 {@code new} 로 만든 인스턴스도 동작이 같지만, 진입 메서드에 {@code @Transactional} 이
@@ -98,105 +84,12 @@ class LedgerRecalculationIntegrationTest {
     private JdbcTemplate jdbcTemplate;
 
     @MockitoBean
-    private ExchangeRateRepository exchangeRateRepository;
-
-    @MockitoBean
-    @SuppressWarnings("UnusedVariable")
-    private ExchangeRateProvider exchangeRateProvider;
-
-    @Autowired
-    private MutableClock clock;
+    private ExchangeRateService exchangeRateService;
 
     @BeforeEach
     void setUp() {
-        clock.setDate(TODAY);
         new AuthUserFixture(jdbcTemplate).reset(MEMBER_ID);
         jdbcTemplate.update("delete from exchange_rate");
-    }
-
-    @Test
-    @DisplayName("실 환율 서비스가 미래일을 오늘로 clamp한 뒤 +366 외화 거래는 ledger 400 코드로 거부한다")
-    void foreign_entry_beyond_future_limit_returns_ledger_error_after_real_exchange_lookup() {
-        ExchangeRate latestRate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.000000"), TODAY);
-        given(exchangeRateRepository.findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(
-                        CurrencyCode.USD, TODAY))
-                .willReturn(Optional.of(latestRate));
-        CreateLedgerEntryRequest request = new CreateLedgerEntryRequest(
-                new BigDecimal("100.00"),
-                CurrencyCode.USD,
-                1L,
-                3L,
-                TODAY.plusDays(ExchangeRate.MAX_FUTURE_DAYS + 1),
-                "상한 초과");
-
-        assertThatThrownBy(() -> ledgerService.create(request, MEMBER_ID))
-                .isInstanceOf(BusinessException.class)
-                .hasFieldOrPropertyWithValue("code", LedgerErrorCode.INVALID_FUTURE_DATE.getCode())
-                .hasFieldOrPropertyWithValue("httpStatus", HttpStatus.BAD_REQUEST);
-
-        then(exchangeRateRepository)
-                .should()
-                .findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(CurrencyCode.USD, TODAY);
-        assertThat(ledgerEntryRepository.countByMemberId(MEMBER_ID)).isZero();
-    }
-
-    @Test
-    @DisplayName("미래 외화 거래는 실 환율 서비스가 찾은 오늘 최신 tts로 잠정 환산해 저장한다")
-    void future_foreign_entry_is_saved_with_latest_rate_as_provisional_snapshot() {
-        ExchangeRate latestRate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.000000"), TODAY);
-        given(exchangeRateRepository.findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(
-                        CurrencyCode.USD, TODAY))
-                .willReturn(Optional.of(latestRate));
-        CreateLedgerEntryRequest request = new CreateLedgerEntryRequest(
-                new BigDecimal("100.00"), CurrencyCode.USD, 1L, 3L, TODAY.plusDays(1), "미래 지출");
-
-        LedgerEntryResponse response = ledgerService.create(request, MEMBER_ID);
-
-        assertThat(response.appliedRate()).isEqualByComparingTo(new BigDecimal("1300.000000"));
-        assertThat(response.rateBaseDate()).isEqualTo(TODAY);
-        assertThat(response.krwAmount()).isEqualByComparingTo(new BigDecimal("130000.00"));
-        assertThat(ledgerEntryRepository.countByMemberId(MEMBER_ID)).isOne();
-    }
-
-    @Test
-    @DisplayName("미래 외화 거래는 날짜가 지난 뒤 거래일 환율로 수렴하고 재계산 대상에서 제외된다")
-    void future_foreign_entry_converges_to_transaction_date_rate() {
-        LocalDate transactionDate = TODAY.plusDays(2);
-        long id = insertStaleEntry(transactionDate, TODAY.minusDays(1));
-        insertRate(CurrencyCode.USD, "1300.000000", TODAY);
-        stubRate(transactionDate, "1300.000000", TODAY);
-
-        assertThat(service(10, 100).recalculateForeignEntriesFrom(WINDOW_START)).isEqualTo(1);
-        assertRecalculated(id, "1300.000000", TODAY);
-
-        clock.setDate(TODAY.plusDays(1));
-        insertRate(CurrencyCode.USD, "1310.000000", TODAY.plusDays(1));
-        stubRate(transactionDate, "1310.000000", TODAY.plusDays(1));
-
-        assertThat(service(10, 100).recalculateForeignEntriesFrom(WINDOW_START)).isEqualTo(1);
-        assertRecalculated(id, "1310.000000", TODAY.plusDays(1));
-
-        clock.setDate(transactionDate.plusDays(1));
-        insertRate(CurrencyCode.USD, "1320.000000", transactionDate);
-        stubRate(transactionDate, "1320.000000", transactionDate);
-
-        LedgerRecalculationService service = service(10, 100);
-        assertThat(service.recalculateForeignEntriesFrom(WINDOW_START)).isEqualTo(1);
-        assertRecalculated(id, "1320.000000", transactionDate);
-        assertThat(service.recalculateForeignEntriesFrom(WINDOW_START)).isZero();
-        assertRecalculated(id, "1320.000000", transactionDate);
-    }
-
-    @Test
-    @DisplayName("정확히 오늘부터 365일째인 외화 거래도 재계산 배치가 정상 처리한다")
-    void future_limit_foreign_entry_is_recalculated() {
-        LocalDate transactionDate = TODAY.plusDays(ExchangeRate.MAX_FUTURE_DAYS);
-        long id = insertStaleEntry(transactionDate, TODAY.minusDays(1));
-        insertRate(CurrencyCode.USD, "1300.000000", TODAY);
-        stubRate(transactionDate, "1300.000000", TODAY);
-
-        assertThat(service(10, 100).recalculateForeignEntriesFrom(WINDOW_START)).isEqualTo(1);
-        assertRecalculated(id, "1300.000000", TODAY);
     }
 
     @Test
@@ -273,9 +166,8 @@ class LedgerRecalculationIntegrationTest {
         insertRate(CurrencyCode.USD, "1200.000000", TODAY.minusDays(2));
         insertRate(CurrencyCode.USD, "1300.000000", TODAY);
         stubRate(TODAY.minusDays(2), "1200.000000", TODAY.minusDays(2));
-        given(exchangeRateRepository.findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(
-                        CurrencyCode.USD, TODAY))
-                .willReturn(Optional.empty());
+        given(exchangeRateService.getRateOnOrBefore(CurrencyCode.USD, TODAY))
+                .willThrow(new BusinessException(ExchangeErrorCode.EXCHANGE_RATE_NOT_FOUND));
         // 앞선 거래일 PROXIED_CHUNK_SIZE 건이 첫 청크를 채우고, 두 번째 청크가 환율 조회에서 터진다.
         List<Long> firstChunk = List.of(
                 insertStaleEntry(TODAY.minusDays(2), TODAY.minusDays(3)),
@@ -341,13 +233,11 @@ class LedgerRecalculationIntegrationTest {
         CountDownLatch chunkLoadedEntry = new CountDownLatch(1);
         CountDownLatch memberEditCommitted = new CountDownLatch(1);
         // 청크는 대상 행을 읽은 뒤 환율 조회에서 멈춘다 — 그 사이 회원이 같은 행을 고치고 커밋한다.
-        given(exchangeRateRepository.findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(
-                        CurrencyCode.USD, TODAY))
-                .willAnswer(invocation -> {
-                    chunkLoadedEntry.countDown();
-                    assertThat(memberEditCommitted.await(5, TimeUnit.SECONDS)).isTrue();
-                    return Optional.of(ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.000000"), TODAY));
-                });
+        given(exchangeRateService.getRateOnOrBefore(CurrencyCode.USD, TODAY)).willAnswer(invocation -> {
+            chunkLoadedEntry.countDown();
+            assertThat(memberEditCommitted.await(5, TimeUnit.SECONDS)).isTrue();
+            return ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.000000"), TODAY);
+        });
 
         ExecutorService executor = Executors.newSingleThreadExecutor();
         try {
@@ -406,11 +296,8 @@ class LedgerRecalculationIntegrationTest {
     }
 
     private void stubRate(LocalDate transactionDate, String tts, LocalDate baseDate) {
-        LocalDate effectiveDate =
-                transactionDate.isAfter(LocalDate.now(clock)) ? LocalDate.now(clock) : transactionDate;
-        given(exchangeRateRepository.findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(
-                        CurrencyCode.USD, effectiveDate))
-                .willReturn(Optional.of(ExchangeRate.of(CurrencyCode.USD, new BigDecimal(tts), baseDate)));
+        given(exchangeRateService.getRateOnOrBefore(CurrencyCode.USD, transactionDate))
+                .willReturn(ExchangeRate.of(CurrencyCode.USD, new BigDecimal(tts), baseDate));
     }
 
     private void insertRate(CurrencyCode currencyCode, String tts, LocalDate baseDate) {
@@ -485,43 +372,13 @@ class LedgerRecalculationIntegrationTest {
     static class ClockConfig {
 
         @Bean
-        MutableClock clock() {
-            return new MutableClock(FIXED_CLOCK.instant(), KST);
+        Clock clock() {
+            return FIXED_CLOCK;
         }
 
         @Bean
         LedgerRecalculationService proxiedService(LedgerRecalculationChunkProcessor chunkProcessor) {
             return new LedgerRecalculationService(chunkProcessor, PROXIED_CHUNK_SIZE, 100);
-        }
-    }
-
-    static final class MutableClock extends Clock {
-
-        private volatile Instant currentInstant;
-        private final ZoneId zone;
-
-        private MutableClock(Instant currentInstant, ZoneId zone) {
-            this.currentInstant = currentInstant;
-            this.zone = zone;
-        }
-
-        void setDate(LocalDate date) {
-            currentInstant = date.atStartOfDay(zone).toInstant();
-        }
-
-        @Override
-        public ZoneId getZone() {
-            return zone;
-        }
-
-        @Override
-        public Clock withZone(ZoneId zone) {
-            return new MutableClock(currentInstant, zone);
-        }
-
-        @Override
-        public Instant instant() {
-            return currentInstant;
         }
     }
 }

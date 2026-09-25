@@ -71,9 +71,9 @@ public class ExchangeRateService {
 
     @Transactional(readOnly = true)
     public ExchangeRate getRateOnOrBefore(CurrencyCode currencyCode, LocalDate date) {
-        LocalDate effectiveDate = clampToToday(date);
+        ExchangeRate.assertNotFuture(date, clock);
         return exchangeRateRepository
-                .findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(currencyCode, effectiveDate)
+                .findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(currencyCode, date)
                 .orElseThrow(() -> new BusinessException(ExchangeErrorCode.EXCHANGE_RATE_NOT_FOUND));
     }
 
@@ -91,9 +91,9 @@ public class ExchangeRateService {
 
     @Transactional(readOnly = true)
     public ExchangeRate getRateOnOrBeforeOrOldest(CurrencyCode currencyCode, LocalDate date) {
-        LocalDate effectiveDate = clampToToday(date);
+        ExchangeRate.assertNotFuture(date, clock);
         return exchangeRateRepository
-                .findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(currencyCode, effectiveDate)
+                .findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(currencyCode, date)
                 .or(() -> exchangeRateRepository.findTopByCurrencyCodeOrderByBaseDateAsc(currencyCode))
                 .orElseThrow(() -> new BusinessException(ExchangeErrorCode.EXCHANGE_RATE_NOT_FOUND));
     }
@@ -113,10 +113,5 @@ public class ExchangeRateService {
     @Transactional(readOnly = true)
     public List<ExchangeRate> getLatestRatesByCurrency() {
         return exchangeRateRepository.findLatestRatesByCurrency();
-    }
-
-    private LocalDate clampToToday(LocalDate date) {
-        LocalDate today = LocalDate.now(clock);
-        return date.isAfter(today) ? today : date;
     }
 }

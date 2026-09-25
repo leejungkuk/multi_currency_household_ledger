@@ -1,19 +1,16 @@
 package com.self.multi_currency_household_ledger.ledger.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.self.multi_currency_household_ledger.common.exception.BusinessException;
 import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
 import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRate;
-import com.self.multi_currency_household_ledger.ledger.exception.LedgerErrorCode;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -113,36 +110,22 @@ class LedgerEntryTest {
                 .isInstanceOf(BusinessException.class);
     }
 
+    // 외화 거래 시 미래 날짜로 생성할 수 없는지 확인한다.
     @Test
-    @DisplayName("외화 거래도 미래 상한 이내 날짜로 생성할 수 있다")
-    void create_ledger_entry_allows_future_date_within_limit_for_foreign_currency() {
-        LedgerEntry entry = createEntry(CurrencyCode.USD, TODAY.plusDays(1));
-
-        assertThat(entry.getTransactionDate()).isEqualTo(TODAY.plusDays(1));
-        assertThat(entry.getAppliedRate()).isEqualByComparingTo(new BigDecimal("1300.000000"));
-        assertThat(entry.getRateBaseDate()).isEqualTo(TODAY);
-    }
-
-    @Test
-    @DisplayName("KRW와 외화 거래 모두 오늘부터 365일째 날짜까지 생성할 수 있다")
-    void create_ledger_entry_allows_future_limit_for_all_currencies() {
-        for (CurrencyCode currencyCode : List.of(CurrencyCode.KRW, CurrencyCode.USD)) {
-            assertThatCode(() -> createEntry(currencyCode, TODAY.plusDays(ExchangeRate.MAX_FUTURE_DAYS)))
-                    .as(currencyCode.name())
-                    .doesNotThrowAnyException();
-        }
-    }
-
-    @Test
-    @DisplayName("KRW와 외화 거래 모두 미래 상한을 초과하면 같은 에러 코드로 거부한다")
-    void create_ledger_entry_rejects_date_beyond_future_limit_for_all_currencies() {
-        for (CurrencyCode currencyCode : List.of(CurrencyCode.KRW, CurrencyCode.USD)) {
-            assertThatThrownBy(() -> createEntry(currencyCode, TODAY.plusDays(ExchangeRate.MAX_FUTURE_DAYS + 1)))
-                    .as(currencyCode.name())
-                    .isInstanceOf(BusinessException.class)
-                    .extracting(exception -> ((BusinessException) exception).getCode())
-                    .isEqualTo(LedgerErrorCode.INVALID_FUTURE_DATE.getCode());
-        }
+    @DisplayName("외화 거래의 경우 미래 날짜로 생성할 수 없다")
+    void create_ledger_entry_fails_when_future_date_for_foreign_currency() {
+        ExchangeRate exchangeRate = ExchangeRate.of(CurrencyCode.USD, BigDecimal.valueOf(1300), TODAY);
+        assertThatThrownBy(() -> LedgerEntry.of(
+                        MEMBER_ID,
+                        category,
+                        asset,
+                        BigDecimal.valueOf(100),
+                        CurrencyCode.USD,
+                        TODAY.plusDays(1),
+                        "점심 식사",
+                        exchangeRate,
+                        FIXED_CLOCK))
+                .isInstanceOf(BusinessException.class);
     }
 
     @Test
@@ -277,25 +260,6 @@ class LedgerEntryTest {
     }
 
     @Test
-    @DisplayName("가계부 내역 교체 시 미래 상한을 초과하면 거부한다")
-    void replace_rejects_date_beyond_future_limit() {
-        LedgerEntry entry = createKrwEntry("기존 메모");
-
-        assertThatThrownBy(() -> entry.replace(
-                        category,
-                        asset,
-                        new BigDecimal("5000.00"),
-                        CurrencyCode.KRW,
-                        TODAY.plusDays(ExchangeRate.MAX_FUTURE_DAYS + 1),
-                        "수정 메모",
-                        null,
-                        FIXED_CLOCK))
-                .isInstanceOf(BusinessException.class)
-                .extracting(exception -> ((BusinessException) exception).getCode())
-                .isEqualTo(LedgerErrorCode.INVALID_FUTURE_DATE.getCode());
-    }
-
-    @Test
     @DisplayName("KRW 거래 교체는 환율 스냅샷을 1과 null로 재설정하고 원금 그대로 원화 금액에 반영한다")
     void replace_krw_resets_rate_snapshot() {
         ExchangeRate oldRate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.000000"), TODAY.minusDays(1));
@@ -352,21 +316,6 @@ class LedgerEntryTest {
                 TODAY,
                 memo,
                 null,
-                FIXED_CLOCK);
-    }
-
-    private LedgerEntry createEntry(CurrencyCode currencyCode, LocalDate transactionDate) {
-        ExchangeRate exchangeRate =
-                currencyCode.isBase() ? null : ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.000000"), TODAY);
-        return LedgerEntry.of(
-                MEMBER_ID,
-                category,
-                asset,
-                new BigDecimal("100.00"),
-                currencyCode,
-                transactionDate,
-                "미래 거래",
-                exchangeRate,
                 FIXED_CLOCK);
     }
 
