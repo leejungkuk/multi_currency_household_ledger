@@ -20,6 +20,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -50,6 +51,12 @@ class ExchangeRateControllerTest {
     private static final LocalDate TODAY = LocalDate.of(2026, 4, 6);
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
     private static final LocalDateTime FETCHED_AT = LocalDateTime.of(2026, 4, 3, 11, 5);
+
+    @BeforeEach
+    void setUpClock() {
+        given(clock.instant()).willReturn(Instant.parse("2026-04-05T15:00:00Z"));
+        given(clock.getZone()).willReturn(KST);
+    }
 
     @Test
     @DisplayName("GET /api/v1/exchange-rates?date= 특정 날짜 전체 환율을 ApiResponse 봉투로 반환한다")
@@ -167,8 +174,6 @@ class ExchangeRateControllerTest {
     @Test
     @DisplayName("GET /api/v1/exchange-rates/snapshot date 생략 시 KST 오늘 기준 snapshot을 반환한다")
     void getSnapshot_uses_today_when_date_omitted() throws Exception {
-        given(clock.instant()).willReturn(Instant.parse("2026-04-05T15:00:00Z"));
-        given(clock.getZone()).willReturn(KST);
         var rate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), TODAY);
         given(exchangeRateService.getSnapshot(TODAY)).willReturn(List.of(rate));
 
@@ -196,8 +201,6 @@ class ExchangeRateControllerTest {
     @DisplayName("GET /api/v1/exchange-rates/{currencyCode} date 생략 시 최신 환율을 반환한다")
     void getRate_returns_latest_when_date_omitted() throws Exception {
         // stale 판정 기준일이 KST 오늘이므로, 결정적 단언을 위해 기준일=오늘 환율을 반환
-        given(clock.instant()).willReturn(Instant.parse("2026-04-05T15:00:00Z"));
-        given(clock.getZone()).willReturn(KST);
         var rate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), TODAY);
         given(exchangeRateService.getLatestRate(CurrencyCode.USD)).willReturn(rate);
 
@@ -223,6 +226,31 @@ class ExchangeRateControllerTest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.baseDate").value("2026-04-03"))
                 .andExpect(jsonPath("$.data.stale").value(true));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/exchange-rates/{currencyCode}?date= 오늘부터 365일 이내면 fallback 환율을 반환한다")
+    void getRate_allows_365_days_after_today() throws Exception {
+        LocalDate futureLimit = TODAY.plusDays(365);
+        var rate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), TODAY);
+        given(exchangeRateService.getRateOnOrBefore(CurrencyCode.USD, futureLimit))
+                .willReturn(rate);
+
+        mockMvc.perform(get("/api/v1/exchange-rates/USD").param("date", futureLimit.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.baseDate").value(TODAY.toString()))
+                .andExpect(jsonPath("$.data.stale").value(true));
+    }
+
+    @Test
+    @DisplayName("GET /api/v1/exchange-rates/{currencyCode}?date= 오늘부터 366일 뒤면 400 INVALID_DATE를 반환한다")
+    void getRate_rejects_366_days_after_today() throws Exception {
+        LocalDate beyondFutureLimit = TODAY.plusDays(366);
+
+        mockMvc.perform(get("/api/v1/exchange-rates/USD").param("date", beyondFutureLimit.toString()))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("INVALID_DATE"));
     }
 
     @Test
