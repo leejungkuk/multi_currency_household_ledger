@@ -226,22 +226,27 @@ class LedgerServiceTest {
         return new DataIntegrityViolationException("data integrity violation", cause);
     }
 
-    // 외화 거래 시 미래 날짜가 주어지면 에러가 발생하는지 확인한다.
     @Test
-    @DisplayName("외화 거래 시 미래 날짜를 입력하면 예외가 발생한다")
-    void create_ledger_entry_fails_for_future_date_foreign_currency() {
+    @DisplayName("외화 미래 거래는 오늘 기준 최신 환율로 잠정 환산해 저장한다")
+    void create_foreign_future_entry_uses_latest_rate_as_provisional_snapshot() {
         CreateLedgerEntryRequest request = new CreateLedgerEntryRequest(
                 BigDecimal.valueOf(100), CurrencyCode.USD, 1L, 1L, TODAY.plusDays(1), "점심 식사");
+        ExchangeRate latestRate = ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.000000"), TODAY);
 
         given(categoryRepository.findUsableCategory(1L, MEMBER_ID)).willReturn(Optional.of(category));
         given(assetRepository.findById(1L)).willReturn(Optional.of(asset));
-        given(exchangeRateService.getRateOnOrBefore(any(), any()))
-                .willReturn(ExchangeRate.of(CurrencyCode.USD, BigDecimal.valueOf(1300), TODAY));
+        given(exchangeRateService.getRateOnOrBefore(CurrencyCode.USD, TODAY.plusDays(1)))
+                .willReturn(latestRate);
+        given(ledgerEntryRepository.save(any(LedgerEntry.class))).willAnswer(invocation -> invocation.getArgument(0));
 
-        assertThatThrownBy(() -> ledgerService.create(request, MEMBER_ID))
-                .isInstanceOf(BusinessException.class)
-                .extracting(e -> ((BusinessException) e).getCode())
-                .isEqualTo(LedgerErrorCode.INVALID_FUTURE_DATE.getCode());
+        LedgerEntryResponse response = ledgerService.create(request, MEMBER_ID);
+
+        assertThat(response.transactionDate()).isEqualTo(TODAY.plusDays(1));
+        assertThat(response.appliedRate()).isEqualByComparingTo(new BigDecimal("1300.000000"));
+        assertThat(response.rateBaseDate()).isEqualTo(TODAY);
+        assertThat(response.krwAmount()).isEqualByComparingTo(new BigDecimal("130000.00"));
+        then(exchangeRateService).should().getRateOnOrBefore(CurrencyCode.USD, TODAY.plusDays(1));
+        then(ledgerEntryRepository).should().save(any(LedgerEntry.class));
     }
 
     @Test
