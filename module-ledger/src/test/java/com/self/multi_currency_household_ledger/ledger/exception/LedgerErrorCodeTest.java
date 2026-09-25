@@ -29,7 +29,7 @@ class LedgerErrorCodeTest {
                 LedgerErrorCode.INVALID_FUTURE_DATE,
                 HttpStatus.BAD_REQUEST,
                 "INVALID_FUTURE_DATE",
-                "거래일은 1년 이후 날짜를 입력할 수 없습니다.");
+                "외화 거래는 미래 날짜를 입력할 수 없습니다.");
     }
 
     private void assertErrorCode(

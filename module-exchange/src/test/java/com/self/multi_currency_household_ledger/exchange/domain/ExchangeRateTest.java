@@ -100,33 +100,6 @@ class ExchangeRateTest {
     }
 
     @Nested
-    @DisplayName("isBeyondFutureLimit()")
-    class IsBeyondFutureLimit {
-
-        @Test
-        @DisplayName("오늘부터 365일 뒤는 허용한다")
-        void allows_365_days_after_today() {
-            assertThat(ExchangeRate.isBeyondFutureLimit(TODAY.plusDays(365), TODAY))
-                    .isFalse();
-        }
-
-        @Test
-        @DisplayName("오늘부터 366일 뒤는 상한을 초과한다")
-        void rejects_366_days_after_today() {
-            assertThat(ExchangeRate.isBeyondFutureLimit(TODAY.plusDays(366), TODAY))
-                    .isTrue();
-        }
-
-        @Test
-        @DisplayName("과거와 오늘은 허용한다")
-        void allows_past_and_today() {
-            assertThat(ExchangeRate.isBeyondFutureLimit(TODAY.minusDays(1), TODAY))
-                    .isFalse();
-            assertThat(ExchangeRate.isBeyondFutureLimit(TODAY, TODAY)).isFalse();
-        }
-    }
-
-    @Nested
     @DisplayName("assertValidRange()")
     class AssertValidRange {
 
