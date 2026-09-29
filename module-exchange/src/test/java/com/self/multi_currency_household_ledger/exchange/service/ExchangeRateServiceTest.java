@@ -13,6 +13,7 @@ import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
 import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRate;
 import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRateRepository;
 import com.self.multi_currency_household_ledger.exchange.domain.FetchedRate;
+import com.self.multi_currency_household_ledger.exchange.domain.TtsTimeline;
 import com.self.multi_currency_household_ledger.exchange.exception.ExchangeErrorCode;
 import com.self.multi_currency_household_ledger.exchange.provider.ExchangeRateProvider;
 import java.math.BigDecimal;
@@ -442,6 +443,77 @@ class ExchangeRateServiceTest {
             List<ExchangeRate> result = exchangeRateService.getLatestRatesByCurrency();
 
             assertThat(result).containsExactlyElementsOf(rates);
+        }
+    }
+
+    @Nested
+    @DisplayName("getTtsTimeline()")
+    class GetTtsTimeline {
+
+        private final LocalDate from = LocalDate.of(2026, 9, 1);
+        private final LocalDate to = LocalDate.of(2026, 9, 30);
+
+        @Test
+        @DisplayName("from 이하 최신 1행과 구간 행을 합쳐 날짜별 tts 를 돌려준다")
+        void combines_seed_and_range_rows() {
+            given(exchangeRateRepository.findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(
+                            CurrencyCode.USD, from))
+                    .willReturn(Optional.of(
+                            ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), LocalDate.of(2026, 8, 29))));
+            given(exchangeRateRepository.findByCurrencyCodeAndBaseDateBetweenOrderByBaseDateAsc(
+                            CurrencyCode.USD, from, to))
+                    .willReturn(List.of(
+                            ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1310.00"), LocalDate.of(2026, 9, 3))));
+
+            TtsTimeline timeline = exchangeRateService.getTtsTimeline(CurrencyCode.USD, from, to);
+
+            assertThat(timeline.onOrBefore(LocalDate.of(2026, 9, 2))).contains(new BigDecimal("1300.00"));
+            assertThat(timeline.onOrBefore(LocalDate.of(2026, 9, 3))).contains(new BigDecimal("1310.00"));
+            assertThat(timeline.onOrBefore(to)).contains(new BigDecimal("1310.00"));
+        }
+
+        @Test
+        @DisplayName("from 이전 행이 없으면 첫 환율 이전 날짜는 비어 있다 — 가장 오래된 값으로 폴백하지 않는다")
+        void no_seed_leaves_early_dates_empty() {
+            given(exchangeRateRepository.findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(
+                            CurrencyCode.USD, from))
+                    .willReturn(Optional.empty());
+            given(exchangeRateRepository.findByCurrencyCodeAndBaseDateBetweenOrderByBaseDateAsc(
+                            CurrencyCode.USD, from, to))
+                    .willReturn(List.of(
+                            ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1310.00"), LocalDate.of(2026, 9, 10))));
+
+            TtsTimeline timeline = exchangeRateService.getTtsTimeline(CurrencyCode.USD, from, to);
+
+            assertThat(timeline.onOrBefore(LocalDate.of(2026, 9, 9))).isEmpty();
+            assertThat(timeline.onOrBefore(LocalDate.of(2026, 9, 10))).contains(new BigDecimal("1310.00"));
+            verify(exchangeRateRepository, never()).findTopByCurrencyCodeOrderByBaseDateAsc(any());
+        }
+
+        @Test
+        @DisplayName("to 가 오늘 이후여도 clamp 하지 않고 그대로 조회한다")
+        void future_to_is_not_clamped() {
+            LocalDate futureTo = LocalDate.now(FIXED_CLOCK).plusDays(200);
+            given(exchangeRateRepository.findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(
+                            CurrencyCode.USD, from))
+                    .willReturn(Optional.empty());
+            given(exchangeRateRepository.findByCurrencyCodeAndBaseDateBetweenOrderByBaseDateAsc(
+                            CurrencyCode.USD, from, futureTo))
+                    .willReturn(List.of(
+                            ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1310.00"), LocalDate.of(2026, 9, 10))));
+
+            TtsTimeline timeline = exchangeRateService.getTtsTimeline(CurrencyCode.USD, from, futureTo);
+
+            assertThat(timeline.onOrBefore(futureTo)).contains(new BigDecimal("1310.00"));
+        }
+
+        @Test
+        @DisplayName("KRW 는 환율 행이 없으므로 IllegalArgumentException 을 던진다")
+        void rejects_krw() {
+            assertThatThrownBy(() -> exchangeRateService.getTtsTimeline(CurrencyCode.KRW, from, to))
+                    .isInstanceOf(IllegalArgumentException.class);
+            verify(exchangeRateRepository, never())
+                    .findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(any(), any());
         }
     }
 }

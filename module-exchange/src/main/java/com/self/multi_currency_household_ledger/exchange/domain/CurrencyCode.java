@@ -33,6 +33,13 @@ public enum CurrencyCode {
         return this == KRW;
     }
 
+    public int fractionDigits() {
+        return switch (this) {
+            case KRW, JPY, IDR -> 0;
+            default -> 2;
+        };
+    }
+
     public static CurrencyCode fromCode(String code) {
         return Arrays.stream(values())
                 .filter(c -> c.apiCode.equals(code))

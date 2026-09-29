@@ -5,10 +5,12 @@ import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
 import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRate;
 import com.self.multi_currency_household_ledger.exchange.domain.ExchangeRateRepository;
 import com.self.multi_currency_household_ledger.exchange.domain.FetchedRate;
+import com.self.multi_currency_household_ledger.exchange.domain.TtsTimeline;
 import com.self.multi_currency_household_ledger.exchange.exception.ExchangeErrorCode;
 import com.self.multi_currency_household_ledger.exchange.provider.ExchangeRateProvider;
 import java.time.Clock;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
@@ -96,6 +98,21 @@ public class ExchangeRateService {
                 .findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(currencyCode, effectiveDate)
                 .or(() -> exchangeRateRepository.findTopByCurrencyCodeOrderByBaseDateAsc(currencyCode))
                 .orElseThrow(() -> new BusinessException(ExchangeErrorCode.EXCHANGE_RATE_NOT_FOUND));
+    }
+
+    /** [from, to] 의 날짜별 tts. to 는 미래일 수 있어 clamp 하지 않는다. */
+    @Transactional(readOnly = true)
+    public TtsTimeline getTtsTimeline(CurrencyCode currencyCode, LocalDate from, LocalDate to) {
+        if (currencyCode.isBase()) {
+            throw new IllegalArgumentException("KRW 는 환율 행이 없다");
+        }
+        List<ExchangeRate> rates = new ArrayList<>();
+        exchangeRateRepository
+                .findTopByCurrencyCodeAndBaseDateLessThanEqualOrderByBaseDateDesc(currencyCode, from)
+                .ifPresent(rates::add);
+        rates.addAll(
+                exchangeRateRepository.findByCurrencyCodeAndBaseDateBetweenOrderByBaseDateAsc(currencyCode, from, to));
+        return TtsTimeline.of(rates);
     }
 
     @Transactional(readOnly = true)
