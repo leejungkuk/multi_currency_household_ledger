@@ -34,6 +34,16 @@ class CurrencyCodeTest {
         assertThat(CurrencyCode.fromCode(apiCode)).isEqualTo(code);
     }
 
+    @ParameterizedTest(name = "{0}: fractionDigits={1}")
+    @CsvSource({
+        "KRW, 0", "USD, 2", "EUR, 2", "JPY, 0", "CNY, 2", "GBP, 2", "THB, 2", "HKD, 2", "SGD, 2", "IDR, 0", "MYR, 2",
+        "AUD, 2", "NZD, 2"
+    })
+    @DisplayName("13종 통화의 소수 자릿수 — KRW·JPY·IDR 만 0이다")
+    void fraction_digits(CurrencyCode code, int fractionDigits) {
+        assertThat(code.fractionDigits()).isEqualTo(fractionDigits);
+    }
+
     @Test
     @DisplayName("지원 통화는 정확히 13종이다")
     void supports_exactly_thirteen_currencies() {

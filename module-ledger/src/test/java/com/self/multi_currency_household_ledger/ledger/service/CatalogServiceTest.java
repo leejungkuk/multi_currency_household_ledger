@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willAnswer;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 
@@ -25,6 +26,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -50,11 +52,14 @@ class CatalogServiceTest {
     @Mock
     private AssetRepository assetRepository;
 
+    @Mock
+    private BudgetService budgetService;
+
     private CatalogService catalogService;
 
     @BeforeEach
     void setUp() {
-        catalogService = new CatalogService(categoryRepository, assetRepository, FIXED_CLOCK);
+        catalogService = new CatalogService(categoryRepository, assetRepository, budgetService, FIXED_CLOCK);
     }
 
     // 거래 유형별 카테고리 목록을 DTO로 변환해 반환한다.
@@ -218,6 +223,32 @@ class CatalogServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting(exception -> ((BusinessException) exception).getCode())
                 .isEqualTo(LedgerErrorCode.CATEGORY_NOT_FOUND.getCode());
+        then(budgetService).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("내 커스텀 카테고리 삭제는 회원 락을 잡고 비활성화를 flush 한 뒤에 예산 몫을 뗀다")
+    void delete_custom_category_locks_member_and_flushes_deactivation_before_detaching_budget() {
+        Category category = Category.custom(MEMBER_ID, TransactionType.EXPENSE, "반려견", null);
+        given(categoryRepository.findByIdAndOwnerMemberId(10_000L, MEMBER_ID)).willReturn(Optional.of(category));
+        List<Boolean> activeAtLock = new ArrayList<>();
+        willAnswer(invocation -> activeAtLock.add(category.isActive()))
+                .given(budgetService)
+                .lockMember(MEMBER_ID);
+        List<Boolean> activeAtDetach = new ArrayList<>();
+        willAnswer(invocation -> activeAtDetach.add(category.isActive()))
+                .given(budgetService)
+                .detachCategory(MEMBER_ID, 10_000L);
+
+        catalogService.deleteCustomCategory(MEMBER_ID, 10_000L);
+
+        InOrder inOrder = inOrder(categoryRepository, budgetService);
+        then(budgetService).should(inOrder).lockMember(MEMBER_ID);
+        then(categoryRepository).should(inOrder).flush();
+        then(budgetService).should(inOrder).detachCategory(MEMBER_ID, 10_000L);
+        assertThat(activeAtLock).containsExactly(true);
+        assertThat(activeAtDetach).containsExactly(false);
+        assertThat(category.isActive()).isFalse();
     }
 
     @Test

@@ -286,6 +286,27 @@
                 },
                 "type": "object"
             },
+            "ApiResponseMonthlyBudgetResponse": {
+                "properties": {
+                    "code": {
+                        "type": "string"
+                    },
+                    "data": {
+                        "$ref": "#/components/schemas/MonthlyBudgetResponse"
+                    },
+                    "message": {
+                        "type": "string"
+                    },
+                    "success": {
+                        "type": "boolean"
+                    },
+                    "timestamp": {
+                        "format": "date-time",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
             "ApiResponseSyncLedgerEntryResponse": {
                 "properties": {
                     "code": {
@@ -348,6 +369,260 @@
                         "type": "integer"
                     }
                 },
+                "type": "object"
+            },
+            "BudgetAmountsRequest": {
+                "properties": {
+                    "categoryAmounts": {
+                        "items": {
+                            "$ref": "#/components/schemas/CategoryAmountRequest"
+                        },
+                        "maxItems": 100,
+                        "minItems": 0,
+                        "type": "array"
+                    },
+                    "currency": {
+                        "enum": [
+                            "KRW",
+                            "USD",
+                            "EUR",
+                            "JPY",
+                            "CNY",
+                            "GBP",
+                            "THB",
+                            "HKD",
+                            "SGD",
+                            "IDR",
+                            "MYR",
+                            "AUD",
+                            "NZD"
+                        ],
+                        "type": "string"
+                    },
+                    "paymentGroupAmounts": {
+                        "items": {
+                            "$ref": "#/components/schemas/PaymentGroupAmountRequest"
+                        },
+                        "type": "array"
+                    },
+                    "totalAmount": {
+                        "type": "number"
+                    }
+                },
+                "required": [
+                    "currency"
+                ],
+                "type": "object"
+            },
+            "BudgetAxisResponse": {
+                "properties": {
+                    "categories": {
+                        "items": {
+                            "$ref": "#/components/schemas/BudgetCategoryLine"
+                        },
+                        "type": "array"
+                    },
+                    "categoryAllocationExceeded": {
+                        "type": "boolean"
+                    },
+                    "categoryUnallocatedAmount": {
+                        "type": "number"
+                    },
+                    "currency": {
+                        "enum": [
+                            "KRW",
+                            "USD",
+                            "EUR",
+                            "JPY",
+                            "CNY",
+                            "GBP",
+                            "THB",
+                            "HKD",
+                            "SGD",
+                            "IDR",
+                            "MYR",
+                            "AUD",
+                            "NZD"
+                        ],
+                        "type": "string"
+                    },
+                    "dailyAllowance": {
+                        "$ref": "#/components/schemas/DailyAllowance"
+                    },
+                    "missingRateCount": {
+                        "format": "int32",
+                        "type": "integer"
+                    },
+                    "otherCategoriesActualAmount": {
+                        "type": "number"
+                    },
+                    "paymentGroupAllocationExceeded": {
+                        "type": "boolean"
+                    },
+                    "paymentGroupUnallocatedAmount": {
+                        "type": "number"
+                    },
+                    "paymentGroups": {
+                        "items": {
+                            "$ref": "#/components/schemas/BudgetPaymentGroupLine"
+                        },
+                        "type": "array"
+                    },
+                    "source": {
+                        "enum": [
+                            "DEFAULT",
+                            "DEFAULT_OFF",
+                            "MONTH_VALUE",
+                            "MONTH_OFF",
+                            "NOT_SET"
+                        ],
+                        "type": "string"
+                    },
+                    "status": {
+                        "enum": [
+                            "NOT_SET",
+                            "OFF",
+                            "NONE",
+                            "IN_PROGRESS",
+                            "NEAR_LIMIT",
+                            "REACHED",
+                            "EXCEEDED"
+                        ],
+                        "type": "string"
+                    },
+                    "total": {
+                        "$ref": "#/components/schemas/BudgetLine"
+                    }
+                },
+                "type": "object"
+            },
+            "BudgetCategoryLine": {
+                "properties": {
+                    "actualAmount": {
+                        "type": "number"
+                    },
+                    "budgetAmount": {
+                        "type": "number"
+                    },
+                    "category": {
+                        "$ref": "#/components/schemas/CategoryResponse"
+                    },
+                    "deleted": {
+                        "type": "boolean"
+                    },
+                    "overAmount": {
+                        "type": "number"
+                    },
+                    "percent": {
+                        "format": "int32",
+                        "type": "integer"
+                    },
+                    "remainingAmount": {
+                        "type": "number"
+                    },
+                    "status": {
+                        "enum": [
+                            "NOT_SET",
+                            "OFF",
+                            "NONE",
+                            "IN_PROGRESS",
+                            "NEAR_LIMIT",
+                            "REACHED",
+                            "EXCEEDED"
+                        ],
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "BudgetLine": {
+                "properties": {
+                    "actualAmount": {
+                        "type": "number"
+                    },
+                    "budgetAmount": {
+                        "type": "number"
+                    },
+                    "overAmount": {
+                        "type": "number"
+                    },
+                    "percent": {
+                        "format": "int32",
+                        "type": "integer"
+                    },
+                    "remainingAmount": {
+                        "type": "number"
+                    },
+                    "status": {
+                        "enum": [
+                            "NOT_SET",
+                            "OFF",
+                            "NONE",
+                            "IN_PROGRESS",
+                            "NEAR_LIMIT",
+                            "REACHED",
+                            "EXCEEDED"
+                        ],
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "BudgetPaymentGroupLine": {
+                "properties": {
+                    "actualAmount": {
+                        "type": "number"
+                    },
+                    "budgetAmount": {
+                        "type": "number"
+                    },
+                    "overAmount": {
+                        "type": "number"
+                    },
+                    "paymentGroup": {
+                        "enum": [
+                            "CREDIT_CARD",
+                            "CASH_AND_DEBIT",
+                            "ACCOUNT_AND_OTHER"
+                        ],
+                        "type": "string"
+                    },
+                    "percent": {
+                        "format": "int32",
+                        "type": "integer"
+                    },
+                    "remainingAmount": {
+                        "type": "number"
+                    },
+                    "status": {
+                        "enum": [
+                            "NOT_SET",
+                            "OFF",
+                            "NONE",
+                            "IN_PROGRESS",
+                            "NEAR_LIMIT",
+                            "REACHED",
+                            "EXCEEDED"
+                        ],
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "CategoryAmountRequest": {
+                "properties": {
+                    "amount": {
+                        "type": "number"
+                    },
+                    "categoryId": {
+                        "format": "int64",
+                        "type": "integer"
+                    }
+                },
+                "required": [
+                    "amount",
+                    "categoryId"
+                ],
                 "type": "object"
             },
             "CategoryResponse": {
@@ -615,6 +890,17 @@
                     "updatedAt": {
                         "format": "date-time",
                         "type": "string"
+                    }
+                },
+                "type": "object"
+            },
+            "DailyAllowance": {
+                "properties": {
+                    "amount": {
+                        "type": "number"
+                    },
+                    "exceeded": {
+                        "type": "boolean"
                     }
                 },
                 "type": "object"
@@ -919,6 +1205,63 @@
                 },
                 "type": "object"
             },
+            "MonthlyBudgetResponse": {
+                "properties": {
+                    "currentMonth": {
+                        "format": "int32",
+                        "type": "integer"
+                    },
+                    "currentYear": {
+                        "format": "int32",
+                        "type": "integer"
+                    },
+                    "editable": {
+                        "type": "boolean"
+                    },
+                    "expense": {
+                        "$ref": "#/components/schemas/BudgetAxisResponse"
+                    },
+                    "hasAnyBudget": {
+                        "type": "boolean"
+                    },
+                    "income": {
+                        "$ref": "#/components/schemas/BudgetAxisResponse"
+                    },
+                    "month": {
+                        "format": "int32",
+                        "type": "integer"
+                    },
+                    "remainingDaysIncludingToday": {
+                        "format": "int32",
+                        "type": "integer"
+                    },
+                    "year": {
+                        "format": "int32",
+                        "type": "integer"
+                    }
+                },
+                "type": "object"
+            },
+            "PaymentGroupAmountRequest": {
+                "properties": {
+                    "amount": {
+                        "type": "number"
+                    },
+                    "paymentGroup": {
+                        "enum": [
+                            "CREDIT_CARD",
+                            "CASH_AND_DEBIT",
+                            "ACCOUNT_AND_OTHER"
+                        ],
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "amount",
+                    "paymentGroup"
+                ],
+                "type": "object"
+            },
             "ReorderCustomCategoriesRequest": {
                 "properties": {
                     "orderedIds": {
@@ -1019,6 +1362,24 @@
                         "type": "string"
                     }
                 },
+                "type": "object"
+            },
+            "SaveBudgetRequest": {
+                "properties": {
+                    "amounts": {
+                        "$ref": "#/components/schemas/BudgetAmountsRequest"
+                    },
+                    "applyTo": {
+                        "enum": [
+                            "THIS_MONTH",
+                            "FROM_THIS_MONTH"
+                        ],
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "applyTo"
+                ],
                 "type": "object"
             },
             "SyncLedgerEntryRequest": {
@@ -1152,6 +1513,245 @@
                 },
                 "tags": [
                     "catalog-controller"
+                ]
+            }
+        },
+        "/api/v1/budgets": {
+            "get": {
+                "operationId": "getMonthlyBudget",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "year",
+                        "required": true,
+                        "schema": {
+                            "format": "int32",
+                            "maximum": 9999,
+                            "minimum": 1900,
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "in": "query",
+                        "name": "month",
+                        "required": true,
+                        "schema": {
+                            "format": "int32",
+                            "maximum": 12,
+                            "minimum": 1,
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiResponseMonthlyBudgetResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "429": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Too Many Requests",
+                        "headers": {
+                            "Retry-After": {
+                                "description": "Seconds to wait before retrying.",
+                                "schema": {
+                                    "format": "int32",
+                                    "type": "integer"
+                                }
+                            }
+                        }
+                    }
+                },
+                "tags": [
+                    "budget-controller"
+                ]
+            }
+        },
+        "/api/v1/budgets/{axis}": {
+            "put": {
+                "operationId": "saveBudget",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "axis",
+                        "required": true,
+                        "schema": {
+                            "enum": [
+                                "EXPENSE",
+                                "INCOME"
+                            ],
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "in": "query",
+                        "name": "year",
+                        "required": true,
+                        "schema": {
+                            "format": "int32",
+                            "maximum": 9999,
+                            "minimum": 1900,
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "in": "query",
+                        "name": "month",
+                        "required": true,
+                        "schema": {
+                            "format": "int32",
+                            "maximum": 12,
+                            "minimum": 1,
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SaveBudgetRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiResponseMonthlyBudgetResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "413": {
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "code": "REQUEST_BODY_TOO_LARGE",
+                                    "message": "\uc694\uccad \ubcf8\ubb38\uc774 \ub108\ubb34 \ud07d\ub2c8\ub2e4. \ub098\ub220\uc11c \ubcf4\ub0b4 \uc8fc\uc138\uc694.",
+                                    "success": false,
+                                    "timestamp": "2026-01-01T00:00:00"
+                                },
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Content Too Large"
+                    },
+                    "429": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Too Many Requests",
+                        "headers": {
+                            "Retry-After": {
+                                "description": "Seconds to wait before retrying.",
+                                "schema": {
+                                    "format": "int32",
+                                    "type": "integer"
+                                }
+                            }
+                        }
+                    }
+                },
+                "tags": [
+                    "budget-controller"
+                ]
+            }
+        },
+        "/api/v1/budgets/{axis}/month-value": {
+            "delete": {
+                "operationId": "revertMonthValue",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "axis",
+                        "required": true,
+                        "schema": {
+                            "enum": [
+                                "EXPENSE",
+                                "INCOME"
+                            ],
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "in": "query",
+                        "name": "year",
+                        "required": true,
+                        "schema": {
+                            "format": "int32",
+                            "maximum": 9999,
+                            "minimum": 1900,
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "in": "query",
+                        "name": "month",
+                        "required": true,
+                        "schema": {
+                            "format": "int32",
+                            "maximum": 12,
+                            "minimum": 1,
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiResponseMonthlyBudgetResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "429": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Too Many Requests",
+                        "headers": {
+                            "Retry-After": {
+                                "description": "Seconds to wait before retrying.",
+                                "schema": {
+                                    "format": "int32",
+                                    "type": "integer"
+                                }
+                            }
+                        }
+                    }
+                },
+                "tags": [
+                    "budget-controller"
                 ]
             }
         },

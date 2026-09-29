@@ -152,6 +152,27 @@ class LedgerPurgeControllerIntegrationTest {
     }
 
     @Test
+    @DisplayName("purge는 시스템·커스텀 카테고리 몫이 있는 예산까지 지워 예산 0행이 되고 다른 회원 예산은 남긴다")
+    void purge_deletes_budgets_with_system_and_custom_category_allocations() throws Exception {
+        long customCategoryId = createCustomCategory(MEMBER_A, "커스텀 지출", true);
+        long memberABudget = insertBudget(MEMBER_A);
+        insertAllocation(memberABudget, SYSTEM_CATEGORY_ID);
+        insertAllocation(memberABudget, customCategoryId);
+        long memberBBudget = insertBudget(MEMBER_B);
+        insertAllocation(memberBBudget, SYSTEM_CATEGORY_ID);
+
+        purge(MEMBER_A).andExpect(status().isOk());
+
+        assertThat(count("select count(*) from budget where member_id = ?", MEMBER_A))
+                .isZero();
+        assertThat(count("select count(*) from budget_allocation where budget_id = ?", memberABudget))
+                .isZero();
+        assertThat(categoryRowCount(customCategoryId)).isZero();
+        assertThat(count("select count(*) from budget_allocation where budget_id = ?", memberBBudget))
+                .isEqualTo(1L);
+    }
+
+    @Test
     @DisplayName("가계부 전체 삭제를 연속 두 번 호출해도 두 요청 모두 200이다")
     void purge_is_idempotent_for_repeated_requests() throws Exception {
         sync(MEMBER_A, CLIENT_ENTRY_ID, "재호출 거래");
@@ -253,6 +274,23 @@ class LedgerPurgeControllerIntegrationTest {
             category.deactivate();
         }
         return categoryRepository.saveAndFlush(category).getId();
+    }
+
+    private long insertBudget(UUID memberId) {
+        return jdbcTemplate.queryForObject(
+                """
+                insert into budget (member_id, axis, kind, month, currency_code, total_amount, created_at, updated_at)
+                values (?, 'EXPENSE', 'DEFAULT', date '2026-04-01', 'KRW', 1000000, now(), now()) returning id
+                """,
+                Long.class,
+                memberId);
+    }
+
+    private void insertAllocation(long budgetId, long categoryId) {
+        jdbcTemplate.update(
+                "insert into budget_allocation (budget_id, category_id, amount) values (?, ?, 1000)",
+                budgetId,
+                categoryId);
     }
 
     private JsonNode getChanges(UUID memberId) throws Exception {

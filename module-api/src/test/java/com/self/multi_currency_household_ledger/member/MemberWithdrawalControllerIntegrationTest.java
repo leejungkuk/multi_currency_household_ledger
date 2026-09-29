@@ -151,6 +151,27 @@ class MemberWithdrawalControllerIntegrationTest {
     }
 
     @Test
+    @DisplayName("탈퇴는 커스텀 카테고리 몫이 있는 예산까지 지우고 회원 B의 예산은 남긴다")
+    void withdraw_cascades_budget_with_custom_category_allocation_and_preserves_other_member_budget() throws Exception {
+        long memberACategoryId = createCustomCategory(MEMBER_A, "회원 A 카테고리");
+        long memberBCategoryId = createCustomCategory(MEMBER_B, "회원 B 카테고리");
+        long memberABudgetId = insertBudget(MEMBER_A);
+        insertCategoryAllocation(memberABudgetId, memberACategoryId);
+        long memberBBudgetId = insertBudget(MEMBER_B);
+        insertCategoryAllocation(memberBBudgetId, memberBCategoryId);
+
+        withdraw(MEMBER_A).andExpect(status().isOk());
+
+        assertThat(authUserCount(MEMBER_A)).isZero();
+        assertThat(budgetCount(MEMBER_A)).isZero();
+        assertThat(allocationCount(memberABudgetId)).isZero();
+        assertThat(customCategoryCount(MEMBER_A)).isZero();
+        assertThat(budgetCount(MEMBER_B)).isEqualTo(1L);
+        assertThat(allocationCount(memberBBudgetId)).isEqualTo(1L);
+        assertThat(customCategoryCount(MEMBER_B)).isEqualTo(1L);
+    }
+
+    @Test
     @DisplayName("회원 A 토큰에 회원 B의 것이라고 주장하는 코드를 붙여도 A 데이터만 삭제한다")
     void withdraw_isolated_by_jwt_subject_even_with_code_claimed_for_another_member() throws Exception {
         createLedger(MEMBER_A);
@@ -448,6 +469,37 @@ class MemberWithdrawalControllerIntegrationTest {
     private long customCategoryCount(UUID memberId) {
         Long count = jdbcTemplate.queryForObject(
                 "select count(*) from category where owner_member_id = ?", Long.class, memberId);
+        return count == null ? 0L : count;
+    }
+
+    private long insertBudget(UUID memberId) {
+        Long id = jdbcTemplate.queryForObject(
+                """
+                insert into budget (member_id, axis, kind, month, currency_code, total_amount)
+                values (?, 'EXPENSE', 'DEFAULT', date '2026-04-01', 'KRW', 100000.00)
+                returning id
+                """,
+                Long.class,
+                memberId);
+        return id == null ? 0L : id;
+    }
+
+    private void insertCategoryAllocation(long budgetId, long categoryId) {
+        jdbcTemplate.update(
+                "insert into budget_allocation (budget_id, category_id, amount) values (?, ?, 50000.00)",
+                budgetId,
+                categoryId);
+    }
+
+    private long budgetCount(UUID memberId) {
+        Long count =
+                jdbcTemplate.queryForObject("select count(*) from budget where member_id = ?", Long.class, memberId);
+        return count == null ? 0L : count;
+    }
+
+    private long allocationCount(long budgetId) {
+        Long count = jdbcTemplate.queryForObject(
+                "select count(*) from budget_allocation where budget_id = ?", Long.class, budgetId);
         return count == null ? 0L : count;
     }
 

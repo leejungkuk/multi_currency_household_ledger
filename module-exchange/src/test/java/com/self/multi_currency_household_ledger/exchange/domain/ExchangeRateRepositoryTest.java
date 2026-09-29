@@ -196,6 +196,47 @@ class ExchangeRateRepositoryTest {
     }
 
     @Nested
+    @DisplayName("findByCurrencyCodeAndBaseDateBetweenOrderByBaseDateAsc()")
+    class FindByCurrencyCodeAndBaseDateBetween {
+
+        @Test
+        @DisplayName("양끝 날짜를 포함하고 날짜 오름차순으로 반환하며 범위 밖·다른 통화 행은 제외한다")
+        void returns_inclusive_range_of_currency_ascending() {
+            LocalDate from = DATE.minusDays(2);
+            LocalDate to = DATE.plusDays(2);
+            em.persist(ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1330.00"), to));
+            em.persist(ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1290.00"), from.minusDays(1)));
+            em.persist(ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1310.00"), DATE));
+            em.persist(ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), from));
+            em.persist(ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1340.00"), to.plusDays(1)));
+            em.persist(ExchangeRate.of(CurrencyCode.EUR, new BigDecimal("1450.00"), DATE));
+            em.flush();
+
+            List<ExchangeRate> result = exchangeRateRepository.findByCurrencyCodeAndBaseDateBetweenOrderByBaseDateAsc(
+                    CurrencyCode.USD, from, to);
+
+            assertThat(result)
+                    .extracting(ExchangeRate::getCurrencyCode, ExchangeRate::getBaseDate)
+                    .containsExactly(
+                            org.assertj.core.groups.Tuple.tuple(CurrencyCode.USD, from),
+                            org.assertj.core.groups.Tuple.tuple(CurrencyCode.USD, DATE),
+                            org.assertj.core.groups.Tuple.tuple(CurrencyCode.USD, to));
+        }
+
+        @Test
+        @DisplayName("구간에 행이 없으면 빈 리스트를 반환한다")
+        void returns_empty_when_no_rows_in_range() {
+            em.persist(ExchangeRate.of(CurrencyCode.USD, new BigDecimal("1300.00"), DATE.minusDays(10)));
+            em.flush();
+
+            List<ExchangeRate> result = exchangeRateRepository.findByCurrencyCodeAndBaseDateBetweenOrderByBaseDateAsc(
+                    CurrencyCode.USD, DATE, DATE.plusDays(5));
+
+            assertThat(result).isEmpty();
+        }
+    }
+
+    @Nested
     @DisplayName("BaseEntity 자동 매핑")
     class BaseEntityAuditing {
 

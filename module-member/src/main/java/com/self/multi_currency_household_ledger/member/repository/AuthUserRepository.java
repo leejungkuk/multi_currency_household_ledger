@@ -16,11 +16,12 @@ public class AuthUserRepository {
      * 버려진 익명 계정 판정 술어. 후보 조회와 계정별 삭제가 <b>같은 술어</b>를 쓰도록 한 곳에 둔다 — 조회와
      * 삭제 사이에 사용자가 활동한 계정은 DELETE 가 0행을 반환해 자동으로 보호된다(TOCTOU 닫힘).
      *
-     * <p>상관 술어({@code s.user_id = u.id} · {@code e.member_id = u.id} · {@code c.owner_member_id = u.id})를
+     * <p>상관 술어({@code s.user_id = u.id} · {@code e.member_id = u.id} · {@code c.owner_member_id = u.id} ·
+     * {@code b.member_id = u.id})를
      * 빠뜨리면 에러 없이 매일 0건만 삭제된다 — "후보 없음"과 구분되지 않는 무음 실패다.
      *
      * <p>cutoff 가 둘인 것은 컬럼 타입이 다르기 때문이다: {@code auth.*} 는 timestamptz({@code :cutoffInstant}),
-     * {@code ledger_entry}·{@code category} 의 감사 컬럼은 JVM 기본 존으로 기록된 naive timestamp({@code :cutoffLocal}).
+     * {@code ledger_entry}·{@code category}·{@code budget} 의 감사 컬럼은 JVM 기본 존으로 기록된 naive timestamp({@code :cutoffLocal}).
      * 하나로 통일하면 세션 TimeZone 에 따라 조용히 어긋난다.
      *
      * <p>{@code auth.sessions.refreshed_at} 은 그 컬럼만 naive 라 cutoff 가 3종이 되므로 쓰지 않는다 —
@@ -40,7 +41,10 @@ public class AuthUserRepository {
                               where e.member_id = u.id and e.updated_at >= :cutoffLocal)
               and not exists (select 1 from category c
                               where c.owner_member_id = u.id
-                                and coalesce(c.updated_at, c.created_at, 'infinity') >= :cutoffLocal)""";
+                                and coalesce(c.updated_at, c.created_at, 'infinity') >= :cutoffLocal)
+              and not exists (select 1 from budget b
+                              where b.member_id = u.id
+                                and coalesce(b.updated_at, 'infinity') >= :cutoffLocal)""";
 
     /** Postgres 는 DELETE 에 LIMIT 절이 없다 — 상한은 후보 조회에서만 걸고 삭제는 id 단건으로 한다. */
     private static final String FIND_ABANDONED_ANONYMOUS_IDS =
