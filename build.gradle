@@ -1,3 +1,16 @@
+// 빌드 도구 classpath(Spring Boot Gradle 플러그인 4.1.0 이 끌어옴)의 취약 버전을 올린다. 앱 jar 에는 들어가지 않지만
+// dependency-submission 이 이 classpath 도 그래프로 올려 Dependabot 알림이 열리고, BOM 속성으로는 못 올리니 보안 업데이트 작업이 매번 실패한다.
+buildscript {
+    dependencies {
+        constraints {
+            classpath 'tools.jackson.core:jackson-databind:3.1.6'           // CVE-2026-68497 · CVE-2026-19032 · CVE-2026-83557 · CVE-2026-77310
+            classpath 'org.apache.httpcomponents.client5:httpclient5:5.6.4'  // CVE-2026-64607
+            classpath 'org.apache.httpcomponents.core5:httpcore5:5.4.4'      // CVE-2026-54399
+            classpath 'org.apache.httpcomponents.core5:httpcore5-h2:5.4.4'   // CVE-2026-54428
+        }
+    }
+}
+
 plugins {
     id 'java'
     id 'org.springframework.boot' version '4.1.0' apply false
@@ -34,8 +47,8 @@ subprojects {
     // 제거 조건: Boot BOM 이 이 버전 이상을 담게 되면 해당 줄을 지운다.
     // 확인: ./gradlew :module-api:dependencyInsight --dependency <coord> --configuration runtimeClasspath
     ext['postgresql.version'] = '42.7.12'      // CVE-2026-54291 (HIGH, 채널 바인딩 조용한 다운그레이드)
-    ext['jackson-2-bom.version'] = '2.21.5'    // CVE-2026-59889 · CVE-2026-54515 · GHSA-mhm7-754m-9p8w
-    ext['jackson-bom.version'] = '3.1.5'       // CVE-2026-59889
+    ext['jackson-2-bom.version'] = '2.21.6'    // CVE-2026-59889 · CVE-2026-54515 · GHSA-mhm7-754m-9p8w · CVE-2026-68497 (HIGH, 숫자 파싱 CPU DoS)
+    ext['jackson-bom.version'] = '3.1.6'       // CVE-2026-59889 · CVE-2026-68497
     ext['tomcat.version'] = '11.0.25'          // CVE-2026-65182 · CVE-2026-65905 · CVE-2026-68525 (CRITICAL, 인증·접근제어 우회)
     ext['log4j2.version'] = '2.25.5'           // CVE-2026-49844 (MEDIUM, MapMessage JSON 직렬화의 비유한 부동소수 인코딩)
 
