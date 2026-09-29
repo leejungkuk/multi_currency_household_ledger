@@ -8,7 +8,9 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
 
+import com.self.multi_currency_household_ledger.ledger.domain.BudgetRepository;
 import com.self.multi_currency_household_ledger.ledger.domain.CategoryRepository;
 import com.self.multi_currency_household_ledger.ledger.domain.LedgerEntryRepository;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -30,6 +32,9 @@ class LedgerPurgeServiceTest {
     private static final UUID MEMBER_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
 
     @Mock
+    private BudgetRepository budgetRepository;
+
+    @Mock
     private LedgerEntryRepository ledgerEntryRepository;
 
     @Mock
@@ -49,21 +54,23 @@ class LedgerPurgeServiceTest {
         given(transactionManager.getTransaction(any(TransactionDefinition.class)))
                 .willReturn(transactionStatus);
         meterRegistry = new SimpleMeterRegistry();
-        ledgerPurgeService =
-                new LedgerPurgeService(ledgerEntryRepository, categoryRepository, meterRegistry, transactionManager);
+        ledgerPurgeService = new LedgerPurgeService(
+                budgetRepository, ledgerEntryRepository, categoryRepository, meterRegistry, transactionManager);
     }
 
     @Test
-    @DisplayName("거래를 먼저 지우고 커스텀 카테고리를 지운 뒤 deleted 카운터를 증가시킨다")
-    void purge_deletes_entries_before_categories_and_increments_deleted_counter() {
+    @DisplayName("회원 예산 락을 먼저 잡고 거래, 커스텀 카테고리, 예산 순으로 지운 뒤 deleted 카운터를 증가시킨다")
+    void purge_locks_member_then_deletes_entries_categories_budgets_and_increments_deleted_counter() {
         given(ledgerEntryRepository.deleteAllByMemberId(MEMBER_ID)).willReturn(2);
         given(categoryRepository.deleteAllByOwnerMemberId(MEMBER_ID)).willReturn(1);
 
         ledgerPurgeService.purge(MEMBER_ID);
 
-        InOrder inOrder = inOrder(ledgerEntryRepository, categoryRepository);
+        InOrder inOrder = inOrder(ledgerEntryRepository, categoryRepository, budgetRepository);
+        then(budgetRepository).should(inOrder).lockMember(MEMBER_ID);
         then(ledgerEntryRepository).should(inOrder).deleteAllByMemberId(MEMBER_ID);
         then(categoryRepository).should(inOrder).deleteAllByOwnerMemberId(MEMBER_ID);
+        then(budgetRepository).should(inOrder).deleteAllByMemberId(MEMBER_ID);
         assertThat(counter("deleted")).isEqualTo(1.0);
         assertThat(counter("noop")).isZero();
     }
@@ -81,13 +88,25 @@ class LedgerPurgeServiceTest {
     }
 
     @Test
-    @DisplayName("삭제할 거래도 커스텀 카테고리도 없으면 예외 없이 noop 카운터를 증가시킨다")
+    @DisplayName("예산만 남아 있어도 deleted 카운터를 증가시킨다")
+    void purge_increments_deleted_counter_when_only_budgets_are_deleted() {
+        given(budgetRepository.deleteAllByMemberId(MEMBER_ID)).willReturn(1);
+
+        ledgerPurgeService.purge(MEMBER_ID);
+
+        assertThat(counter("deleted")).isEqualTo(1.0);
+        assertThat(counter("noop")).isZero();
+    }
+
+    @Test
+    @DisplayName("삭제할 예산도 거래도 커스텀 카테고리도 없으면 예외 없이 noop 카운터를 증가시킨다")
     void purge_is_idempotent_and_increments_noop_counter_when_no_rows_are_deleted() {
         given(ledgerEntryRepository.deleteAllByMemberId(MEMBER_ID)).willReturn(0);
         given(categoryRepository.deleteAllByOwnerMemberId(MEMBER_ID)).willReturn(0);
 
         assertThatCode(() -> ledgerPurgeService.purge(MEMBER_ID)).doesNotThrowAnyException();
 
+        then(budgetRepository).should().deleteAllByMemberId(MEMBER_ID);
         then(ledgerEntryRepository).should().deleteAllByMemberId(MEMBER_ID);
         then(categoryRepository).should().deleteAllByOwnerMemberId(MEMBER_ID);
         assertThat(counter("deleted")).isZero();
@@ -103,12 +122,13 @@ class LedgerPurgeServiceTest {
         assertThatThrownBy(() -> ledgerPurgeService.purge(MEMBER_ID)).isSameAs(failure);
 
         then(categoryRepository).shouldHaveNoInteractions();
+        then(budgetRepository).should(never()).deleteAllByMemberId(MEMBER_ID);
         assertThat(counter("deleted")).isZero();
         assertThat(counter("noop")).isZero();
     }
 
     @Test
-    @DisplayName("카테고리 삭제가 FK 위반으로 실패하면 예외를 전파하고 카운터를 증가시키지 않는다")
+    @DisplayName("카테고리 삭제가 FK 위반으로 실패하면 예산을 지우지 않고 예외를 전파하며 카운터를 증가시키지 않는다")
     void purge_does_not_increment_counters_when_category_delete_fails() {
         IllegalStateException failure = new IllegalStateException("fk_ledger_category violated");
         given(ledgerEntryRepository.deleteAllByMemberId(MEMBER_ID)).willReturn(1);
@@ -116,6 +136,7 @@ class LedgerPurgeServiceTest {
 
         assertThatThrownBy(() -> ledgerPurgeService.purge(MEMBER_ID)).isSameAs(failure);
 
+        then(budgetRepository).should(never()).deleteAllByMemberId(MEMBER_ID);
         assertThat(counter("deleted")).isZero();
         assertThat(counter("noop")).isZero();
     }

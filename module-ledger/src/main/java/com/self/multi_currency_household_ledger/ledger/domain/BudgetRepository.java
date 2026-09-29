@@ -37,6 +37,21 @@ public interface BudgetRepository extends JpaRepository<Budget, Long> {
     int deleteDefaultsAfter(
             @Param("memberId") UUID memberId, @Param("axis") TransactionType axis, @Param("month") LocalDate month);
 
+    Optional<Budget> findFirstByMemberIdAndAxisAndKindAndMonthLessThanOrderByMonthDesc(
+            UUID memberId, TransactionType axis, BudgetKind kind, LocalDate month);
+
+    // 카테고리 삭제 전용 — budget_allocation 에는 member_id 가 없어 회원 예산 행으로 좁힌다.
+    // clear 하지 않는다: 호출자(CatalogService) 트랜잭션이 들고 있는 영속 엔티티를 분리하지 않는다.
+    @Modifying(flushAutomatically = true)
+    @Query(
+            """
+            delete from BudgetAllocation a
+            where a.categoryId = :categoryId
+              and a.budget.id in (select b.id from Budget b where b.memberId = :memberId and b.month >= :month)
+            """)
+    int deleteCategoryAllocationsFrom(
+            @Param("memberId") UUID memberId, @Param("categoryId") Long categoryId, @Param("month") LocalDate month);
+
     boolean existsByMemberIdAndTotalAmountIsNotNull(UUID memberId);
 
     // 예산 쓰기 경로의 회원 단위 직렬화(DESIGN §2). 트랜잭션이 끝나면 풀린다. THIS_MONTH·FROM_THIS_MONTH 는 서로 다른 행을

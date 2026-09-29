@@ -159,6 +159,22 @@ public class Budget extends BaseEntity {
         }
     }
 
+    public boolean allocatesCategory(Long categoryId) {
+        return allocations.stream().anyMatch(allocation -> categoryId.equals(allocation.getCategoryId()));
+    }
+
+    /**
+     * 이 행의 금액 세트에서 그 카테고리 몫만 뺀 (DEFAULT, month) 사본. 이 행은 고치지 않는다 — 카테고리 삭제가 지난 달 해석을 바꾸지 않게
+     * 새 적용 시작 달의 기본값으로 갈라낸다(요구사항 §5).
+     */
+    public Budget defaultWithoutCategory(YearMonth month, Long categoryId) {
+        List<BudgetAllocation> rest = allocations.stream()
+                .filter(allocation -> !categoryId.equals(allocation.getCategoryId()))
+                .map(BudgetAllocation::copy)
+                .toList();
+        return new Budget(memberId, axis, BudgetKind.DEFAULT, month, currencyCode, totalAmount, rest);
+    }
+
     public void turnOff() {
         this.currencyCode = null;
         this.totalAmount = null;

@@ -116,6 +116,34 @@ public class BudgetService {
         return read(memberId, month);
     }
 
+    /** 회원 예산 advisory lock — 트랜잭션이 끝날 때 풀리고, 같은 트랜잭션에서 다시 잡아도 막히지 않는다(재진입). */
+    @Transactional
+    public void lockMember(UUID memberId) {
+        budgetRepository.lockMember(memberId);
+    }
+
+    /**
+     * 카테고리 삭제의 예산 쪽 — 호출자(CatalogService)의 트랜잭션에서 비활성화 flush 뒤에 돈다. 이번 달 C 부터의 몫만 떼고, C 에 적용되던 옛 DEFAULT 는
+     * 고치지 않고 그 카테고리를 뺀 (DEFAULT, C) 로 갈라낸다. C 이전 행은 건드리지 않는다 — 지난 달 해석이 바뀐다(요구사항 §5).
+     */
+    @Transactional
+    public void detachCategory(UUID memberId, Long categoryId) {
+        budgetRepository.lockMember(memberId);
+        YearMonth current = monthPolicy.current();
+        LocalDate first = current.atDay(1);
+        budgetRepository.deleteCategoryAllocationsFrom(memberId, categoryId, first);
+        for (TransactionType axis : TransactionType.values()) {
+            budgetRepository
+                    .findFirstByMemberIdAndAxisAndKindAndMonthLessThanOrderByMonthDesc(
+                            memberId, axis, BudgetKind.DEFAULT, first)
+                    .filter(applied -> applied.allocatesCategory(categoryId))
+                    .filter(applied -> budgetRepository
+                            .findByMemberIdAndAxisAndKindAndMonth(memberId, axis, BudgetKind.DEFAULT, first)
+                            .isEmpty())
+                    .ifPresent(applied -> budgetRepository.save(applied.defaultWithoutCategory(current, categoryId)));
+        }
+    }
+
     private List<Category> findUsableCategories(UUID memberId, SaveBudgetRequest.BudgetAmountsRequest amounts) {
         if (amounts == null) {
             return List.of();

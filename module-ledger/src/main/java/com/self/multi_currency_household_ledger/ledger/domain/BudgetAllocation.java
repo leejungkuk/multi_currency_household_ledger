@@ -55,6 +55,10 @@ public class BudgetAllocation {
         return new BudgetAllocation(null, categoryId, amount);
     }
 
+    BudgetAllocation copy() {
+        return new BudgetAllocation(paymentGroup, categoryId, amount);
+    }
+
     void attachTo(Budget budget) {
         this.budget = budget;
     }

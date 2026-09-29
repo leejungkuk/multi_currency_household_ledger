@@ -294,6 +294,52 @@ class BudgetTest {
                 BudgetErrorCode.BUDGET_INVALID_ALLOCATION);
     }
 
+    @Test
+    @DisplayName("카테고리를 뺀 DEFAULT 사본은 새 달·같은 통화·전체·나머지 몫을 갖고, 원본 행은 그대로다")
+    void default_without_category_copies_rest_and_keeps_original() {
+        UUID memberId = UUID.randomUUID();
+        Budget original = new Budget(
+                memberId, TransactionType.EXPENSE, BudgetKind.DEFAULT, SEPTEMBER.minusMonths(1), null, null, List.of());
+        original.replaceAmounts(
+                CurrencyCode.USD,
+                won("1000"),
+                List.of(new GroupAmount(PaymentGroup.CREDIT_CARD, won("600"))),
+                List.of(new CategoryAmount(3L, won("300")), new CategoryAmount(4L, won("200"))));
+
+        Budget copy = original.defaultWithoutCategory(SEPTEMBER, 3L);
+
+        assertThat(copy.getMemberId()).isEqualTo(memberId);
+        assertThat(copy.getAxis()).isEqualTo(TransactionType.EXPENSE);
+        assertThat(copy.getKind()).isEqualTo(BudgetKind.DEFAULT);
+        assertThat(copy.yearMonth()).isEqualTo(SEPTEMBER);
+        BudgetAmounts copied = copy.amounts().orElseThrow();
+        assertThat(copied.currency()).isEqualTo(CurrencyCode.USD);
+        assertThat(copied.total()).isEqualByComparingTo("1000");
+        assertThat(copied.paymentGroupAmounts()).containsOnlyKeys(PaymentGroup.CREDIT_CARD);
+        assertThat(copied.categoryAmounts()).containsOnlyKeys(4L);
+        assertThat(copied.categoryAmounts().get(4L)).isEqualByComparingTo("200");
+        assertThat(copy.getAllocations()).allMatch(a -> a.getBudget() == copy);
+        assertThat(copy.getAllocations()).noneMatch(original.getAllocations()::contains);
+
+        assertThat(original.yearMonth()).isEqualTo(SEPTEMBER.minusMonths(1));
+        assertThat(original.amounts().orElseThrow().categoryAmounts()).containsOnlyKeys(3L, 4L);
+    }
+
+    @Test
+    @DisplayName("카테고리 몫 보유 여부 — 몫이 있으면 참, 없거나 결제수단 몫뿐이면 거짓")
+    void allocates_category_only_for_category_allocations() {
+        Budget budget = emptyBudget(TransactionType.EXPENSE);
+        budget.replaceAmounts(
+                CurrencyCode.KRW,
+                won("1000"),
+                List.of(new GroupAmount(PaymentGroup.CREDIT_CARD, won("600"))),
+                List.of(new CategoryAmount(3L, won("300"))));
+
+        assertThat(budget.allocatesCategory(3L)).isTrue();
+        assertThat(budget.allocatesCategory(4L)).isFalse();
+        assertThat(emptyBudget(TransactionType.EXPENSE).allocatesCategory(3L)).isFalse();
+    }
+
     private static BudgetAllocation allocationOf(Budget budget, PaymentGroup group) {
         return budget.getAllocations().stream()
                 .filter(a -> a.getPaymentGroup() == group)

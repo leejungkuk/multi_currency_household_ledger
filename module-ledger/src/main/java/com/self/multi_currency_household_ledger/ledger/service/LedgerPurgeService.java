@@ -1,5 +1,6 @@
 package com.self.multi_currency_household_ledger.ledger.service;
 
+import com.self.multi_currency_household_ledger.ledger.domain.BudgetRepository;
 import com.self.multi_currency_household_ledger.ledger.domain.CategoryRepository;
 import com.self.multi_currency_household_ledger.ledger.domain.LedgerEntryRepository;
 import io.micrometer.core.instrument.Counter;
@@ -10,22 +11,25 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * 호출 시점까지 커밋된 회원 거래와 그 회원의 커스텀 카테고리를 지운다. 삭제 문 이후 도착한 create/sync는 새 데이터로 남으며,
+ * 호출 시점까지 커밋된 회원 예산·거래와 그 회원의 커스텀 카테고리를 지운다. 삭제 문 이후 도착한 create/sync는 새 데이터로 남으며,
  * purge는 이후 쓰기를 봉인하지 않는다.
  */
 @Service
 public class LedgerPurgeService {
 
+    private final BudgetRepository budgetRepository;
     private final LedgerEntryRepository ledgerEntryRepository;
     private final CategoryRepository categoryRepository;
     private final MeterRegistry meterRegistry;
     private final TransactionTemplate transactionTemplate;
 
     public LedgerPurgeService(
+            BudgetRepository budgetRepository,
             LedgerEntryRepository ledgerEntryRepository,
             CategoryRepository categoryRepository,
             MeterRegistry meterRegistry,
             PlatformTransactionManager transactionManager) {
+        this.budgetRepository = budgetRepository;
         this.ledgerEntryRepository = ledgerEntryRepository;
         this.categoryRepository = categoryRepository;
         this.meterRegistry = meterRegistry;
@@ -34,10 +38,16 @@ public class LedgerPurgeService {
 
     public void purge(UUID memberId) {
         int deletedRows = transactionTemplate.execute(status -> {
+            // 예산 저장·카테고리 detach 와 같은 회원 락으로 줄 세운다 — 첫 쓰기 전에 잡아야 경합 부류가 없어진다.
+            budgetRepository.lockMember(memberId);
             // fk_ledger_category 에 cascade 가 없어 참조 거래가 남아 있으면 카테고리 삭제가 FK 위반이다 — 거래를 먼저 지운다.
             int deletedEntries = ledgerEntryRepository.deleteAllByMemberId(memberId);
             int deletedCategories = categoryRepository.deleteAllByOwnerMemberId(memberId);
-            return deletedEntries + deletedCategories;
+            // 예산은 맨 뒤에 지운다 — auth.users 삭제 cascade 가 category → budget 순으로 잠그므로, budget 을 먼저 잠그면 같은
+            // 회원의 탈퇴와 동시에 돌 때 교착(40P01)이 난다. 커스텀 카테고리 몫은 category_id cascade 로 이미 지워졌고,
+            // 남은 행(시스템 카테고리·결제수단 몫 포함)을 여기서 지운다.
+            int deletedBudgets = budgetRepository.deleteAllByMemberId(memberId);
+            return deletedBudgets + deletedEntries + deletedCategories;
         });
         String result = deletedRows > 0 ? "deleted" : "noop";
         Counter.builder("woni.ledger.purge")

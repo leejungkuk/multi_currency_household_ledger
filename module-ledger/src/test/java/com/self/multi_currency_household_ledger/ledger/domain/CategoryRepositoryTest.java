@@ -6,6 +6,7 @@ import static org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTest
 import com.self.multi_currency_household_ledger.ledger.AuthUserFixture;
 import com.self.multi_currency_household_ledger.ledger.TestJpaConfig;
 import com.self.multi_currency_household_ledger.ledger.TestLedgerApplication;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -186,6 +187,37 @@ class CategoryRepositoryTest {
         assertThat(categoryRepository.findById(inactive.getId())).isEmpty();
         assertThat(categoryRepository.findById(otherMember.getId())).isPresent();
         assertThat(systemCategoryCount()).isEqualTo(systemCategoriesBefore);
+    }
+
+    @Test
+    @DisplayName("고아 정리는 예산 몫이 참조하는 비활성 카테고리를 남기고, 참조 없는 비활성 카테고리만 지운다")
+    void delete_orphaned_inactive_keeps_categories_referenced_by_budget_allocation() {
+        Category referenced = Category.custom(MEMBER_A, TransactionType.EXPENSE, "지난 달 몫", null);
+        referenced.deactivate();
+        categoryRepository.saveAndFlush(referenced);
+        Category orphan = Category.custom(MEMBER_A, TransactionType.EXPENSE, "고아", null);
+        orphan.deactivate();
+        categoryRepository.saveAndFlush(orphan);
+        Long budgetId = jdbcTemplate.queryForObject(
+                """
+                insert into budget (member_id, axis, kind, month, currency_code, total_amount, created_at, updated_at)
+                values (?, 'EXPENSE', 'MONTH', date '2026-08-01', 'KRW', 1000, now(), now()) returning id
+                """,
+                Long.class,
+                MEMBER_A);
+        jdbcTemplate.update(
+                "insert into budget_allocation (budget_id, category_id, amount) values (?, ?, 100)",
+                budgetId,
+                referenced.getId());
+
+        int deleted = categoryRepository.deleteOrphanedInactive(MEMBER_A, LocalDateTime.of(2999, 1, 1, 0, 0));
+
+        assertThat(deleted).isEqualTo(1);
+        assertThat(categoryRepository.findById(orphan.getId())).isEmpty();
+        assertThat(categoryRepository.findById(referenced.getId())).isPresent();
+        assertThat(jdbcTemplate.queryForObject(
+                        "select count(*) from budget_allocation where category_id = ?", Long.class, referenced.getId()))
+                .isEqualTo(1L);
     }
 
     private long systemCategoryCount() {

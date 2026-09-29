@@ -11,6 +11,7 @@ import com.self.multi_currency_household_ledger.ledger.TestLedgerApplication;
 import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.YearMonth;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -187,6 +188,77 @@ class BudgetRepositoryTest {
         assertThat(budgetRowCount(MEMBER_A)).isZero();
         assertThat(budgetRowCount(MEMBER_B)).isEqualTo(1);
         assertThat(allocationCount()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("카테고리 몫 삭제는 그 회원의 month ≥ C 행에서 그 카테고리 몫만 지우고 이전 달·다른 카테고리·다른 회원은 남긴다")
+    void delete_category_allocations_from_is_scoped_to_member_month_and_category() {
+        long target = 1L;
+        long other = 2L;
+        budgetRepository.save(budget(
+                MEMBER_A,
+                TransactionType.EXPENSE,
+                BudgetKind.DEFAULT,
+                SEPTEMBER.minusMonths(1),
+                categoryAmounts(target)));
+        budgetRepository.save(
+                budget(MEMBER_A, TransactionType.EXPENSE, BudgetKind.MONTH, SEPTEMBER, categoryAmounts(target, other)));
+        budgetRepository.save(budget(
+                MEMBER_A,
+                TransactionType.EXPENSE,
+                BudgetKind.DEFAULT,
+                SEPTEMBER.plusMonths(1),
+                categoryAmounts(target)));
+        budgetRepository.save(
+                budget(MEMBER_B, TransactionType.EXPENSE, BudgetKind.MONTH, SEPTEMBER, categoryAmounts(target)));
+        entityManager.flush();
+
+        int deleted = budgetRepository.deleteCategoryAllocationsFrom(MEMBER_A, target, SEPTEMBER.atDay(1));
+
+        assertThat(deleted).isEqualTo(2);
+        assertThat(categoryAllocationMonths(MEMBER_A, target)).containsExactly("2026-08-01");
+        assertThat(categoryAllocationMonths(MEMBER_A, other)).containsExactly("2026-09-01");
+        assertThat(categoryAllocationMonths(MEMBER_B, target)).containsExactly("2026-09-01");
+    }
+
+    @Test
+    @DisplayName("C 이전 최신 DEFAULT 조회는 그 회원·축의 month < C 중 가장 늦은 DEFAULT 만 고른다")
+    void find_latest_default_before_picks_latest_earlier_default_of_member_axis() {
+        budgetRepository.save(
+                budget(MEMBER_A, TransactionType.EXPENSE, BudgetKind.DEFAULT, SEPTEMBER.minusMonths(3), List.of()));
+        Budget latest = budgetRepository.save(
+                budget(MEMBER_A, TransactionType.EXPENSE, BudgetKind.DEFAULT, SEPTEMBER.minusMonths(1), List.of()));
+        budgetRepository.save(budget(MEMBER_A, TransactionType.EXPENSE, BudgetKind.DEFAULT, SEPTEMBER, List.of()));
+        budgetRepository.save(
+                budget(MEMBER_A, TransactionType.EXPENSE, BudgetKind.MONTH, SEPTEMBER.minusMonths(1), List.of()));
+        budgetRepository.save(
+                budget(MEMBER_A, TransactionType.INCOME, BudgetKind.DEFAULT, SEPTEMBER.minusMonths(1), List.of()));
+        entityManager.flush();
+
+        assertThat(budgetRepository.findFirstByMemberIdAndAxisAndKindAndMonthLessThanOrderByMonthDesc(
+                        MEMBER_A, TransactionType.EXPENSE, BudgetKind.DEFAULT, SEPTEMBER.atDay(1)))
+                .map(Budget::getId)
+                .contains(latest.getId());
+        assertThat(budgetRepository.findFirstByMemberIdAndAxisAndKindAndMonthLessThanOrderByMonthDesc(
+                        MEMBER_B, TransactionType.EXPENSE, BudgetKind.DEFAULT, SEPTEMBER.atDay(1)))
+                .isEmpty();
+    }
+
+    private static List<BudgetAllocation> categoryAmounts(long... categoryIds) {
+        return Arrays.stream(categoryIds)
+                .mapToObj(id -> BudgetAllocation.forCategory(id, new BigDecimal("100.00")))
+                .toList();
+    }
+
+    private List<String> categoryAllocationMonths(UUID memberId, long categoryId) {
+        return jdbcTemplate.queryForList(
+                """
+                select cast(b.month as text) from budget_allocation a join budget b on b.id = a.budget_id
+                where b.member_id = ? and a.category_id = ? order by b.month
+                """,
+                String.class,
+                memberId,
+                categoryId);
     }
 
     private static Budget budget(
