@@ -1,6 +1,7 @@
 package com.self.multi_currency_household_ledger.ledger.domain;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -25,6 +26,16 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
     @Query(
             "select c from Category c where c.id = :id and c.isActive = true and (c.ownerMemberId is null or c.ownerMemberId = :memberId)")
     Optional<Category> findUsableCategory(@Param("id") Long id, @Param("memberId") UUID memberId);
+
+    // 예산 몫 쓰기 검증 — findUsableCategory 와 같은 술어를 id 목록으로 한 번에 건다.
+    @Query(
+            "select c from Category c where c.id in :ids and c.isActive = true and (c.ownerMemberId is null or c.ownerMemberId = :memberId)")
+    List<Category> findUsableByIds(@Param("memberId") UUID memberId, @Param("ids") Collection<Long> ids);
+
+    // 예산 몫 표시용 — 삭제(비활성)된 카테고리도 지난 달 몫에 이름을 보여야 하므로 isActive 를 걸지 않는다.
+    @Query(
+            "select c from Category c where c.id in :ids and (c.ownerMemberId is null or c.ownerMemberId = :memberId) order by c.sortOrder asc, c.id asc")
+    List<Category> findVisibleByIds(@Param("memberId") UUID memberId, @Param("ids") Collection<Long> ids);
 
     // 시스템 카테고리는 owner_member_id 가 null 이라 등가 비교에 매칭되지 않는다.
     // JPQL bulk delete 전 flush 로 변경을 선반영하고 삭제 후 컨텍스트를 비워 stale 엔티티를 남기지 않는다.

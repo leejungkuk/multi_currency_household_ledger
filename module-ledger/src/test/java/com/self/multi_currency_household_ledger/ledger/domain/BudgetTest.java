@@ -277,6 +277,23 @@ class BudgetTest {
         assertThat(budget.getAllocations()).hasSize(1);
     }
 
+    @Test
+    @DisplayName("몫 카테고리는 축과 같은 거래 타입이어야 한다 — 같으면 통과, 다르면 BUDGET_INVALID_ALLOCATION")
+    void allocatable_categories_must_match_axis() {
+        Budget expense = emptyBudget(TransactionType.EXPENSE);
+        Category expenseCategory = Category.custom(UUID.randomUUID(), TransactionType.EXPENSE, "반려견", "🐶");
+        Category incomeCategory = Category.custom(UUID.randomUUID(), TransactionType.INCOME, "부수입", "💰");
+
+        expense.requireAllocatable(List.of(expenseCategory));
+
+        assertCode(
+                () -> expense.requireAllocatable(List.of(expenseCategory, incomeCategory)),
+                BudgetErrorCode.BUDGET_INVALID_ALLOCATION);
+        assertCode(
+                () -> emptyBudget(TransactionType.INCOME).requireAllocatable(List.of(expenseCategory)),
+                BudgetErrorCode.BUDGET_INVALID_ALLOCATION);
+    }
+
     private static BudgetAllocation allocationOf(Budget budget, PaymentGroup group) {
         return budget.getAllocations().stream()
                 .filter(a -> a.getPaymentGroup() == group)

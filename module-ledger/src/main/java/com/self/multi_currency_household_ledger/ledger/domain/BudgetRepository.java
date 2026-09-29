@@ -39,6 +39,13 @@ public interface BudgetRepository extends JpaRepository<Budget, Long> {
 
     boolean existsByMemberIdAndTotalAmountIsNotNull(UUID memberId);
 
+    // 예산 쓰기 경로의 회원 단위 직렬화(DESIGN §2). 트랜잭션이 끝나면 풀린다. THIS_MONTH·FROM_THIS_MONTH 는 서로 다른 행을
+    // 쓰므로 행 락이나 @Version 으로는 잡히지 않는다.
+    @Query(
+            value = "select 1 from pg_advisory_xact_lock(hashtext('budget:' || cast(:memberId as text)))",
+            nativeQuery = true)
+    int lockMember(@Param("memberId") UUID memberId);
+
     // purge 전용. 몫은 budget_id 의 DB cascade 로 지워진다.
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("delete from Budget b where b.memberId = :memberId")

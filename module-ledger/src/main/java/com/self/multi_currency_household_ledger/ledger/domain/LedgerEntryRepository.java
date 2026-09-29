@@ -68,6 +68,24 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, Long> 
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate);
 
+    // 예산 실제 금액은 거래마다 한 번 환산하므로 행 단위로 읽는다(날짜별로 미리 합치지 않는다).
+    @Query(
+            """
+            select new com.self.multi_currency_household_ledger.ledger.domain.BudgetTransaction(
+                       entry.currencyCode, entry.originalAmount, entry.krwAmount, entry.transactionDate,
+                       entry.category.id, entry.asset.id)
+            from LedgerEntry entry
+            where entry.memberId = :memberId
+              and entry.transactionType = :transactionType
+              and entry.transactionDate >= :startDate
+              and entry.transactionDate < :endDate
+            """)
+    List<BudgetTransaction> findBudgetTransactions(
+            @Param("memberId") UUID memberId,
+            @Param("transactionType") TransactionType transactionType,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate);
+
     @Query(
             """
             select entry.currencyCode as currencyCode,

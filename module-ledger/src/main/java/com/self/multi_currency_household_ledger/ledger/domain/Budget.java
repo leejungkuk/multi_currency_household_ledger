@@ -18,6 +18,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
@@ -147,6 +148,15 @@ public class Budget extends BaseEntity {
         }
         groups.forEach((group, amount) -> attach(BudgetAllocation.forPaymentGroup(group, amount)));
         categories.forEach((categoryId, amount) -> attach(BudgetAllocation.forCategory(categoryId, amount)));
+    }
+
+    /** 몫 카테고리는 이 축과 같은 거래 타입이어야 한다. */
+    public void requireAllocatable(Collection<Category> categories) {
+        for (Category category : categories) {
+            if (category.getTransactionType() != axis) {
+                throw new BusinessException(BudgetErrorCode.BUDGET_INVALID_ALLOCATION);
+            }
+        }
     }
 
     public void turnOff() {
