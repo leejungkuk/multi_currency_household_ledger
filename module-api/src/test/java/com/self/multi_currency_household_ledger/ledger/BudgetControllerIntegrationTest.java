@@ -289,6 +289,30 @@ class BudgetControllerIntegrationTest {
     }
 
     @Test
+    @DisplayName("몫만 바뀐 저장·같은 값 재저장·끔 재저장도 budget.updated_at 을 갱신한다 — 익명 정리의 활동 술어가 이 값을 본다")
+    void every_successful_save_touches_budget_updated_at() throws Exception {
+        String creditCard =
+                """
+                {"applyTo":"THIS_MONTH","amounts":{"currency":"KRW","totalAmount":100000,
+                 "paymentGroupAmounts":[{"paymentGroup":"CREDIT_CARD","amount":%d}]}}""";
+        save(MEMBER_A, "EXPENSE", SEPTEMBER, creditCard.formatted(50000)).andExpect(status().isOk());
+
+        // auditing 은 서버 Clock 이 아니라 벽시계를 쓴다 — 저장 사이에 시간이 흐른 것을 행을 과거로 돌려 만든다.
+        ageBudgetRows(MEMBER_A);
+        save(MEMBER_A, "EXPENSE", SEPTEMBER, creditCard.formatted(60000)).andExpect(status().isOk());
+        assertThat(budgetTouched(MEMBER_A)).isTrue();
+
+        ageBudgetRows(MEMBER_A);
+        save(MEMBER_A, "EXPENSE", SEPTEMBER, creditCard.formatted(60000)).andExpect(status().isOk());
+        assertThat(budgetTouched(MEMBER_A)).isTrue();
+
+        save(MEMBER_A, "EXPENSE", SEPTEMBER, offBody("THIS_MONTH")).andExpect(status().isOk());
+        ageBudgetRows(MEMBER_A);
+        save(MEMBER_A, "EXPENSE", SEPTEMBER, offBody("THIS_MONTH")).andExpect(status().isOk());
+        assertThat(budgetTouched(MEMBER_A)).isTrue();
+    }
+
+    @Test
     @DisplayName("다른 축의 카테고리 몫은 BUDGET_INVALID_ALLOCATION, 전체 없는 금액 세트는 BUDGET_TOTAL_REQUIRED")
     void invalid_amounts_are_rejected_with_codes() throws Exception {
         save(MEMBER_A, "EXPENSE", SEPTEMBER, categoryBudget("THIS_MONTH", INCOME_CATEGORY_ID, 1000))
@@ -563,6 +587,20 @@ class BudgetControllerIntegrationTest {
 
     private long budgetRowCount(UUID memberId) {
         return jdbcTemplate.queryForObject("select count(*) from budget where member_id = ?", Long.class, memberId);
+    }
+
+    private void ageBudgetRows(UUID memberId) {
+        jdbcTemplate.update(
+                "update budget set updated_at = timestamp '2000-01-01 00:00:00' where member_id = ?", memberId);
+    }
+
+    /** 회원의 예산 행이 1개이고 그 updated_at 이 {@link #ageBudgetRows} 이후로 갱신됐는가. */
+    private boolean budgetTouched(UUID memberId) {
+        return jdbcTemplate.queryForObject(
+                "select bool_and(updated_at > timestamp '2000-01-01 00:00:00') and count(*) = 1"
+                        + " from budget where member_id = ?",
+                Boolean.class,
+                memberId);
     }
 
     private long allocationCount(UUID memberId) {

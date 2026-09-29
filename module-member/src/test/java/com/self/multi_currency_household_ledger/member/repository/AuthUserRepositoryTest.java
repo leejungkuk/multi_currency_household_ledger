@@ -107,8 +107,10 @@ class AuthUserRepositoryTest {
         assertThat(sql).contains("s.user_id = u.id");
         assertThat(sql).contains("e.member_id = u.id");
         assertThat(sql).contains("c.owner_member_id = u.id");
+        assertThat(sql).contains("b.member_id = u.id");
         assertThat(sql).contains("e.updated_at >= :cutoffLocal");
         assertThat(sql).contains("coalesce(c.updated_at, c.created_at, 'infinity') >= :cutoffLocal");
+        assertThat(sql).contains("coalesce(b.updated_at, 'infinity') >= :cutoffLocal");
         assertThat(sql).contains("coalesce(s.updated_at, s.created_at) >= :cutoffInstant");
         // 금지 컬럼: refreshed_at 은 naive 라 cutoff 가 3종이 되고, deleted_at 은 우리가 만들지 않는 상태다.
         assertThat(sql).doesNotContain("refreshed_at");

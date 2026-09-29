@@ -145,6 +145,37 @@ class AnonymousAccountCleanupIntegrationTest {
     }
 
     @Test
+    @DisplayName("거래 없이 예산만 최근에 고친 익명 계정은 보존하고, 예산이 오래된 계정은 예산째 지운다")
+    void preserves_account_with_a_recent_budget_and_deletes_one_with_only_a_stale_budget() {
+        abandonedAnonymous(MEMBER_A);
+        insertBudgetWithAllocation(MEMBER_A, FRESH);
+        abandonedAnonymous(MEMBER_B);
+        insertBudgetWithAllocation(MEMBER_B, STALE);
+
+        SimpleMeterRegistry registry = runCleanup(true, BATCH_LIMIT);
+
+        assertThat(authUserCount(MEMBER_A)).isEqualTo(1L);
+        assertThat(budgetCount(MEMBER_A)).isEqualTo(1L);
+        assertThat(authUserCount(MEMBER_B)).isZero();
+        assertThat(budgetCount(MEMBER_B)).isZero();
+        assertThat(budgetAllocationCount()).isEqualTo(1L); // A 의 몫만 남는다
+        assertThat(counter(registry, "deleted")).isEqualTo(1.0);
+    }
+
+    @Test
+    @DisplayName("updated_at 이 NULL 인 예산을 가진 계정은 보존한다")
+    void preserves_account_with_a_timestampless_budget() {
+        abandonedAnonymous(MEMBER_A);
+        insertBudgetWithAllocation(MEMBER_A, null);
+        abandonedAnonymous(MEMBER_B);
+
+        runCleanup(true, BATCH_LIMIT);
+
+        assertThat(authUserCount(MEMBER_A)).isEqualTo(1L);
+        assertThat(authUserCount(MEMBER_B)).isZero();
+    }
+
+    @Test
     @DisplayName("A4 영구(가입) 계정은 모든 흔적이 아무리 오래돼도 삭제 대상이 아니다")
     void never_deletes_a_permanent_account_however_old_it_is() {
         authUsers.insertUser(MEMBER_A, false, STALE, STALE, STALE);
@@ -227,11 +258,12 @@ class AnonymousAccountCleanupIntegrationTest {
         abandonedAnonymous(MEMBER_B);
         insertLedgerEntry(MEMBER_B, FRESH);
         insertCustomCategory(MEMBER_B, FRESH);
+        insertBudgetWithAllocation(MEMBER_B, FRESH);
         authUsers.insertSession(MEMBER_B, FRESH, FRESH);
 
         SimpleMeterRegistry registry = runCleanup(true, BATCH_LIMIT);
 
-        // 상관 술어(s.user_id = u.id · e.member_id = u.id · c.owner_member_id = u.id)가 빠지면
+        // 상관 술어(s.user_id = u.id · e.member_id = u.id · c.owner_member_id = u.id · b.member_id = u.id)가 빠지면
         // 이웃 B 의 활동이 A 까지 가려 매일 0건만 지우는 무음 실패가 된다.
         assertThat(authUserCount(MEMBER_A)).isZero();
         assertThat(authUserCount(MEMBER_B)).isEqualTo(1L);
@@ -362,6 +394,25 @@ class AnonymousAccountCleanupIntegrationTest {
                 ownerMemberId);
     }
 
+    /** 예산 행과 결제수단 몫 1개를 넣는다. {@code at} 이 null 이면 감사 컬럼 없이 넣는다. */
+    private void insertBudgetWithAllocation(UUID memberId, Instant at) {
+        LocalDateTime audit = at == null ? null : local(at);
+        Long budgetId = jdbcTemplate.queryForObject(
+                """
+                insert into budget (member_id, axis, kind, month, currency_code, total_amount, created_at, updated_at)
+                values (?, 'EXPENSE', 'DEFAULT', ?, 'KRW', 100000.00, ?, ?)
+                returning id
+                """,
+                Long.class,
+                memberId,
+                LocalDate.of(2025, 1, 1),
+                audit,
+                audit);
+        jdbcTemplate.update(
+                "insert into budget_allocation (budget_id, payment_group, amount) values (?, 'CREDIT_CARD', 50000.00)",
+                budgetId);
+    }
+
     /** naive {@code timestamp(6)} 감사 컬럼은 JVM 기본 존으로 기록되므로 서비스의 cutoffLocal 과 같은 변환을 쓴다. */
     private static LocalDateTime local(Instant instant) {
         return LocalDateTime.ofInstant(instant, ZoneId.systemDefault());
@@ -397,6 +448,17 @@ class AnonymousAccountCleanupIntegrationTest {
     private long customCategoryCount(UUID memberId) {
         Long count = jdbcTemplate.queryForObject(
                 "select count(*) from category where owner_member_id = ?", Long.class, memberId);
+        return count == null ? 0L : count;
+    }
+
+    private long budgetCount(UUID memberId) {
+        Long count =
+                jdbcTemplate.queryForObject("select count(*) from budget where member_id = ?", Long.class, memberId);
+        return count == null ? 0L : count;
+    }
+
+    private long budgetAllocationCount() {
+        Long count = jdbcTemplate.queryForObject("select count(*) from budget_allocation", Long.class);
         return count == null ? 0L : count;
     }
 

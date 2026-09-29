@@ -148,6 +148,8 @@ public class Budget extends BaseEntity {
         }
         groups.forEach((group, amount) -> attach(BudgetAllocation.forPaymentGroup(group, amount)));
         categories.forEach((categoryId, amount) -> attach(BudgetAllocation.forCategory(categoryId, amount)));
+        // 몫만 바뀌면 이 행은 더럽혀지지 않는다 — 익명 정리의 활동 술어가 budget.updated_at 을 보므로 저장마다 갱신한다.
+        markModified();
     }
 
     /** 몫 카테고리는 이 축과 같은 거래 타입이어야 한다. */
@@ -179,6 +181,7 @@ public class Budget extends BaseEntity {
         this.currencyCode = null;
         this.totalAmount = null;
         allocations.clear();
+        markModified();
     }
 
     private void attach(BudgetAllocation allocation) {
