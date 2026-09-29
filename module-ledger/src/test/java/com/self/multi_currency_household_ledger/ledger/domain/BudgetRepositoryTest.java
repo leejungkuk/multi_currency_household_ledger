@@ -204,5 +204,4 @@ class BudgetRepositoryTest {
         Integer count = jdbcTemplate.queryForObject("select count(*) from budget_allocation", Integer.class);
         return count == null ? 0 : count;
     }
-
 }

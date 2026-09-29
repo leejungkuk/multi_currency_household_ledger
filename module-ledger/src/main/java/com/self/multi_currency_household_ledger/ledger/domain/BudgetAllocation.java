@@ -58,4 +58,8 @@ public class BudgetAllocation {
     void attachTo(Budget budget) {
         this.budget = budget;
     }
+
+    void changeAmount(BigDecimal amount) {
+        this.amount = amount;
+    }
 }
