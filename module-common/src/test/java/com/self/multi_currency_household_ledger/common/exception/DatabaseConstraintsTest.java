@@ -35,6 +35,24 @@ class DatabaseConstraintsTest {
     }
 
     @Test
+    @DisplayName("예산 회원 FK 는 정확한 이름만 식별하고 기존 검사는 false를 유지한다")
+    void identifies_only_exact_budget_member_foreign_key() {
+        DataIntegrityViolationException exception = constraintViolation("fk_budget_member");
+
+        assertThat(DatabaseConstraints.isBudgetMemberForeignKeyViolation(exception))
+                .isTrue();
+        assertThat(DatabaseConstraints.isLedgerEntryMemberForeignKeyViolation(exception))
+                .isFalse();
+        assertThat(DatabaseConstraints.isCategoryOwnerMemberForeignKeyViolation(exception))
+                .isFalse();
+        assertThat(DatabaseConstraints.isBudgetMemberForeignKeyViolation(
+                        constraintViolation("fk_budget_allocation_whatever")))
+                .isFalse();
+        assertThat(DatabaseConstraints.isBudgetMemberForeignKeyViolation(constraintViolation("fk_budget_member_extra")))
+                .isFalse();
+    }
+
+    @Test
     @DisplayName("cause 사슬이 순환해도 순회가 끝난다")
     void terminates_on_cyclic_cause_chain() {
         SQLException first = new SQLException("first");

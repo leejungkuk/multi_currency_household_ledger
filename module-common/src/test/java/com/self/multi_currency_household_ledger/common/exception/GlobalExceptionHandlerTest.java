@@ -182,6 +182,28 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    @DisplayName("삭제된 회원의 예산 FK 위반도 401 UNAUTHORIZED로 변환된다")
+    void handleDataIntegrityViolation_maps_budget_member_fk_to_401() {
+        ResponseEntity<ErrorResponse> response =
+                handler.handleDataIntegrityViolation(constraintViolation("fk_budget_member"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().code()).isEqualTo("UNAUTHORIZED");
+    }
+
+    @Test
+    @DisplayName("예산 쪽 다른 FK 위반은 401 로 새지 않고 500 이다")
+    void handleDataIntegrityViolation_does_not_map_other_budget_fk_to_401() {
+        ResponseEntity<ErrorResponse> response =
+                handler.handleDataIntegrityViolation(constraintViolation("fk_budget_allocation_whatever"));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().code()).isEqualTo("INTERNAL_ERROR");
+    }
+
+    @Test
     @DisplayName("알 수 없는 무결성 위반은 기존처럼 500을 반환하고 ERROR 로그를 남긴다")
     void handleDataIntegrityViolation_preserves_catch_all_for_unknown_constraint() {
         Logger logger = (Logger) LoggerFactory.getLogger(GlobalExceptionHandler.class);
