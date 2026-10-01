@@ -2,6 +2,7 @@ package com.self.multi_currency_household_ledger.ledger.controller;
 
 import com.self.multi_currency_household_ledger.common.annotation.CurrentMemberId;
 import com.self.multi_currency_household_ledger.common.dto.ApiResponse;
+import com.self.multi_currency_household_ledger.common.exception.ApiErrorCodes;
 import com.self.multi_currency_household_ledger.ledger.dto.MonthlyBudgetResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.SaveBudgetRequest;
 import com.self.multi_currency_household_ledger.ledger.service.BudgetService;
@@ -29,6 +30,7 @@ public class BudgetController {
     private final BudgetService budgetService;
 
     @GetMapping
+    @ApiErrorCodes({})
     public ApiResponse<MonthlyBudgetResponse> getMonthlyBudget(
             @CurrentMemberId UUID memberId,
             @RequestParam("year") @Min(1900) @Max(9999) int year,
@@ -37,6 +39,15 @@ public class BudgetController {
     }
 
     @PutMapping
+    @ApiErrorCodes({
+        "BUDGET_MONTH_OUT_OF_RANGE",
+        "CATEGORY_NOT_FOUND",
+        "BUDGET_INVALID_ALLOCATION",
+        "BUDGET_TOTAL_REQUIRED",
+        "BUDGET_INVALID_AMOUNT",
+        "BUDGET_ALLOCATION_EXCEEDS_TOTAL",
+        "CONCURRENT_MODIFICATION"
+    })
     public ApiResponse<MonthlyBudgetResponse> saveBudget(
             @CurrentMemberId UUID memberId,
             @RequestParam("year") @Min(1900) @Max(9999) int year,
@@ -46,6 +57,7 @@ public class BudgetController {
     }
 
     @DeleteMapping
+    @ApiErrorCodes({"BUDGET_MONTH_OUT_OF_RANGE", "CONCURRENT_MODIFICATION"})
     public ApiResponse<MonthlyBudgetResponse> deleteBudget(
             @CurrentMemberId UUID memberId,
             @RequestParam("year") @Min(1900) @Max(9999) int year,

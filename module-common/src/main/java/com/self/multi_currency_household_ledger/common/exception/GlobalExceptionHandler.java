@@ -8,7 +8,6 @@ import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -44,7 +43,8 @@ public class GlobalExceptionHandler {
                 .reduce((a, b) -> a + ", " + b)
                 .orElse("Validation failed");
         log.warn("Validation exception: {}", message);
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse.of("VALIDATION_ERROR", message));
+        ErrorCode errorCode = ErrorCode.Common.VALIDATION_ERROR;
+        return ResponseEntity.status(errorCode.getHttpStatus()).body(ErrorResponse.of(errorCode.getCode(), message));
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
@@ -54,7 +54,8 @@ public class GlobalExceptionHandler {
                 .reduce((a, b) -> a + ", " + b)
                 .orElse("Validation failed");
         log.warn("Constraint violation exception: {}", message);
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse.of("VALIDATION_ERROR", message));
+        ErrorCode errorCode = ErrorCode.Common.VALIDATION_ERROR;
+        return ResponseEntity.status(errorCode.getHttpStatus()).body(ErrorResponse.of(errorCode.getCode(), message));
     }
 
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
@@ -62,14 +63,16 @@ public class GlobalExceptionHandler {
         String value = e.getValue() != null ? sanitize(e.getValue().toString()) : "null";
         String message = String.format("파라미터 '%s'의 값 '%s'이 올바르지 않습니다.", e.getName(), value);
         log.warn("Type mismatch exception: {}", message);
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse.of("INVALID_PARAMETER", message));
+        ErrorCode errorCode = ErrorCode.Common.INVALID_PARAMETER;
+        return ResponseEntity.status(errorCode.getHttpStatus()).body(ErrorResponse.of(errorCode.getCode(), message));
     }
 
     @ExceptionHandler(MissingServletRequestParameterException.class)
     public ResponseEntity<ErrorResponse> handleMissingParameterException(MissingServletRequestParameterException e) {
         String message = String.format("필수 파라미터 '%s'이 누락되었습니다.", e.getParameterName());
         log.warn("Missing parameter exception: {}", message);
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ErrorResponse.of("INVALID_PARAMETER", message));
+        ErrorCode errorCode = ErrorCode.Common.INVALID_PARAMETER;
+        return ResponseEntity.status(errorCode.getHttpStatus()).body(ErrorResponse.of(errorCode.getCode(), message));
     }
 
     /**
@@ -92,8 +95,9 @@ public class GlobalExceptionHandler {
                 "Malformed request body: cause={}, detail={}",
                 e.getMostSpecificCause().getClass().getSimpleName(),
                 sanitize(String.valueOf(e.getMessage())));
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ErrorResponse.of("MALFORMED_REQUEST", "요청 본문을 읽을 수 없습니다."));
+        ErrorCode errorCode = ErrorCode.Common.MALFORMED_REQUEST;
+        return ResponseEntity.status(errorCode.getHttpStatus())
+                .body(ErrorResponse.of(errorCode.getCode(), errorCode.getMessage()));
     }
 
     /** 낙관적 락 충돌은 클라이언트가 최신 상태를 다시 읽고 재시도하면 해소되므로 500 이 아니라 409 다. */
@@ -141,8 +145,9 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ErrorResponse> handleException(Exception e) {
         // Throwable을 로거에 넘기면 logback이 원문 메시지를 다시 기록해 UUID 마스킹이 무효가 된다.
         log.error("Unexpected exception: {}", maskIdentifiers(e));
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ErrorResponse.of("INTERNAL_ERROR", "서버 내부 오류가 발생했습니다."));
+        ErrorCode errorCode = ErrorCode.Common.INTERNAL_ERROR;
+        return ResponseEntity.status(errorCode.getHttpStatus())
+                .body(ErrorResponse.of(errorCode.getCode(), errorCode.getMessage()));
     }
 
     private static String maskIdentifiers(Throwable e) {

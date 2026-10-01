@@ -18,7 +18,11 @@ public interface ErrorCode {
         REQUEST_BODY_TOO_LARGE("REQUEST_BODY_TOO_LARGE", "요청 본문이 너무 큽니다. 나눠서 보내 주세요.", HttpStatus.CONTENT_TOO_LARGE),
         TOO_MANY_REQUESTS("TOO_MANY_REQUESTS", "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.", HttpStatus.TOO_MANY_REQUESTS),
         CONCURRENT_MODIFICATION(
-                "CONCURRENT_MODIFICATION", "다른 곳에서 먼저 수정되었습니다. 최신 내용을 다시 불러온 뒤 저장해 주세요.", HttpStatus.CONFLICT);
+                "CONCURRENT_MODIFICATION", "다른 곳에서 먼저 수정되었습니다. 최신 내용을 다시 불러온 뒤 저장해 주세요.", HttpStatus.CONFLICT),
+        VALIDATION_ERROR("VALIDATION_ERROR", "입력값이 올바르지 않습니다.", HttpStatus.BAD_REQUEST),
+        INVALID_PARAMETER("INVALID_PARAMETER", "요청 파라미터가 올바르지 않습니다.", HttpStatus.BAD_REQUEST),
+        MALFORMED_REQUEST("MALFORMED_REQUEST", "요청 본문을 읽을 수 없습니다.", HttpStatus.BAD_REQUEST),
+        INTERNAL_ERROR("INTERNAL_ERROR", "서버 내부 오류가 발생했습니다.", HttpStatus.INTERNAL_SERVER_ERROR);
 
         private final String code;
         private final String message;
