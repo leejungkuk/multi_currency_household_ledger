@@ -7,7 +7,12 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.self.multi_currency_household_ledger.common.dto.ErrorResponse;
+import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
+import jakarta.validation.Validation;
+import jakarta.validation.ValidatorFactory;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.sql.SQLException;
@@ -22,6 +27,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.validation.BeanPropertyBindingResult;
+import org.springframework.validation.BindingResult;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.method.annotation.ExceptionHandlerMethodResolver;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
@@ -42,6 +51,38 @@ class GlobalExceptionHandlerTest {
     };
 
     private final GlobalExceptionHandler handler = new GlobalExceptionHandler();
+
+    /** iOS 는 code 로 분기한다. 상수에서 읽은 값끼리 비교하면 상수의 문자열이 바뀌어도 통과하므로 리터럴로 못박는다. */
+    @Test
+    @DisplayName("핸들러가 쓰는 공통 코드 상수는 지금 응답과 같은 코드 문자열·HTTP 상태를 갖는다")
+    void common_codes_keep_wire_values() {
+        assertThat(ErrorCode.Common.VALIDATION_ERROR.getCode()).isEqualTo("VALIDATION_ERROR");
+        assertThat(ErrorCode.Common.VALIDATION_ERROR.getHttpStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(ErrorCode.Common.INVALID_PARAMETER.getCode()).isEqualTo("INVALID_PARAMETER");
+        assertThat(ErrorCode.Common.INVALID_PARAMETER.getHttpStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(ErrorCode.Common.MALFORMED_REQUEST.getCode()).isEqualTo("MALFORMED_REQUEST");
+        assertThat(ErrorCode.Common.MALFORMED_REQUEST.getHttpStatus()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(ErrorCode.Common.INTERNAL_ERROR.getCode()).isEqualTo("INTERNAL_ERROR");
+        assertThat(ErrorCode.Common.INTERNAL_ERROR.getHttpStatus()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+    }
+
+    @Test
+    @DisplayName("DTO 검증 실패는 400 + VALIDATION_ERROR 봉투로, 필드명이 담긴 메시지를 그대로 낸다")
+    void handleMethodArgumentNotValid_returns_400_validation_error_with_field_message() {
+        BindingResult bindingResult = new BeanPropertyBindingResult(new Object(), "request");
+        bindingResult.addError(new FieldError("request", "amount", "must be less than or equal to 99999999"));
+        bindingResult.addError(new FieldError("request", "currency", "must not be null"));
+
+        ResponseEntity<ErrorResponse> response =
+                handler.handleValidationException(new MethodArgumentNotValidException(null, bindingResult));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        ErrorResponse body = response.getBody();
+        assertThat(body).isNotNull();
+        assertThat(body.code()).isEqualTo("VALIDATION_ERROR");
+        assertThat(body.message())
+                .isEqualTo("amount: must be less than or equal to 99999999, currency: must not be null");
+    }
 
     @Test
     @DisplayName("BusinessException(문자열)은 기본 400 + ErrorResponse 봉투로 변환된다")
@@ -237,6 +278,36 @@ class GlobalExceptionHandlerTest {
         ErrorResponse body = response.getBody();
         assertThat(body).isNotNull();
         assertThat(body.code()).isEqualTo("VALIDATION_ERROR");
+        assertThat(body.message()).isEqualTo("Validation failed");
+    }
+
+    /** 실제 Validator 로 위반을 만든다. 메시지를 고정해 실행 로케일과 무관하게 한다. */
+    static class BudgetPeriod {
+        @Min(value = 1900, message = "1900 이상이어야 합니다")
+        int year = 1899;
+
+        @Max(value = 12, message = "12 이하여야 합니다")
+        int month = 13;
+    }
+
+    @Test
+    @DisplayName("ConstraintViolationException 메시지는 위반마다 '경로: 메시지' 를 만들어 ', ' 로 잇는다")
+    void handleConstraintViolationException_joins_property_path_and_message() {
+        Set<ConstraintViolation<BudgetPeriod>> violations;
+        try (ValidatorFactory factory = Validation.buildDefaultValidatorFactory()) {
+            violations = factory.getValidator().validate(new BudgetPeriod());
+        }
+
+        ResponseEntity<ErrorResponse> response =
+                handler.handleConstraintViolationException(new ConstraintViolationException(violations));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        ErrorResponse body = response.getBody();
+        assertThat(body).isNotNull();
+        assertThat(body.code()).isEqualTo("VALIDATION_ERROR");
+        // 예외가 위반을 HashSet 으로 복사하므로 순서는 정해지지 않는다. 두 순서 모두 바디 전체를 리터럴로 못박는다.
+        assertThat(body.message())
+                .isIn("year: 1900 이상이어야 합니다, month: 12 이하여야 합니다", "month: 12 이하여야 합니다, year: 1900 이상이어야 합니다");
     }
 
     @Test
@@ -249,7 +320,7 @@ class GlobalExceptionHandlerTest {
         ErrorResponse body = response.getBody();
         assertThat(body).isNotNull();
         assertThat(body.code()).isEqualTo("INVALID_PARAMETER");
-        assertThat(body.message()).contains("from");
+        assertThat(body.message()).isEqualTo("필수 파라미터 'from'이 누락되었습니다.");
     }
 
     @Test
@@ -291,7 +362,7 @@ class GlobalExceptionHandlerTest {
         ErrorResponse body = response.getBody();
         assertThat(body).isNotNull();
         assertThat(body.code()).isEqualTo("MALFORMED_REQUEST");
-        assertThat(body.message()).isNotBlank();
+        assertThat(body.message()).isEqualTo("요청 본문을 읽을 수 없습니다.");
     }
 
     @Test
@@ -339,6 +410,19 @@ class GlobalExceptionHandlerTest {
                 .doesNotContain("\n")
                 .hasSizeLessThan(250)
                 .contains("IllegalStateException");
+    }
+
+    @Test
+    @DisplayName("파라미터 타입 불일치는 400 + INVALID_PARAMETER 봉투로, 파라미터명과 값이 담긴 메시지를 낸다")
+    void handleTypeMismatchException_returns_400_invalid_parameter() {
+        ResponseEntity<ErrorResponse> response = handler.handleTypeMismatchException(
+                new MethodArgumentTypeMismatchException("XYZ", String.class, "currencyCode", null, null));
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        ErrorResponse body = response.getBody();
+        assertThat(body).isNotNull();
+        assertThat(body.code()).isEqualTo("INVALID_PARAMETER");
+        assertThat(body.message()).isEqualTo("파라미터 'currencyCode'의 값 'XYZ'이 올바르지 않습니다.");
     }
 
     /**
