@@ -23,7 +23,7 @@ public record BudgetLine(
         return new BudgetLine(null, floor(actual, fractionDigits), null, null, null, null);
     }
 
-    static BudgetLine of(TransactionType axis, BigDecimal budget, BigDecimal actual, int fractionDigits) {
+    static BudgetLine of(BigDecimal budget, BigDecimal actual, int fractionDigits) {
         BigDecimal budgetAmount = floor(budget, fractionDigits);
         BigDecimal actualAmount = floor(actual, fractionDigits);
         int comparison = actual.compareTo(budget);
@@ -35,11 +35,10 @@ public record BudgetLine(
         Integer percent = budget.signum() == 0
                 ? null
                 : actual.multiply(HUNDRED).divide(budget, 0, RoundingMode.FLOOR).intValueExact();
-        return new BudgetLine(
-                budgetAmount, actualAmount, status(axis, budget, actual, comparison), percent, remaining, null);
+        return new BudgetLine(budgetAmount, actualAmount, status(budget, actual, comparison), percent, remaining, null);
     }
 
-    private static BudgetStatus status(TransactionType axis, BigDecimal budget, BigDecimal actual, int comparison) {
+    private static BudgetStatus status(BigDecimal budget, BigDecimal actual, int comparison) {
         if (actual.signum() == 0) {
             return BudgetStatus.NONE;
         }
@@ -47,8 +46,7 @@ public record BudgetLine(
             return BudgetStatus.REACHED;
         }
         // 80% 이상 판정은 나누지 않고 actual × 100 ≥ budget × 80 으로 한다(나눗셈 반올림이 경계를 흐리지 않게).
-        if (axis == TransactionType.EXPENSE
-                && actual.multiply(HUNDRED).compareTo(budget.multiply(NEAR_LIMIT_PERCENT)) >= 0) {
+        if (actual.multiply(HUNDRED).compareTo(budget.multiply(NEAR_LIMIT_PERCENT)) >= 0) {
             return BudgetStatus.NEAR_LIMIT;
         }
         return BudgetStatus.IN_PROGRESS;

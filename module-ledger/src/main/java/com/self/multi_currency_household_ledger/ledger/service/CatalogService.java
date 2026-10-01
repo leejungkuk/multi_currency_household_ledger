@@ -42,7 +42,6 @@ public class CatalogService {
 
     private final CategoryRepository categoryRepository;
     private final AssetRepository assetRepository;
-    private final BudgetService budgetService;
     private final Clock clock;
 
     public List<CategoryResponse> getCategories(TransactionType transactionType) {
@@ -116,12 +115,7 @@ public class CatalogService {
         Category category = categoryRepository
                 .findByIdAndOwnerMemberId(categoryId, memberId)
                 .orElseThrow(() -> new BusinessException(LedgerErrorCode.CATEGORY_NOT_FOUND));
-        // 앱 경로(예산 저장·되돌리기·purge·이 삭제)는 모두 회원 advisory 락을 첫 락으로 잡아 서로 줄 선다 — 그래서 category 를
-        // advisory 보다 먼저 잠그면 advisory → category 순인 purge 와 교착한다. advisory 뒤에는 category 를 몫보다 먼저 잠가
-        // category → 몫 순인 auth.users 삭제 cascade 와 방향을 맞춘다. 탈퇴는 advisory 를 잡지 않아 드문 교착이 남는다(DESIGN §7).
-        budgetService.lockMember(memberId);
+        // 예산 몫은 건드리지 않는다. category 행 하나만 잠그므로 어떤 경로와도 순환이 없어 회원 예산 락을 잡지 않는다(DESIGN §6).
         category.deactivate();
-        categoryRepository.flush();
-        budgetService.detachCategory(memberId, categoryId);
     }
 }

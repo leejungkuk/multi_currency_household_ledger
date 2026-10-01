@@ -12,7 +12,7 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * 적용 금액 세트와 그 달 그 축의 거래로 계산한 예산 값(계약 §3 의 BudgetAxisResponse 중 금액 부분). 규칙은 요구사항 §3 이다.
+ * 그 달의 금액 세트와 지출 거래로 계산한 예산 값(MonthlyBudgetResponse 의 금액 부분). 규칙은 요구사항 §3 이다.
  *
  * <ul>
  *   <li>거래마다 예산 통화로 한 번 환산한다. 같은 통화면 originalAmount, KRW 예산이면 krwAmount, 그 밖엔 krw × unit ÷ tts 를 scale 10
@@ -39,13 +39,12 @@ public record BudgetEvaluation(
     public record DailyAllowance(BigDecimal amount, boolean exceeded) {}
 
     /**
-     * 한 축의 예산 값을 계산한다.
+     * 그 달의 예산 값을 계산한다.
      *
      * @param timeline 예산 통화의 tts. KRW 예산이면 쓰지 않으므로 null 이어도 된다.
      * @param remainingDaysIncludingToday 이번 달이면 오늘 포함 남은 일수, 아니면 null(하루 권장액 없음).
      */
     public static BudgetEvaluation evaluate(
-            TransactionType axis,
             BudgetAmounts amounts,
             List<BudgetTransaction> transactions,
             TtsTimeline timeline,
@@ -74,26 +73,22 @@ public record BudgetEvaluation(
             }
         }
 
-        BudgetLine total = BudgetLine.of(axis, amounts.total(), totalActual, digits);
+        BudgetLine total = BudgetLine.of(amounts.total(), totalActual, digits);
 
         Map<PaymentGroup, BudgetLine> groups = new EnumMap<>(PaymentGroup.class);
-        if (axis == TransactionType.EXPENSE) {
-            for (PaymentGroup group : PaymentGroup.values()) {
-                BigDecimal actual = groupActual.getOrDefault(group, BigDecimal.ZERO);
-                BigDecimal budget = amounts.paymentGroupAmounts().get(group);
-                groups.put(
-                        group,
-                        budget == null
-                                ? BudgetLine.actualOnly(actual, digits)
-                                : BudgetLine.of(axis, budget, actual, digits));
-            }
+        for (PaymentGroup group : PaymentGroup.values()) {
+            BigDecimal actual = groupActual.getOrDefault(group, BigDecimal.ZERO);
+            BigDecimal budget = amounts.paymentGroupAmounts().get(group);
+            groups.put(
+                    group,
+                    budget == null ? BudgetLine.actualOnly(actual, digits) : BudgetLine.of(budget, actual, digits));
         }
 
         Map<Long, BudgetLine> categories = new LinkedHashMap<>();
         amounts.categoryAmounts()
                 .forEach((categoryId, budget) -> categories.put(
                         categoryId,
-                        BudgetLine.of(axis, budget, categoryActual.getOrDefault(categoryId, BigDecimal.ZERO), digits)));
+                        BudgetLine.of(budget, categoryActual.getOrDefault(categoryId, BigDecimal.ZERO), digits)));
 
         BigDecimal groupUnallocated = unallocated(amounts.total(), amounts.paymentGroupAmounts(), digits);
         BigDecimal categoryUnallocated = unallocated(amounts.total(), amounts.categoryAmounts(), digits);
@@ -108,7 +103,7 @@ public record BudgetEvaluation(
                 categoryUnallocated,
                 categoryUnallocated == null,
                 missingRateCount,
-                dailyAllowance(axis, amounts.total(), totalActual, total, remainingDaysIncludingToday, digits));
+                dailyAllowance(amounts.total(), totalActual, total, remainingDaysIncludingToday, digits));
     }
 
     private static Optional<BigDecimal> convert(
@@ -132,13 +127,8 @@ public record BudgetEvaluation(
     }
 
     private static DailyAllowance dailyAllowance(
-            TransactionType axis,
-            BigDecimal budget,
-            BigDecimal actual,
-            BudgetLine total,
-            Integer remainingDaysIncludingToday,
-            int digits) {
-        if (axis != TransactionType.EXPENSE || remainingDaysIncludingToday == null) {
+            BigDecimal budget, BigDecimal actual, BudgetLine total, Integer remainingDaysIncludingToday, int digits) {
+        if (remainingDaysIncludingToday == null) {
             return null;
         }
         if (total.status() == BudgetStatus.EXCEEDED) {

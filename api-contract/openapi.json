@@ -371,131 +371,6 @@
                 },
                 "type": "object"
             },
-            "BudgetAmountsRequest": {
-                "properties": {
-                    "categoryAmounts": {
-                        "items": {
-                            "$ref": "#/components/schemas/CategoryAmountRequest"
-                        },
-                        "maxItems": 100,
-                        "minItems": 0,
-                        "type": "array"
-                    },
-                    "currency": {
-                        "enum": [
-                            "KRW",
-                            "USD",
-                            "EUR",
-                            "JPY",
-                            "CNY",
-                            "GBP",
-                            "THB",
-                            "HKD",
-                            "SGD",
-                            "IDR",
-                            "MYR",
-                            "AUD",
-                            "NZD"
-                        ],
-                        "type": "string"
-                    },
-                    "paymentGroupAmounts": {
-                        "items": {
-                            "$ref": "#/components/schemas/PaymentGroupAmountRequest"
-                        },
-                        "type": "array"
-                    },
-                    "totalAmount": {
-                        "type": "number"
-                    }
-                },
-                "required": [
-                    "currency"
-                ],
-                "type": "object"
-            },
-            "BudgetAxisResponse": {
-                "properties": {
-                    "categories": {
-                        "items": {
-                            "$ref": "#/components/schemas/BudgetCategoryLine"
-                        },
-                        "type": "array"
-                    },
-                    "categoryAllocationExceeded": {
-                        "type": "boolean"
-                    },
-                    "categoryUnallocatedAmount": {
-                        "type": "number"
-                    },
-                    "currency": {
-                        "enum": [
-                            "KRW",
-                            "USD",
-                            "EUR",
-                            "JPY",
-                            "CNY",
-                            "GBP",
-                            "THB",
-                            "HKD",
-                            "SGD",
-                            "IDR",
-                            "MYR",
-                            "AUD",
-                            "NZD"
-                        ],
-                        "type": "string"
-                    },
-                    "dailyAllowance": {
-                        "$ref": "#/components/schemas/DailyAllowance"
-                    },
-                    "missingRateCount": {
-                        "format": "int32",
-                        "type": "integer"
-                    },
-                    "otherCategoriesActualAmount": {
-                        "type": "number"
-                    },
-                    "paymentGroupAllocationExceeded": {
-                        "type": "boolean"
-                    },
-                    "paymentGroupUnallocatedAmount": {
-                        "type": "number"
-                    },
-                    "paymentGroups": {
-                        "items": {
-                            "$ref": "#/components/schemas/BudgetPaymentGroupLine"
-                        },
-                        "type": "array"
-                    },
-                    "source": {
-                        "enum": [
-                            "DEFAULT",
-                            "DEFAULT_OFF",
-                            "MONTH_VALUE",
-                            "MONTH_OFF",
-                            "NOT_SET"
-                        ],
-                        "type": "string"
-                    },
-                    "status": {
-                        "enum": [
-                            "NOT_SET",
-                            "OFF",
-                            "NONE",
-                            "IN_PROGRESS",
-                            "NEAR_LIMIT",
-                            "REACHED",
-                            "EXCEEDED"
-                        ],
-                        "type": "string"
-                    },
-                    "total": {
-                        "$ref": "#/components/schemas/BudgetLine"
-                    }
-                },
-                "type": "object"
-            },
             "BudgetCategoryLine": {
                 "properties": {
                     "actualAmount": {
@@ -523,7 +398,6 @@
                     "status": {
                         "enum": [
                             "NOT_SET",
-                            "OFF",
                             "NONE",
                             "IN_PROGRESS",
                             "NEAR_LIMIT",
@@ -556,7 +430,6 @@
                     "status": {
                         "enum": [
                             "NOT_SET",
-                            "OFF",
                             "NONE",
                             "IN_PROGRESS",
                             "NEAR_LIMIT",
@@ -597,7 +470,6 @@
                     "status": {
                         "enum": [
                             "NOT_SET",
-                            "OFF",
                             "NONE",
                             "IN_PROGRESS",
                             "NEAR_LIMIT",
@@ -1207,6 +1079,36 @@
             },
             "MonthlyBudgetResponse": {
                 "properties": {
+                    "categories": {
+                        "items": {
+                            "$ref": "#/components/schemas/BudgetCategoryLine"
+                        },
+                        "type": "array"
+                    },
+                    "categoryAllocationExceeded": {
+                        "type": "boolean"
+                    },
+                    "categoryUnallocatedAmount": {
+                        "type": "number"
+                    },
+                    "currency": {
+                        "enum": [
+                            "KRW",
+                            "USD",
+                            "EUR",
+                            "JPY",
+                            "CNY",
+                            "GBP",
+                            "THB",
+                            "HKD",
+                            "SGD",
+                            "IDR",
+                            "MYR",
+                            "AUD",
+                            "NZD"
+                        ],
+                        "type": "string"
+                    },
                     "currentMonth": {
                         "format": "int32",
                         "type": "integer"
@@ -1215,25 +1117,52 @@
                         "format": "int32",
                         "type": "integer"
                     },
-                    "editable": {
-                        "type": "boolean"
-                    },
-                    "expense": {
-                        "$ref": "#/components/schemas/BudgetAxisResponse"
+                    "dailyAllowance": {
+                        "$ref": "#/components/schemas/DailyAllowance"
                     },
                     "hasAnyBudget": {
                         "type": "boolean"
                     },
-                    "income": {
-                        "$ref": "#/components/schemas/BudgetAxisResponse"
+                    "missingRateCount": {
+                        "format": "int32",
+                        "type": "integer"
                     },
                     "month": {
                         "format": "int32",
                         "type": "integer"
                     },
+                    "otherCategoriesActualAmount": {
+                        "type": "number"
+                    },
+                    "paymentGroupAllocationExceeded": {
+                        "type": "boolean"
+                    },
+                    "paymentGroupUnallocatedAmount": {
+                        "type": "number"
+                    },
+                    "paymentGroups": {
+                        "items": {
+                            "$ref": "#/components/schemas/BudgetPaymentGroupLine"
+                        },
+                        "type": "array"
+                    },
                     "remainingDaysIncludingToday": {
                         "format": "int32",
                         "type": "integer"
+                    },
+                    "status": {
+                        "enum": [
+                            "NOT_SET",
+                            "NONE",
+                            "IN_PROGRESS",
+                            "NEAR_LIMIT",
+                            "REACHED",
+                            "EXCEEDED"
+                        ],
+                        "type": "string"
+                    },
+                    "total": {
+                        "$ref": "#/components/schemas/BudgetLine"
                     },
                     "year": {
                         "format": "int32",
@@ -1366,19 +1295,44 @@
             },
             "SaveBudgetRequest": {
                 "properties": {
-                    "amounts": {
-                        "$ref": "#/components/schemas/BudgetAmountsRequest"
+                    "categoryAmounts": {
+                        "items": {
+                            "$ref": "#/components/schemas/CategoryAmountRequest"
+                        },
+                        "maxItems": 100,
+                        "minItems": 0,
+                        "type": "array"
                     },
-                    "applyTo": {
+                    "currency": {
                         "enum": [
-                            "THIS_MONTH",
-                            "FROM_THIS_MONTH"
+                            "KRW",
+                            "USD",
+                            "EUR",
+                            "JPY",
+                            "CNY",
+                            "GBP",
+                            "THB",
+                            "HKD",
+                            "SGD",
+                            "IDR",
+                            "MYR",
+                            "AUD",
+                            "NZD"
                         ],
                         "type": "string"
+                    },
+                    "paymentGroupAmounts": {
+                        "items": {
+                            "$ref": "#/components/schemas/PaymentGroupAmountRequest"
+                        },
+                        "type": "array"
+                    },
+                    "totalAmount": {
+                        "type": "number"
                     }
                 },
                 "required": [
-                    "applyTo"
+                    "currency"
                 ],
                 "type": "object"
             },
@@ -1517,6 +1471,67 @@
             }
         },
         "/api/v1/budgets": {
+            "delete": {
+                "operationId": "deleteBudget",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "year",
+                        "required": true,
+                        "schema": {
+                            "format": "int32",
+                            "maximum": 9999,
+                            "minimum": 1900,
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "in": "query",
+                        "name": "month",
+                        "required": true,
+                        "schema": {
+                            "format": "int32",
+                            "maximum": 12,
+                            "minimum": 1,
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiResponseMonthlyBudgetResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "429": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Too Many Requests",
+                        "headers": {
+                            "Retry-After": {
+                                "description": "Seconds to wait before retrying.",
+                                "schema": {
+                                    "format": "int32",
+                                    "type": "integer"
+                                }
+                            }
+                        }
+                    }
+                },
+                "tags": [
+                    "budget-controller"
+                ]
+            },
             "get": {
                 "operationId": "getMonthlyBudget",
                 "parameters": [
@@ -1577,24 +1592,10 @@
                 "tags": [
                     "budget-controller"
                 ]
-            }
-        },
-        "/api/v1/budgets/{axis}": {
+            },
             "put": {
                 "operationId": "saveBudget",
                 "parameters": [
-                    {
-                        "in": "path",
-                        "name": "axis",
-                        "required": true,
-                        "schema": {
-                            "enum": [
-                                "EXPENSE",
-                                "INCOME"
-                            ],
-                            "type": "string"
-                        }
-                    },
                     {
                         "in": "query",
                         "name": "year",
@@ -1654,81 +1655,6 @@
                             }
                         },
                         "description": "Content Too Large"
-                    },
-                    "429": {
-                        "content": {
-                            "application/json": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/ErrorResponse"
-                                }
-                            }
-                        },
-                        "description": "Too Many Requests",
-                        "headers": {
-                            "Retry-After": {
-                                "description": "Seconds to wait before retrying.",
-                                "schema": {
-                                    "format": "int32",
-                                    "type": "integer"
-                                }
-                            }
-                        }
-                    }
-                },
-                "tags": [
-                    "budget-controller"
-                ]
-            }
-        },
-        "/api/v1/budgets/{axis}/month-value": {
-            "delete": {
-                "operationId": "revertMonthValue",
-                "parameters": [
-                    {
-                        "in": "path",
-                        "name": "axis",
-                        "required": true,
-                        "schema": {
-                            "enum": [
-                                "EXPENSE",
-                                "INCOME"
-                            ],
-                            "type": "string"
-                        }
-                    },
-                    {
-                        "in": "query",
-                        "name": "year",
-                        "required": true,
-                        "schema": {
-                            "format": "int32",
-                            "maximum": 9999,
-                            "minimum": 1900,
-                            "type": "integer"
-                        }
-                    },
-                    {
-                        "in": "query",
-                        "name": "month",
-                        "required": true,
-                        "schema": {
-                            "format": "int32",
-                            "maximum": 12,
-                            "minimum": 1,
-                            "type": "integer"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "content": {
-                            "*/*": {
-                                "schema": {
-                                    "$ref": "#/components/schemas/ApiResponseMonthlyBudgetResponse"
-                                }
-                            }
-                        },
-                        "description": "OK"
                     },
                     "429": {
                         "content": {

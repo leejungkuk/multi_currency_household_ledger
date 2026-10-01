@@ -50,21 +50,21 @@ class BudgetMigrationTest {
     }
 
     @Test
-    @DisplayName("금액 없이 통화만 있는 행은 끔도 켬도 아니라서 거부된다")
-    void currency_without_total_violates_check() {
+    @DisplayName("통화나 금액이 없는 행은 거부된다")
+    void currency_or_total_null_is_rejected() {
         assertThatThrownBy(() -> insertBudget("2026-09-01", "'USD'", "null"))
                 .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("ck_budget_off");
+                .hasMessageContaining("total_amount");
         assertThatThrownBy(() -> insertBudget("2026-09-01", "null", "100.00"))
                 .isInstanceOf(DataIntegrityViolationException.class)
-                .hasMessageContaining("ck_budget_off");
+                .hasMessageContaining("currency_code");
     }
 
     @Test
-    @DisplayName("통화·금액이 둘 다 있거나 둘 다 없으면 저장된다")
-    void currency_and_total_together_or_both_null_are_accepted() {
+    @DisplayName("통화·금액이 둘 다 있으면 저장된다")
+    void currency_and_total_together_are_accepted() {
         insertBudget("2026-09-01", "'USD'", "100.00");
-        insertBudget("2026-10-01", "null", "null");
+        insertBudget("2026-10-01", "'KRW'", "0");
 
         assertThat(count("select count(*) from budget where member_id = ?", MEMBER_ID))
                 .isEqualTo(2);
@@ -137,8 +137,8 @@ class BudgetMigrationTest {
 
     private long insertBudget(String month, String currencySql, String totalSql) {
         Long id = jdbcTemplate.queryForObject(
-                "insert into budget (member_id, axis, kind, month, currency_code, total_amount)"
-                        + " values (?, 'EXPENSE', 'MONTH', ?::date, " + currencySql + ", " + totalSql + ")"
+                "insert into budget (member_id, month, currency_code, total_amount)"
+                        + " values (?, ?::date, " + currencySql + ", " + totalSql + ")"
                         + " returning id",
                 Long.class,
                 MEMBER_ID,

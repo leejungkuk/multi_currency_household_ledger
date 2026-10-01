@@ -10,6 +10,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.YearMonth;
 import java.time.ZoneId;
+import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -33,38 +34,39 @@ class BudgetMonthPolicyTest {
     }
 
     @Test
-    @DisplayName("이번 달과 다음 달만 쓸 수 있다")
-    void editable_only_current_and_next() {
-        assertThat(SEPTEMBER_END.isEditable(YearMonth.of(2026, 8))).isFalse();
-        assertThat(SEPTEMBER_END.isEditable(YearMonth.of(2026, 9))).isTrue();
-        assertThat(SEPTEMBER_END.isEditable(YearMonth.of(2026, 10))).isTrue();
-        assertThat(SEPTEMBER_END.isEditable(YearMonth.of(2026, 11))).isFalse();
-
-        assertThat(OCTOBER_START.isEditable(YearMonth.of(2026, 9))).isFalse();
-        assertThat(OCTOBER_START.isEditable(YearMonth.of(2026, 11))).isTrue();
+    @DisplayName("2000-01·지난 달·이번 달·이번 달 + 12 쓰기는 통과한다")
+    void require_writable_accepts_2000_01_through_twelve_months_ahead() {
+        for (YearMonth month :
+                List.of(YearMonth.of(2000, 1), YearMonth.of(2026, 8), YearMonth.of(2026, 9), YearMonth.of(2027, 9))) {
+            assertThatCode(() -> SEPTEMBER_END.requireWritable(month)).doesNotThrowAnyException();
+        }
     }
 
     @Test
-    @DisplayName("이번 달·다음 달 쓰기는 통과한다")
-    void require_writable_allows_current_and_next() {
-        assertThatCode(() -> SEPTEMBER_END.requireWritable(YearMonth.of(2026, 9)))
+    @DisplayName("2000-01 앞의 달 쓰기는 BUDGET_MONTH_OUT_OF_RANGE 로 거절한다")
+    void require_writable_rejects_before_2000_01() {
+        assertCode(
+                () -> SEPTEMBER_END.requireWritable(YearMonth.of(1999, 12)), BudgetErrorCode.BUDGET_MONTH_OUT_OF_RANGE);
+    }
+
+    @Test
+    @DisplayName("이번 달 + 13 쓰기는 BUDGET_MONTH_OUT_OF_RANGE 로 거절한다")
+    void require_writable_rejects_thirteen_months_ahead() {
+        assertCode(
+                () -> SEPTEMBER_END.requireWritable(YearMonth.of(2027, 10)), BudgetErrorCode.BUDGET_MONTH_OUT_OF_RANGE);
+    }
+
+    @Test
+    @DisplayName("쓰기 상한은 KST 월 경계를 따른다 — 12-31 23:59:59 면 2027-12 까지, 01-01 00:00 이면 2028-01 까지")
+    void writable_range_follows_seoul_month_boundary() {
+        BudgetMonthPolicy decemberEnd = policyAt("2026-12-31T14:59:59Z");
+        BudgetMonthPolicy januaryStart = policyAt("2026-12-31T15:00:00Z");
+
+        assertThatCode(() -> decemberEnd.requireWritable(YearMonth.of(2027, 12)))
                 .doesNotThrowAnyException();
-        assertThatCode(() -> SEPTEMBER_END.requireWritable(YearMonth.of(2026, 10)))
+        assertCode(() -> decemberEnd.requireWritable(YearMonth.of(2028, 1)), BudgetErrorCode.BUDGET_MONTH_OUT_OF_RANGE);
+        assertThatCode(() -> januaryStart.requireWritable(YearMonth.of(2028, 1)))
                 .doesNotThrowAnyException();
-    }
-
-    @Test
-    @DisplayName("지난 달 쓰기는 BUDGET_PAST_MONTH 로 거절한다 — 월초 00:00 이면 방금 끝난 달도 지난 달이다")
-    void require_writable_rejects_past_month() {
-        assertCode(() -> SEPTEMBER_END.requireWritable(YearMonth.of(2026, 8)), BudgetErrorCode.BUDGET_PAST_MONTH);
-        assertCode(() -> OCTOBER_START.requireWritable(YearMonth.of(2026, 9)), BudgetErrorCode.BUDGET_PAST_MONTH);
-    }
-
-    @Test
-    @DisplayName("다음 달보다 늦은 달 쓰기는 BUDGET_MONTH_TOO_FAR 로 거절한다")
-    void require_writable_rejects_too_far_month() {
-        assertCode(() -> SEPTEMBER_END.requireWritable(YearMonth.of(2026, 11)), BudgetErrorCode.BUDGET_MONTH_TOO_FAR);
-        assertCode(() -> OCTOBER_START.requireWritable(YearMonth.of(2026, 12)), BudgetErrorCode.BUDGET_MONTH_TOO_FAR);
     }
 
     @Test

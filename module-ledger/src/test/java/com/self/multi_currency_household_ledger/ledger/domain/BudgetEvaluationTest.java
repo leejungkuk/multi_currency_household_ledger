@@ -34,7 +34,7 @@ class BudgetEvaluationTest {
     }
 
     private static BudgetEvaluation expense(BudgetAmounts amounts, List<BudgetTransaction> transactions) {
-        return BudgetEvaluation.evaluate(TransactionType.EXPENSE, amounts, transactions, null, null);
+        return BudgetEvaluation.evaluate(amounts, transactions, null, null);
     }
 
     @Nested
@@ -80,8 +80,8 @@ class BudgetEvaluationTest {
         @Test
         @DisplayName("정확히 100% 는 REACHED, percent 100, 남은 0, 하루 권장액 0")
         void exactly_hundred_is_reached() {
-            BudgetEvaluation evaluation = BudgetEvaluation.evaluate(
-                    TransactionType.EXPENSE, krwBudget("1000"), List.of(krw("600"), krw("400")), null, 5);
+            BudgetEvaluation evaluation =
+                    BudgetEvaluation.evaluate(krwBudget("1000"), List.of(krw("600"), krw("400")), null, 5);
 
             BudgetLine total = evaluation.total();
             assertThat(total.status()).isEqualTo(BudgetStatus.REACHED);
@@ -95,8 +95,8 @@ class BudgetEvaluationTest {
         @Test
         @DisplayName("초과는 EXCEEDED, percent·남은 금액 null, 넘은 금액은 통화 자릿수에서 올림, 하루 권장액은 초과 표시")
         void over_hundred_is_exceeded() {
-            BudgetEvaluation evaluation = BudgetEvaluation.evaluate(
-                    TransactionType.EXPENSE, krwBudget("1000"), List.of(krw("1000.40")), null, 3);
+            BudgetEvaluation evaluation =
+                    BudgetEvaluation.evaluate(krwBudget("1000"), List.of(krw("1000.40")), null, 3);
 
             BudgetLine total = evaluation.total();
             assertThat(total.status()).isEqualTo(BudgetStatus.EXCEEDED);
@@ -115,8 +115,7 @@ class BudgetEvaluationTest {
             TtsTimeline timeline = TtsTimeline.of(List.of(ExchangeRate.of(CurrencyCode.USD, amount("3"), SEP_10)));
 
             // 31 KRW ÷ 3 = 10.3333333333 USD
-            BudgetLine total = BudgetEvaluation.evaluate(
-                            TransactionType.EXPENSE, usd, List.of(krw("31")), timeline, null)
+            BudgetLine total = BudgetEvaluation.evaluate(usd, List.of(krw("31")), timeline, null)
                     .total();
 
             assertThat(total.status()).isEqualTo(BudgetStatus.EXCEEDED);
@@ -150,32 +149,6 @@ class BudgetEvaluationTest {
             assertThat(exceeded.remainingAmount()).isNull();
             assertThat(exceeded.overAmount()).isEqualByComparingTo("1");
         }
-
-        @Test
-        @DisplayName("수입 축은 NEAR_LIMIT 이 없다 — 90% 는 IN_PROGRESS, 100% 는 REACHED, 초과는 EXCEEDED")
-        void income_has_no_near_limit() {
-            assertThat(income(krwBudget("1000"), List.of(krw("900"))).total().status())
-                    .isEqualTo(BudgetStatus.IN_PROGRESS);
-            assertThat(income(krwBudget("1000"), List.of(krw("1000"))).total().status())
-                    .isEqualTo(BudgetStatus.REACHED);
-            assertThat(income(krwBudget("1000"), List.of(krw("1001"))).total().status())
-                    .isEqualTo(BudgetStatus.EXCEEDED);
-            assertThat(income(krwBudget("1000"), List.of()).total().status()).isEqualTo(BudgetStatus.NONE);
-        }
-
-        @Test
-        @DisplayName("수입 축은 결제수단 그룹 줄이 없고, 이번 달이어도 하루 권장액이 없다")
-        void income_has_no_payment_groups_nor_daily_allowance() {
-            BudgetEvaluation evaluation =
-                    BudgetEvaluation.evaluate(TransactionType.INCOME, krwBudget("1000"), List.of(krw("100")), null, 5);
-
-            assertThat(evaluation.paymentGroups()).isEmpty();
-            assertThat(evaluation.dailyAllowance()).isNull();
-        }
-
-        private BudgetEvaluation income(BudgetAmounts amounts, List<BudgetTransaction> transactions) {
-            return BudgetEvaluation.evaluate(TransactionType.INCOME, amounts, transactions, null, null);
-        }
     }
 
     @Nested
@@ -197,7 +170,6 @@ class BudgetEvaluationTest {
         @DisplayName("거래 통화 = 예산 통화면 originalAmount 를 쓴다(환율 없어도 된다)")
         void same_currency_uses_original_amount() {
             BudgetEvaluation evaluation = BudgetEvaluation.evaluate(
-                    TransactionType.EXPENSE,
                     usdBudget("100.00"),
                     List.of(tx(CurrencyCode.USD, "12.34", "16999.00", LocalDate.of(2026, 8, 1))),
                     usdFromSep1,
@@ -220,11 +192,7 @@ class BudgetEvaluationTest {
         @DisplayName("외화 예산 + KRW 거래는 krw × unit ÷ tts")
         void foreign_budget_with_krw_transaction() {
             BudgetEvaluation evaluation = BudgetEvaluation.evaluate(
-                    TransactionType.EXPENSE,
-                    usdBudget("100.00"),
-                    List.of(tx(CurrencyCode.KRW, "13500", "13500", SEP_10)),
-                    usdFromSep1,
-                    null);
+                    usdBudget("100.00"), List.of(tx(CurrencyCode.KRW, "13500", "13500", SEP_10)), usdFromSep1, null);
 
             assertThat(evaluation.total().actualAmount()).isEqualByComparingTo("10.00");
         }
@@ -233,11 +201,7 @@ class BudgetEvaluationTest {
         @DisplayName("외화 예산 + 다른 외화 거래는 그 거래의 krwAmount 를 예산 통화 tts 로 나눈다")
         void foreign_budget_with_other_foreign_transaction() {
             BudgetEvaluation evaluation = BudgetEvaluation.evaluate(
-                    TransactionType.EXPENSE,
-                    usdBudget("100.00"),
-                    List.of(tx(CurrencyCode.EUR, "10.00", "15000.00", SEP_10)),
-                    usdFromSep1,
-                    null);
+                    usdBudget("100.00"), List.of(tx(CurrencyCode.EUR, "10.00", "15000.00", SEP_10)), usdFromSep1, null);
 
             // 15000 ÷ 1350 = 11.1111111111 → 표시 내림 11.11
             assertThat(evaluation.total().actualAmount()).isEqualByComparingTo("11.11");
@@ -251,8 +215,8 @@ class BudgetEvaluationTest {
                     TtsTimeline.of(List.of(ExchangeRate.of(CurrencyCode.JPY, amount("900"), LocalDate.of(2026, 9, 1))));
             BudgetAmounts budget = new BudgetAmounts(CurrencyCode.JPY, amount("2000"), Map.of(), Map.of());
 
-            BudgetEvaluation evaluation = BudgetEvaluation.evaluate(
-                    TransactionType.EXPENSE, budget, List.of(tx(CurrencyCode.KRW, "9000", "9000", SEP_10)), jpy, null);
+            BudgetEvaluation evaluation =
+                    BudgetEvaluation.evaluate(budget, List.of(tx(CurrencyCode.KRW, "9000", "9000", SEP_10)), jpy, null);
 
             assertThat(evaluation.total().actualAmount()).isEqualByComparingTo("1000");
             assertThat(evaluation.total().percent()).isEqualTo(50);
@@ -274,11 +238,7 @@ class BudgetEvaluationTest {
                     new BudgetTransaction(CurrencyCode.KRW, amount("2700"), amount("2700"), SEP_10, FOOD, CARD);
 
             BudgetEvaluation evaluation = BudgetEvaluation.evaluate(
-                    TransactionType.EXPENSE,
-                    budget,
-                    List.of(beforeAnyRate, otherCategoryBeforeRate, withRate),
-                    usdFromSep1,
-                    null);
+                    budget, List.of(beforeAnyRate, otherCategoryBeforeRate, withRate), usdFromSep1, null);
 
             assertThat(evaluation.missingRateCount()).isEqualTo(2);
             assertThat(evaluation.total().actualAmount()).isEqualByComparingTo("2.00");
@@ -296,14 +256,10 @@ class BudgetEvaluationTest {
             BudgetTransaction oneWon = tx(CurrencyCode.KRW, "1", "1", SEP_10);
 
             BudgetLine perTransaction = BudgetEvaluation.evaluate(
-                            TransactionType.EXPENSE, usdBudget("1.00"), List.of(oneWon, oneWon, oneWon), three, null)
+                            usdBudget("1.00"), List.of(oneWon, oneWon, oneWon), three, null)
                     .total();
             BudgetLine single = BudgetEvaluation.evaluate(
-                            TransactionType.EXPENSE,
-                            usdBudget("1.00"),
-                            List.of(tx(CurrencyCode.KRW, "3", "3", SEP_10)),
-                            three,
-                            null)
+                            usdBudget("1.00"), List.of(tx(CurrencyCode.KRW, "3", "3", SEP_10)), three, null)
                     .total();
 
             assertThat(perTransaction.status()).isEqualTo(BudgetStatus.NEAR_LIMIT);
@@ -319,7 +275,7 @@ class BudgetEvaluationTest {
             BudgetTransaction twoWon = tx(CurrencyCode.KRW, "2", "2", SEP_10);
 
             BudgetLine total = BudgetEvaluation.evaluate(
-                            TransactionType.EXPENSE, usdBudget("2.00"), List.of(twoWon, twoWon, twoWon), three, null)
+                            usdBudget("2.00"), List.of(twoWon, twoWon, twoWon), three, null)
                     .total();
 
             // DOWN 이면 0.6666666666×3 = 1.9999999998 → NEAR_LIMIT 로 갈린다
@@ -335,7 +291,7 @@ class BudgetEvaluationTest {
             BudgetTransaction oneWon = tx(CurrencyCode.KRW, "1", "1", SEP_10);
 
             BudgetLine total = BudgetEvaluation.evaluate(
-                            TransactionType.EXPENSE, usdBudget("1.00"), Collections.nCopies(11, oneWon), eleven, null)
+                            usdBudget("1.00"), Collections.nCopies(11, oneWon), eleven, null)
                     .total();
 
             // scale 9 면 0.090909091×11 = 1.000000001 → EXCEEDED 로 갈린다
@@ -351,7 +307,7 @@ class BudgetEvaluationTest {
             BudgetTransaction oneWon = tx(CurrencyCode.KRW, "1", "1", SEP_10);
 
             BudgetLine total = BudgetEvaluation.evaluate(
-                            TransactionType.EXPENSE, usdBudget("1.00"), Collections.nCopies(2048, oneWon), rate, null)
+                            usdBudget("1.00"), Collections.nCopies(2048, oneWon), rate, null)
                     .total();
 
             // HALF_EVEN 이면 0.0004882812×2048 = 0.9999998976 → NEAR_LIMIT 로 갈린다
@@ -367,7 +323,6 @@ class BudgetEvaluationTest {
                     ExchangeRate.of(CurrencyCode.USD, amount("2000"), LocalDate.of(2026, 9, 15))));
 
             BudgetEvaluation evaluation = BudgetEvaluation.evaluate(
-                    TransactionType.EXPENSE,
                     usdBudget("100.00"),
                     List.of(
                             tx(CurrencyCode.KRW, "1000", "1000", LocalDate.of(2026, 9, 14)),
@@ -384,7 +339,7 @@ class BudgetEvaluationTest {
     class Allocation {
 
         @Test
-        @DisplayName("지출 축은 결제수단 그룹 3줄을 항상 준다 — 몫이 없는 그룹은 실제 금액만, 그룹 합 = 전체")
+        @DisplayName("결제수단 그룹 3줄을 항상 준다 — 몫이 없는 그룹은 실제 금액만, 그룹 합 = 전체")
         void expense_always_has_three_payment_groups() {
             BudgetAmounts budget = new BudgetAmounts(
                     CurrencyCode.KRW, amount("1000"), Map.of(PaymentGroup.CREDIT_CARD, amount("500")), Map.of());
@@ -470,14 +425,13 @@ class BudgetEvaluationTest {
         @Test
         @DisplayName("하루 권장액 = (전체 − 실제) ÷ 오늘 포함 남은 일수, 통화 자릿수에서 내림 — 말일(1일 남음)도 계산한다")
         void daily_allowance() {
-            BudgetEvaluation threeDaysLeft = BudgetEvaluation.evaluate(
-                    TransactionType.EXPENSE, krwBudget("1000"), List.of(krw("0.50")), null, 3);
+            BudgetEvaluation threeDaysLeft =
+                    BudgetEvaluation.evaluate(krwBudget("1000"), List.of(krw("0.50")), null, 3);
             // (1000 − 0.5) ÷ 3 = 333.1666… → 333
             assertThat(threeDaysLeft.dailyAllowance().amount()).isEqualByComparingTo("333");
             assertThat(threeDaysLeft.dailyAllowance().exceeded()).isFalse();
 
-            BudgetEvaluation lastDay =
-                    BudgetEvaluation.evaluate(TransactionType.EXPENSE, krwBudget("1000"), List.of(krw("400")), null, 1);
+            BudgetEvaluation lastDay = BudgetEvaluation.evaluate(krwBudget("1000"), List.of(krw("400")), null, 1);
             assertThat(lastDay.dailyAllowance().amount()).isEqualByComparingTo("600");
         }
 

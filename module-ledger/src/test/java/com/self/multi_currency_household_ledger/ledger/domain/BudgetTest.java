@@ -21,8 +21,8 @@ class BudgetTest {
 
     private static final YearMonth SEPTEMBER = YearMonth.of(2026, 9);
 
-    private static Budget emptyBudget(TransactionType axis) {
-        return new Budget(UUID.randomUUID(), axis, BudgetKind.MONTH, SEPTEMBER, null, null, List.of());
+    private static Budget emptyBudget() {
+        return new Budget(UUID.randomUUID(), SEPTEMBER);
     }
 
     private static BigDecimal won(String value) {
@@ -32,7 +32,7 @@ class BudgetTest {
     @Test
     @DisplayName("금액 세트를 넣으면 통화·전체·몫이 바뀌고 amounts 로 읽힌다")
     void replace_amounts_sets_values() {
-        Budget budget = emptyBudget(TransactionType.EXPENSE);
+        Budget budget = emptyBudget();
 
         budget.replaceAmounts(
                 CurrencyCode.KRW,
@@ -42,7 +42,7 @@ class BudgetTest {
 
         assertThat(budget.getCurrencyCode()).isEqualTo(CurrencyCode.KRW);
         assertThat(budget.getTotalAmount()).isEqualByComparingTo("1000000");
-        BudgetAmounts amounts = budget.amounts().orElseThrow();
+        BudgetAmounts amounts = budget.amounts();
         assertThat(amounts.currency()).isEqualTo(CurrencyCode.KRW);
         assertThat(amounts.total()).isEqualByComparingTo("1000000");
         assertThat(amounts.paymentGroupAmounts()).containsOnlyKeys(PaymentGroup.CREDIT_CARD);
@@ -54,7 +54,7 @@ class BudgetTest {
     @Test
     @DisplayName("몫 교체는 키별 제자리 갱신이다 — 있던 키는 같은 객체의 금액만 바뀌고, 빠진 키는 지우고, 새 키만 더한다")
     void replace_amounts_updates_allocations_in_place() {
-        Budget budget = emptyBudget(TransactionType.EXPENSE);
+        Budget budget = emptyBudget();
         budget.replaceAmounts(
                 CurrencyCode.KRW,
                 won("1000"),
@@ -91,7 +91,7 @@ class BudgetTest {
     @Test
     @DisplayName("같은 몫 세트를 다시 보내면(멱등 재전송) 객체가 그대로이고 결과가 같다")
     void replace_amounts_is_idempotent() {
-        Budget budget = emptyBudget(TransactionType.EXPENSE);
+        Budget budget = emptyBudget();
         List<GroupAmount> groups = List.of(new GroupAmount(PaymentGroup.CREDIT_CARD, won("100")));
         List<CategoryAmount> categories = List.of(new CategoryAmount(3L, won("300")));
         budget.replaceAmounts(CurrencyCode.KRW, won("1000"), groups, categories);
@@ -106,7 +106,7 @@ class BudgetTest {
     @Test
     @DisplayName("몫 없이 보내면 몫이 모두 사라진다")
     void replace_amounts_with_no_allocations_clears_them() {
-        Budget budget = emptyBudget(TransactionType.EXPENSE);
+        Budget budget = emptyBudget();
         budget.replaceAmounts(
                 CurrencyCode.KRW,
                 won("1000"),
@@ -120,27 +120,9 @@ class BudgetTest {
     }
 
     @Test
-    @DisplayName("끄면 통화·전체·몫이 모두 비고 amounts 가 없다")
-    void turn_off_clears_everything() {
-        Budget budget = emptyBudget(TransactionType.EXPENSE);
-        budget.replaceAmounts(
-                CurrencyCode.KRW,
-                won("1000"),
-                List.of(new GroupAmount(PaymentGroup.CREDIT_CARD, won("100"))),
-                List.of(new CategoryAmount(3L, won("300"))));
-
-        budget.turnOff();
-
-        assertThat(budget.getCurrencyCode()).isNull();
-        assertThat(budget.getTotalAmount()).isNull();
-        assertThat(budget.getAllocations()).isEmpty();
-        assertThat(budget.amounts()).isEmpty();
-    }
-
-    @Test
     @DisplayName("경계 금액 0 과 99,999,999, 통화 자릿수 이내 소수는 받는다")
     void accepts_boundary_amounts() {
-        Budget budget = emptyBudget(TransactionType.EXPENSE);
+        Budget budget = emptyBudget();
 
         budget.replaceAmounts(
                 CurrencyCode.KRW,
@@ -165,7 +147,7 @@ class BudgetTest {
     }
 
     private static void assertInvalidTotal(CurrencyCode currency, String total) {
-        Budget budget = emptyBudget(TransactionType.EXPENSE);
+        Budget budget = emptyBudget();
         assertCode(
                 () -> budget.replaceAmounts(currency, won(total), List.of(), List.of()),
                 BudgetErrorCode.BUDGET_INVALID_AMOUNT);
@@ -174,7 +156,7 @@ class BudgetTest {
     @Test
     @DisplayName("몫 금액이 범위·자릿수를 벗어나면 BUDGET_INVALID_AMOUNT")
     void rejects_invalid_allocation_amount() {
-        Budget budget = emptyBudget(TransactionType.EXPENSE);
+        Budget budget = emptyBudget();
 
         assertCode(
                 () -> budget.replaceAmounts(
@@ -203,7 +185,7 @@ class BudgetTest {
     @Test
     @DisplayName("몫 키가 중복되면 BUDGET_INVALID_ALLOCATION")
     void rejects_duplicate_allocation_keys() {
-        Budget budget = emptyBudget(TransactionType.EXPENSE);
+        Budget budget = emptyBudget();
 
         assertCode(
                 () -> budget.replaceAmounts(
@@ -224,26 +206,9 @@ class BudgetTest {
     }
 
     @Test
-    @DisplayName("수입 축에 결제수단 몫이 있으면 BUDGET_INVALID_ALLOCATION, 카테고리 몫은 된다")
-    void income_axis_rejects_payment_group_allocation() {
-        Budget income = emptyBudget(TransactionType.INCOME);
-
-        assertCode(
-                () -> income.replaceAmounts(
-                        CurrencyCode.KRW,
-                        won("1000"),
-                        List.of(new GroupAmount(PaymentGroup.CREDIT_CARD, won("100"))),
-                        List.of()),
-                BudgetErrorCode.BUDGET_INVALID_ALLOCATION);
-
-        income.replaceAmounts(CurrencyCode.KRW, won("1000"), List.of(), List.of(new CategoryAmount(9L, won("100"))));
-        assertThat(income.getAllocations()).hasSize(1);
-    }
-
-    @Test
     @DisplayName("전체 없이 몫만 있으면 BUDGET_TOTAL_REQUIRED")
     void rejects_missing_total() {
-        Budget budget = emptyBudget(TransactionType.EXPENSE);
+        Budget budget = emptyBudget();
 
         assertCode(
                 () -> budget.replaceAmounts(
@@ -257,7 +222,7 @@ class BudgetTest {
     @Test
     @DisplayName("검증에 걸리면 기존 값이 그대로 남는다")
     void rejected_replace_keeps_previous_state() {
-        Budget budget = emptyBudget(TransactionType.EXPENSE);
+        Budget budget = emptyBudget();
         budget.replaceAmounts(
                 CurrencyCode.KRW,
                 won("1000"),
@@ -278,66 +243,32 @@ class BudgetTest {
     }
 
     @Test
-    @DisplayName("몫 카테고리는 축과 같은 거래 타입이어야 한다 — 같으면 통과, 다르면 BUDGET_INVALID_ALLOCATION")
-    void allocatable_categories_must_match_axis() {
-        Budget expense = emptyBudget(TransactionType.EXPENSE);
+    @DisplayName("몫 카테고리는 지출 카테고리여야 한다 — 지출이면 통과, 수입이 섞이면 BUDGET_INVALID_ALLOCATION")
+    void allocatable_categories_must_be_expense() {
+        Budget budget = emptyBudget();
         Category expenseCategory = Category.custom(UUID.randomUUID(), TransactionType.EXPENSE, "반려견", "🐶");
         Category incomeCategory = Category.custom(UUID.randomUUID(), TransactionType.INCOME, "부수입", "💰");
 
-        expense.requireAllocatable(List.of(expenseCategory));
+        budget.requireAllocatable(List.of(expenseCategory));
 
         assertCode(
-                () -> expense.requireAllocatable(List.of(expenseCategory, incomeCategory)),
+                () -> budget.requireAllocatable(List.of(expenseCategory, incomeCategory)),
                 BudgetErrorCode.BUDGET_INVALID_ALLOCATION);
-        assertCode(
-                () -> emptyBudget(TransactionType.INCOME).requireAllocatable(List.of(expenseCategory)),
-                BudgetErrorCode.BUDGET_INVALID_ALLOCATION);
+        assertCode(() -> budget.requireAllocatable(List.of(incomeCategory)), BudgetErrorCode.BUDGET_INVALID_ALLOCATION);
     }
 
     @Test
-    @DisplayName("카테고리를 뺀 DEFAULT 사본은 새 달·같은 통화·전체·나머지 몫을 갖고, 원본 행은 그대로다")
-    void default_without_category_copies_rest_and_keeps_original() {
-        UUID memberId = UUID.randomUUID();
-        Budget original = new Budget(
-                memberId, TransactionType.EXPENSE, BudgetKind.DEFAULT, SEPTEMBER.minusMonths(1), null, null, List.of());
-        original.replaceAmounts(
-                CurrencyCode.USD,
-                won("1000"),
-                List.of(new GroupAmount(PaymentGroup.CREDIT_CARD, won("600"))),
-                List.of(new CategoryAmount(3L, won("300")), new CategoryAmount(4L, won("200"))));
-
-        Budget copy = original.defaultWithoutCategory(SEPTEMBER, 3L);
-
-        assertThat(copy.getMemberId()).isEqualTo(memberId);
-        assertThat(copy.getAxis()).isEqualTo(TransactionType.EXPENSE);
-        assertThat(copy.getKind()).isEqualTo(BudgetKind.DEFAULT);
-        assertThat(copy.yearMonth()).isEqualTo(SEPTEMBER);
-        BudgetAmounts copied = copy.amounts().orElseThrow();
-        assertThat(copied.currency()).isEqualTo(CurrencyCode.USD);
-        assertThat(copied.total()).isEqualByComparingTo("1000");
-        assertThat(copied.paymentGroupAmounts()).containsOnlyKeys(PaymentGroup.CREDIT_CARD);
-        assertThat(copied.categoryAmounts()).containsOnlyKeys(4L);
-        assertThat(copied.categoryAmounts().get(4L)).isEqualByComparingTo("200");
-        assertThat(copy.getAllocations()).allMatch(a -> a.getBudget() == copy);
-        assertThat(copy.getAllocations()).noneMatch(original.getAllocations()::contains);
-
-        assertThat(original.yearMonth()).isEqualTo(SEPTEMBER.minusMonths(1));
-        assertThat(original.amounts().orElseThrow().categoryAmounts()).containsOnlyKeys(3L, 4L);
-    }
-
-    @Test
-    @DisplayName("카테고리 몫 보유 여부 — 몫이 있으면 참, 없거나 결제수단 몫뿐이면 거짓")
-    void allocates_category_only_for_category_allocations() {
-        Budget budget = emptyBudget(TransactionType.EXPENSE);
+    @DisplayName("몫 카테고리 id 는 카테고리 몫만 담는다 — 결제수단 몫은 빠지고, 몫이 없으면 비어 있다")
+    void allocated_category_ids_lists_category_allocations_only() {
+        Budget budget = emptyBudget();
         budget.replaceAmounts(
                 CurrencyCode.KRW,
                 won("1000"),
                 List.of(new GroupAmount(PaymentGroup.CREDIT_CARD, won("600"))),
-                List.of(new CategoryAmount(3L, won("300"))));
+                List.of(new CategoryAmount(3L, won("300")), new CategoryAmount(4L, won("100"))));
 
-        assertThat(budget.allocatesCategory(3L)).isTrue();
-        assertThat(budget.allocatesCategory(4L)).isFalse();
-        assertThat(emptyBudget(TransactionType.EXPENSE).allocatesCategory(3L)).isFalse();
+        assertThat(budget.allocatedCategoryIds()).containsExactlyInAnyOrder(3L, 4L);
+        assertThat(emptyBudget().allocatedCategoryIds()).isEmpty();
     }
 
     private static BudgetAllocation allocationOf(Budget budget, PaymentGroup group) {

@@ -24,9 +24,11 @@ import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -46,58 +48,27 @@ public class Budget extends BaseEntity {
     @Column(nullable = false)
     private UUID memberId;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 10)
-    private TransactionType axis;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 10)
-    private BudgetKind kind;
-
-    /** 그 달의 1일. DEFAULT 는 적용 시작 달, MONTH 는 그 달이다. */
+    /** 그 달의 1일. */
     @Column(nullable = false)
     private LocalDate month;
 
-    /** currencyCode·totalAmount 가 둘 다 null 이면 끔이다. */
     @Enumerated(EnumType.STRING)
-    @Column(length = 3)
+    @Column(nullable = false, length = 3)
     private CurrencyCode currencyCode;
 
-    @Column(precision = 19, scale = 2)
+    @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal totalAmount;
 
     @OneToMany(mappedBy = "budget", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<BudgetAllocation> allocations = new ArrayList<>();
 
-    public Budget(
-            UUID memberId,
-            TransactionType axis,
-            BudgetKind kind,
-            YearMonth month,
-            CurrencyCode currencyCode,
-            BigDecimal totalAmount,
-            List<BudgetAllocation> allocations) {
+    /** 새 행은 flush 전에 반드시 {@link #replaceAmounts} 로 값을 채운다 — 통화·금액 컬럼이 not null 이다. */
+    public Budget(UUID memberId, YearMonth month) {
         this.memberId = memberId;
-        this.axis = axis;
-        this.kind = kind;
         this.month = month.atDay(1);
-        this.currencyCode = currencyCode;
-        this.totalAmount = totalAmount;
-        for (BudgetAllocation allocation : allocations) {
-            allocation.attachTo(this);
-            this.allocations.add(allocation);
-        }
     }
 
-    public YearMonth yearMonth() {
-        return YearMonth.from(month);
-    }
-
-    /** 끔이면 비어 있다. */
-    public Optional<BudgetAmounts> amounts() {
-        if (totalAmount == null) {
-            return Optional.empty();
-        }
+    public BudgetAmounts amounts() {
         Map<PaymentGroup, BigDecimal> groups = new EnumMap<>(PaymentGroup.class);
         Map<Long, BigDecimal> categories = new LinkedHashMap<>();
         for (BudgetAllocation allocation : allocations) {
@@ -107,11 +78,19 @@ public class Budget extends BaseEntity {
                 categories.put(allocation.getCategoryId(), allocation.getAmount());
             }
         }
-        return Optional.of(new BudgetAmounts(
+        return new BudgetAmounts(
                 currencyCode,
                 totalAmount,
                 Collections.unmodifiableMap(groups),
-                Collections.unmodifiableMap(categories)));
+                Collections.unmodifiableMap(categories));
+    }
+
+    /** 카테고리 몫의 카테고리 id 들. */
+    public Set<Long> allocatedCategoryIds() {
+        return allocations.stream()
+                .map(BudgetAllocation::getCategoryId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
     }
 
     /**
@@ -125,9 +104,6 @@ public class Budget extends BaseEntity {
             List<CategoryAmount> categoryAmounts) {
         if (total == null) {
             throw new BusinessException(BudgetErrorCode.BUDGET_TOTAL_REQUIRED);
-        }
-        if (axis == TransactionType.INCOME && !groupAmounts.isEmpty()) {
-            throw new BusinessException(BudgetErrorCode.BUDGET_INVALID_ALLOCATION);
         }
         requireValidAmount(total, currency);
         Map<PaymentGroup, BigDecimal> groups =
@@ -152,36 +128,13 @@ public class Budget extends BaseEntity {
         markModified();
     }
 
-    /** 몫 카테고리는 이 축과 같은 거래 타입이어야 한다. */
+    /** 몫 카테고리는 지출 카테고리여야 한다. */
     public void requireAllocatable(Collection<Category> categories) {
         for (Category category : categories) {
-            if (category.getTransactionType() != axis) {
+            if (category.getTransactionType() != TransactionType.EXPENSE) {
                 throw new BusinessException(BudgetErrorCode.BUDGET_INVALID_ALLOCATION);
             }
         }
-    }
-
-    public boolean allocatesCategory(Long categoryId) {
-        return allocations.stream().anyMatch(allocation -> categoryId.equals(allocation.getCategoryId()));
-    }
-
-    /**
-     * 이 행의 금액 세트에서 그 카테고리 몫만 뺀 (DEFAULT, month) 사본. 이 행은 고치지 않는다 — 카테고리 삭제가 지난 달 해석을 바꾸지 않게
-     * 새 적용 시작 달의 기본값으로 갈라낸다(요구사항 §5).
-     */
-    public Budget defaultWithoutCategory(YearMonth month, Long categoryId) {
-        List<BudgetAllocation> rest = allocations.stream()
-                .filter(allocation -> !categoryId.equals(allocation.getCategoryId()))
-                .map(BudgetAllocation::copy)
-                .toList();
-        return new Budget(memberId, axis, BudgetKind.DEFAULT, month, currencyCode, totalAmount, rest);
-    }
-
-    public void turnOff() {
-        this.currencyCode = null;
-        this.totalAmount = null;
-        allocations.clear();
-        markModified();
     }
 
     private void attach(BudgetAllocation allocation) {

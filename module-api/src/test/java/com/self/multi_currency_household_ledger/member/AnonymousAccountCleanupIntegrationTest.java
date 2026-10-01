@@ -399,8 +399,8 @@ class AnonymousAccountCleanupIntegrationTest {
         LocalDateTime audit = at == null ? null : local(at);
         Long budgetId = jdbcTemplate.queryForObject(
                 """
-                insert into budget (member_id, axis, kind, month, currency_code, total_amount, created_at, updated_at)
-                values (?, 'EXPENSE', 'DEFAULT', ?, 'KRW', 100000.00, ?, ?)
+                insert into budget (member_id, month, currency_code, total_amount, created_at, updated_at)
+                values (?, ?, 'KRW', 100000.00, ?, ?)
                 returning id
                 """,
                 Long.class,

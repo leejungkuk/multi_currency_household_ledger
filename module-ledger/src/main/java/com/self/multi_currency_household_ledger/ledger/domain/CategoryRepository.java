@@ -32,7 +32,7 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
             "select c from Category c where c.id in :ids and c.isActive = true and (c.ownerMemberId is null or c.ownerMemberId = :memberId)")
     List<Category> findUsableByIds(@Param("memberId") UUID memberId, @Param("ids") Collection<Long> ids);
 
-    // 예산 몫 표시용 — 삭제(비활성)된 카테고리도 지난 달 몫에 이름을 보여야 하므로 isActive 를 걸지 않는다.
+    // 예산 몫 표시용 — 삭제(비활성)된 카테고리도 남은 몫에 이름을 보여야 하므로 isActive 를 걸지 않는다.
     @Query(
             "select c from Category c where c.id in :ids and (c.ownerMemberId is null or c.ownerMemberId = :memberId) order by c.sortOrder asc, c.id asc")
     List<Category> findVisibleByIds(@Param("memberId") UUID memberId, @Param("ids") Collection<Long> ids);
@@ -42,7 +42,7 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
     // 참조가 하나라도 있으면 지우지 않는다(FK 안전망) — 서브쿼리를 소유자로 좁히면 어떤 이유로든 남은 타 회원
     // 참조를 못 보고 DELETE 가 fk_ledger_category 위반으로 터져 생성 요청이 500 으로 샌다.
     // 소유자 격리는 바깥의 c.ownerMemberId 술어가 담당하고, 인덱스는 idx_ledger_category(category_id) 를 탄다.
-    // 예산 몫도 참조로 센다 — budget_allocation.category_id 는 on delete cascade 라 지우면 지난 달 몫이 조용히 사라진다.
+    // 예산 몫도 참조로 센다 — budget_allocation.category_id 는 on delete cascade 라 지우면 남은 몫이 조용히 사라진다.
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(
             """
