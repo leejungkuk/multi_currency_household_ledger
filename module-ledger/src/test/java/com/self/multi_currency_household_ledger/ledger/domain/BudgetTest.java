@@ -243,6 +243,88 @@ class BudgetTest {
     }
 
     @Test
+    @DisplayName("카테고리 몫 합이 전체보다 크면 BUDGET_ALLOCATION_EXCEEDS_TOTAL 이고 행의 금액·몫은 그대로다")
+    void rejects_category_allocations_over_total() {
+        Budget budget = emptyBudget();
+        budget.replaceAmounts(
+                CurrencyCode.KRW,
+                won("1000"),
+                List.of(new GroupAmount(PaymentGroup.CREDIT_CARD, won("100"))),
+                List.of(new CategoryAmount(3L, won("300"))));
+
+        assertCode(
+                () -> budget.replaceAmounts(
+                        CurrencyCode.USD,
+                        won("100"),
+                        List.of(),
+                        List.of(new CategoryAmount(3L, won("60")), new CategoryAmount(4L, won("41")))),
+                BudgetErrorCode.BUDGET_ALLOCATION_EXCEEDS_TOTAL);
+
+        assertThat(budget.getCurrencyCode()).isEqualTo(CurrencyCode.KRW);
+        assertThat(budget.getTotalAmount()).isEqualByComparingTo("1000");
+        assertThat(budget.getAllocations())
+                .extracting(BudgetAllocation::getPaymentGroup, BudgetAllocation::getCategoryId, a -> a.getAmount()
+                        .stripTrailingZeros()
+                        .toPlainString())
+                .containsExactlyInAnyOrder(tuple(PaymentGroup.CREDIT_CARD, null, "100"), tuple(null, 3L, "300"));
+    }
+
+    @Test
+    @DisplayName("결제수단 몫 합이 전체보다 크면 BUDGET_ALLOCATION_EXCEEDS_TOTAL")
+    void rejects_payment_group_allocations_over_total() {
+        Budget budget = emptyBudget();
+
+        assertCode(
+                () -> budget.replaceAmounts(
+                        CurrencyCode.KRW,
+                        won("100"),
+                        List.of(
+                                new GroupAmount(PaymentGroup.CREDIT_CARD, won("60")),
+                                new GroupAmount(PaymentGroup.CASH_AND_DEBIT, won("41"))),
+                        List.of(new CategoryAmount(3L, won("10")))),
+                BudgetErrorCode.BUDGET_ALLOCATION_EXCEEDS_TOTAL);
+
+        assertThat(budget.getTotalAmount()).isNull();
+        assertThat(budget.getAllocations()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("몫 합이 전체와 같으면 받는다 — 결제수단·카테고리 각각, 스케일이 달라도(100 = 60.00 + 40)")
+    void accepts_allocations_equal_to_total() {
+        Budget budget = emptyBudget();
+
+        budget.replaceAmounts(
+                CurrencyCode.KRW,
+                won("100"),
+                List.of(
+                        new GroupAmount(PaymentGroup.CREDIT_CARD, won("60.00")),
+                        new GroupAmount(PaymentGroup.CASH_AND_DEBIT, won("40"))),
+                List.of(new CategoryAmount(3L, won("100.00"))));
+
+        assertThat(budget.getTotalAmount()).isEqualByComparingTo("100");
+        assertThat(budget.getAllocations()).hasSize(3);
+    }
+
+    @Test
+    @DisplayName("통화의 최소 단위 하나만 넘어도 거절한다 — USD 10.00 에 10.01, KRW 100 에 101")
+    void rejects_allocation_over_total_by_smallest_unit() {
+        Budget budget = emptyBudget();
+
+        assertCode(
+                () -> budget.replaceAmounts(
+                        CurrencyCode.USD, won("10.00"), List.of(), List.of(new CategoryAmount(3L, won("10.01")))),
+                BudgetErrorCode.BUDGET_ALLOCATION_EXCEEDS_TOTAL);
+        assertCode(
+                () -> budget.replaceAmounts(
+                        CurrencyCode.KRW,
+                        won("100"),
+                        List.of(new GroupAmount(PaymentGroup.CREDIT_CARD, won("101"))),
+                        List.of()),
+                BudgetErrorCode.BUDGET_ALLOCATION_EXCEEDS_TOTAL);
+        assertThat(budget.getAllocations()).isEmpty();
+    }
+
+    @Test
     @DisplayName("몫 카테고리는 지출 카테고리여야 한다 — 지출이면 통과, 수입이 섞이면 BUDGET_INVALID_ALLOCATION")
     void allocatable_categories_must_be_expense() {
         Budget budget = emptyBudget();

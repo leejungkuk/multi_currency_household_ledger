@@ -67,7 +67,7 @@ public class BudgetService {
     public MonthlyBudgetResponse save(UUID memberId, YearMonth month, SaveBudgetRequest request) {
         monthPolicy.requireWritable(month);
         budgetRepository.lockMember(memberId);
-        // 락을 잡은 뒤에 읽어야 같은 회원의 동시 쓰기 커밋 결과를 본다(DESIGN §2).
+        // 락을 잡은 뒤에 읽어야 같은 회원의 동시 쓰기 커밋 결과를 본다(DESIGN §7).
         Optional<Budget> existing = budgetRepository.findByMemberIdAndMonth(memberId, month.atDay(1));
         // 그 달 행에 이미 몫이 있는 카테고리는 삭제됐어도 받는다 — 새로 넣는 id 만 활성·소유를 확인한다(DESIGN §4).
         Set<Long> newCategoryIds = new HashSet<>(request.categoryIds());

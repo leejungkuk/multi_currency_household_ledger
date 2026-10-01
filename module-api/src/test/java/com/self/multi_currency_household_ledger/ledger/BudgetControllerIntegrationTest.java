@@ -180,6 +180,41 @@ class BudgetControllerIntegrationTest {
     }
 
     @Test
+    @DisplayName("A 의 거래는 같은 달·같은 몫으로 저장한 B 의 예산 실제 금액에 들지 않는다 (IDOR — 예산 거래 쿼리의 회원 술어)")
+    void other_member_transactions_do_not_count_in_budget() throws Exception {
+        String body = categoryBudget(EXPENSE_CATEGORY_ID, 300000);
+        save(MEMBER_A, SEPTEMBER, body).andExpect(status().isOk());
+        save(MEMBER_B, SEPTEMBER, body).andExpect(status().isOk());
+        createEntry(MEMBER_A, "100000", "KRW", EXPENSE_CATEGORY_ID, 1, "2026-09-10"); // 몫 있는 카테고리 · 신용카드
+        createEntry(MEMBER_A, "50000", "KRW", 2, 2, "2026-09-11"); // 몫 없는 카테고리 · 현금·체크카드
+
+        JsonNode memberB = read(MEMBER_B, SEPTEMBER);
+        assertThat(memberB.path("status").asString()).isEqualTo("NONE");
+        assertThat(actualAmounts(memberB))
+                .usingElementComparator(BigDecimal::compareTo)
+                .containsExactly(
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO);
+
+        // 대조군 — 같은 거래가 A 의 예산에는 잡힌다.
+        JsonNode memberA = read(MEMBER_A, SEPTEMBER);
+        assertThat(memberA.path("status").asString()).isEqualTo("IN_PROGRESS");
+        assertThat(actualAmounts(memberA))
+                .usingElementComparator(BigDecimal::compareTo)
+                .containsExactly(
+                        new BigDecimal("150000"),
+                        new BigDecimal("100000"),
+                        new BigDecimal("50000"),
+                        BigDecimal.ZERO,
+                        new BigDecimal("100000"),
+                        new BigDecimal("50000"));
+    }
+
+    @Test
     @DisplayName("달마다 따로다 — M 저장 뒤 M+1 은 미설정이고, M+1 저장이 M 을 바꾸지 않는다")
     void months_are_independent() throws Exception {
         save(MEMBER_A, SEPTEMBER, KRW_1M).andExpect(status().isOk());
@@ -222,8 +257,8 @@ class BudgetControllerIntegrationTest {
         assertThat(second.path("paymentGroups").get(1).path("budgetAmount").isNull())
                 .isTrue();
         assertThat(second.path("categories").get(0).path("deleted").asBoolean()).isFalse();
-        assertThat(second.path("paymentGroupUnallocatedAmount").decimalValue()).isEqualByComparingTo("400000");
-        assertThat(second.path("categoryUnallocatedAmount").decimalValue()).isEqualByComparingTo("700000");
+        assertThat(second.path("otherCategories").path("budgetAmount").decimalValue())
+                .isEqualByComparingTo("700000");
 
         JsonNode withoutCategory = data(save(
                         MEMBER_A,
@@ -370,6 +405,96 @@ class BudgetControllerIntegrationTest {
     }
 
     @Test
+    @DisplayName("몫 합이 전체를 넘는 PUT 은 카테고리·결제수단 모두 400 BUDGET_ALLOCATION_EXCEEDS_TOTAL 이고 그 달은 그대로다")
+    void allocation_over_total_is_rejected_and_keeps_row() throws Exception {
+        String saved =
+                """
+                {"currency":"KRW","totalAmount":1000000,
+                 "paymentGroupAmounts":[{"paymentGroup":"CREDIT_CARD","amount":600000}],
+                 "categoryAmounts":[{"categoryId":%d,"amount":300000}]}"""
+                        .formatted(EXPENSE_CATEGORY_ID);
+        save(MEMBER_A, SEPTEMBER, saved).andExpect(status().isOk());
+        JsonNode before = read(MEMBER_A, SEPTEMBER);
+
+        save(
+                        MEMBER_A,
+                        SEPTEMBER,
+                        """
+                        {"currency":"KRW","totalAmount":1000000,
+                         "categoryAmounts":[{"categoryId":%d,"amount":600000},{"categoryId":2,"amount":400001}]}"""
+                                .formatted(EXPENSE_CATEGORY_ID))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BUDGET_ALLOCATION_EXCEEDS_TOTAL"));
+        assertThat(read(MEMBER_A, SEPTEMBER)).isEqualTo(before);
+
+        save(
+                        MEMBER_A,
+                        SEPTEMBER,
+                        """
+                        {"currency":"KRW","totalAmount":1000000,
+                         "paymentGroupAmounts":[{"paymentGroup":"CREDIT_CARD","amount":600000},
+                                                {"paymentGroup":"CASH_AND_DEBIT","amount":400001}]}""")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BUDGET_ALLOCATION_EXCEEDS_TOTAL"));
+        assertThat(read(MEMBER_A, SEPTEMBER)).isEqualTo(before);
+        assertThat(allocationCount(MEMBER_A)).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("그 외 카테고리 줄 — 몫은 전체 − 카테고리 몫, 쓴 돈은 몫 없는 카테고리 거래다. 미설정 달이면 null")
+    void other_categories_line_is_returned() throws Exception {
+        createEntry(MEMBER_A, "100000", "KRW", EXPENSE_CATEGORY_ID, 1, "2026-09-10");
+        createEntry(MEMBER_A, "50000", "KRW", 2, 1, "2026-09-11");
+        createEntry(MEMBER_A, "20000", "KRW", 3, 2, "2026-09-12");
+        save(MEMBER_A, SEPTEMBER, categoryBudget(EXPENSE_CATEGORY_ID, 300000)).andExpect(status().isOk());
+
+        JsonNode other = read(MEMBER_A, SEPTEMBER).path("otherCategories");
+
+        assertThat(other.path("budgetAmount").decimalValue()).isEqualByComparingTo("700000");
+        assertThat(other.path("actualAmount").decimalValue()).isEqualByComparingTo("70000");
+        assertThat(other.path("status").asString()).isEqualTo("IN_PROGRESS");
+        assertThat(other.path("percent").asInt()).isEqualTo(10);
+        assertThat(other.path("remainingAmount").decimalValue()).isEqualByComparingTo("630000");
+        assertThat(other.path("overAmount").isNull()).isTrue();
+
+        JsonNode notSet = read(MEMBER_A, OCTOBER);
+        assertThat(notSet.path("status").asString()).isEqualTo("NOT_SET");
+        assertThat(notSet.has("otherCategories")).isTrue();
+        assertThat(notSet.path("otherCategories").isNull()).isTrue();
+    }
+
+    @Test
+    @DisplayName("v1 이 남긴 몫 합 > 전체 행도 읽힌다 — 그 외 카테고리는 쓴 돈만 있는 줄이다")
+    void legacy_row_with_shares_over_total_is_readable() throws Exception {
+        createEntry(MEMBER_A, "30000", "KRW", 3, 1, "2026-09-10"); // 몫 없는 카테고리
+        // 저장 API 는 합계 검사로 막으므로 JDBC 로만 넣을 수 있다.
+        Long budgetId = jdbcTemplate.queryForObject(
+                "insert into budget (member_id, month, currency_code, total_amount, created_at, updated_at)"
+                        + " values (?, date '2026-09-01', 'KRW', 100000, now(), now()) returning id",
+                Long.class,
+                MEMBER_A);
+        jdbcTemplate.update(
+                "insert into budget_allocation (budget_id, category_id, amount) values (?, ?, 60000), (?, 2, 60000)",
+                budgetId,
+                EXPENSE_CATEGORY_ID,
+                budgetId);
+        jdbcTemplate.update(
+                "insert into budget_allocation (budget_id, payment_group, amount) values (?, 'CREDIT_CARD', 150000)",
+                budgetId);
+
+        JsonNode budget = read(MEMBER_A, SEPTEMBER);
+
+        assertThat(budget.path("total").path("budgetAmount").decimalValue()).isEqualByComparingTo("100000");
+        assertThat(budget.path("total").path("actualAmount").decimalValue()).isEqualByComparingTo("30000");
+        assertThat(budget.path("total").path("status").asString()).isEqualTo("IN_PROGRESS");
+        assertThat(budget.path("categories")).hasSize(2);
+        JsonNode other = budget.path("otherCategories");
+        assertThat(other.path("budgetAmount").isNull()).isTrue();
+        assertThat(other.path("status").isNull()).isTrue();
+        assertThat(other.path("actualAmount").decimalValue()).isEqualByComparingTo("30000");
+    }
+
+    @Test
     @DisplayName("외화(USD) 예산은 KRW·USD 거래를 tts 로 환산하고, 환율이 없는 날의 거래는 빼고 센다")
     void foreign_budget_converts_krw_transactions_by_tts_timeline() throws Exception {
         jdbcTemplate.update(
@@ -399,7 +524,8 @@ class BudgetControllerIntegrationTest {
         assertThat(budget.path("status").asString()).isEqualTo("IN_PROGRESS");
         assertThat(budget.path("categories").get(0).path("actualAmount").decimalValue())
                 .isEqualByComparingTo("20.00");
-        assertThat(budget.path("otherCategoriesActualAmount").decimalValue()).isEqualByComparingTo("0");
+        assertThat(budget.path("otherCategories").path("actualAmount").decimalValue())
+                .isEqualByComparingTo("0");
         assertThat(budget.path("paymentGroups").get(0).path("actualAmount").decimalValue())
                 .isEqualByComparingTo("10.00");
         assertThat(budget.path("paymentGroups").get(1).path("actualAmount").decimalValue())
@@ -568,6 +694,19 @@ class BudgetControllerIntegrationTest {
                                 {"amount":%s,"currencyCode":"%s","categoryId":%d,"assetId":%d,"transactionDate":"%s"}"""
                                         .formatted(amount, currency, categoryId, assetId, date)))
                 .andExpect(status().isOk());
+    }
+
+    /** total · 결제수단 그룹 3개 · 첫 카테고리 · 그 외 카테고리의 actualAmount 를 이 순서로. */
+    private static List<BigDecimal> actualAmounts(JsonNode budget) {
+        JsonNode groups = budget.path("paymentGroups");
+        assertThat(groups).hasSize(3);
+        return List.of(
+                budget.path("total").path("actualAmount").decimalValue(),
+                groups.get(0).path("actualAmount").decimalValue(),
+                groups.get(1).path("actualAmount").decimalValue(),
+                groups.get(2).path("actualAmount").decimalValue(),
+                budget.path("categories").get(0).path("actualAmount").decimalValue(),
+                budget.path("otherCategories").path("actualAmount").decimalValue());
     }
 
     private static String categoryBudget(long categoryId, long amount) {

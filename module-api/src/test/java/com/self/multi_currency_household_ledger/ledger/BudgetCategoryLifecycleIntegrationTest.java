@@ -180,6 +180,35 @@ class BudgetCategoryLifecycleIntegrationTest {
     }
 
     @Test
+    @DisplayName("삭제된 C 의 거래는 C 몫이 없는 달엔 그 외 카테고리로, C 몫이 있는 달엔 C 줄(deleted:true)로 간다")
+    void deleted_category_spending_without_share_goes_to_other_categories() throws Exception {
+        long c = createCustomCategory(MEMBER_A, "반려견");
+        createEntry(MEMBER_A, "40000", c, "2026-08-10");
+        createEntry(MEMBER_A, "30000", c, "2026-09-10");
+        createEntry(MEMBER_A, "5000", SYSTEM_CATEGORY_ID, "2026-09-11");
+        save(MEMBER_A, AUGUST, categoryBudget(c)).andExpect(status().isOk());
+        save(MEMBER_A, SEPTEMBER, categoryBudget(SYSTEM_CATEGORY_ID)).andExpect(status().isOk());
+        deleteCustomCategory(MEMBER_A, c).andExpect(status().isOk());
+
+        JsonNode september = read(MEMBER_A, SEPTEMBER);
+        assertThat(categoryIds(september)).containsExactly(SYSTEM_CATEGORY_ID);
+        assertThat(september.path("categories").get(0).path("actualAmount").decimalValue())
+                .isEqualByComparingTo("5000");
+        assertThat(september.path("otherCategories").path("budgetAmount").decimalValue())
+                .isEqualByComparingTo("700000");
+        assertThat(september.path("otherCategories").path("actualAmount").decimalValue())
+                .isEqualByComparingTo("30000");
+
+        JsonNode august = read(MEMBER_A, AUGUST);
+        JsonNode line = august.path("categories").get(0);
+        assertThat(categoryIds(august)).containsExactly(c);
+        assertThat(line.path("deleted").asBoolean()).isTrue();
+        assertThat(line.path("actualAmount").decimalValue()).isEqualByComparingTo("40000");
+        assertThat(august.path("otherCategories").path("actualAmount").decimalValue())
+                .isEqualByComparingTo("0");
+    }
+
+    @Test
     @DisplayName("카테고리 삭제는 회원 예산 advisory lock 을 잡지 않는다 — 다른 트랜잭션이 락을 쥔 채로도 기다리지 않고 끝난다")
     void deleting_category_does_not_take_member_budget_lock() throws Exception {
         long c = createCustomCategory(MEMBER_A, "반려견");
@@ -367,6 +396,18 @@ class BudgetCategoryLifecycleIntegrationTest {
     private ResultActions deleteCustomCategory(UUID memberId, long categoryId) throws Exception {
         return mockMvc.perform(
                 delete("/api/v1/categories/custom/{id}", categoryId).with(memberJwt(memberId)));
+    }
+
+    /** 자산 1 에 KRW 지출 한 건. */
+    private void createEntry(UUID memberId, String amount, long categoryId, String date) throws Exception {
+        mockMvc.perform(post("/api/v1/ledgers")
+                        .with(memberJwt(memberId))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                                """
+                                {"amount":%s,"currencyCode":"KRW","categoryId":%d,"assetId":1,"transactionDate":"%s"}"""
+                                        .formatted(amount, categoryId, date)))
+                .andExpect(status().isOk());
     }
 
     /** 카테고리마다 300,000원 몫을 둔 KRW 1,000,000원 세트. */

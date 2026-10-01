@@ -4,7 +4,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 
 /**
- * 예산 한 줄(전체·결제수단 그룹·카테고리). 판정은 scale 10 값으로, 표시값은 통화 자릿수에서 내림(넘은 금액만 올림)한다. 그래서 NEAR_LIMIT 인데
+ * 예산 한 줄(전체·결제수단 그룹·카테고리·그 외 카테고리). 판정은 scale 10 값으로, 표시값은 통화 자릿수에서 내림(넘은 금액만 올림)한다. 그래서 NEAR_LIMIT 인데
  * remainingAmount 가 0 일 수 있다.
  */
 public record BudgetLine(
@@ -18,7 +18,7 @@ public record BudgetLine(
     private static final BigDecimal HUNDRED = BigDecimal.valueOf(100);
     private static final BigDecimal NEAR_LIMIT_PERCENT = BigDecimal.valueOf(80);
 
-    /** 몫이 없는 결제수단 그룹 — 실제 금액만 있다. */
+    /** 몫이 없는 결제수단 그룹·남는 몫이 없는 그 외 카테고리 — 실제 금액만 있다. */
     static BudgetLine actualOnly(BigDecimal actual, int fractionDigits) {
         return new BudgetLine(null, floor(actual, fractionDigits), null, null, null, null);
     }

@@ -26,7 +26,9 @@ class BudgetMonthOnlyMigrationTest {
     private static final UUID MEMBER = UUID.fromString("00000000-0000-0000-0000-000000000501");
     private static final UUID MEMBER_B = UUID.fromString("00000000-0000-0000-0000-000000000502");
     private static final UUID MEMBER_C = UUID.fromString("00000000-0000-0000-0000-000000000503");
+    private static final UUID MEMBER_D = UUID.fromString("00000000-0000-0000-0000-000000000504");
     private static final long FOOD = 1L;
+    private static final long CAFE = 2L;
     private static final long SALARY = 14L;
 
     @Container
@@ -38,6 +40,7 @@ class BudgetMonthOnlyMigrationTest {
     private static long expenseDefaultId;
     private static long incomeMonthId;
     private static long offMonthId;
+    private static long overShareMonthId;
 
     @BeforeAll
     static void migrateV14RowsToV15() {
@@ -49,19 +52,30 @@ class BudgetMonthOnlyMigrationTest {
         jdbcTemplate = new JdbcTemplate(dataSource);
 
         migrateToVersion(dataSource, "14");
-        for (UUID member : new UUID[] {MEMBER, MEMBER_B, MEMBER_C}) {
+        for (UUID member : new UUID[] {MEMBER, MEMBER_B, MEMBER_C, MEMBER_D}) {
             jdbcTemplate.update("insert into auth.users (id) values (?)", member);
         }
-        expenseMonthId = insertV14Budget("EXPENSE", "MONTH", "2026-09-01", "'KRW'", "1000.00");
+        expenseMonthId = insertV14Budget(MEMBER, "EXPENSE", "MONTH", "2026-09-01", "'KRW'", "1000.00");
         insertGroupAllocation(expenseMonthId);
         insertCategoryAllocation(expenseMonthId, FOOD);
-        expenseDefaultId = insertV14Budget("EXPENSE", "DEFAULT", "2026-09-01", "'KRW'", "2000.00");
+        expenseDefaultId = insertV14Budget(MEMBER, "EXPENSE", "DEFAULT", "2026-09-01", "'KRW'", "2000.00");
         insertGroupAllocation(expenseDefaultId);
         insertCategoryAllocation(expenseDefaultId, FOOD);
-        incomeMonthId = insertV14Budget("INCOME", "MONTH", "2026-09-01", "'KRW'", "3000.00");
+        incomeMonthId = insertV14Budget(MEMBER, "INCOME", "MONTH", "2026-09-01", "'KRW'", "3000.00");
         insertCategoryAllocation(incomeMonthId, SALARY);
-        offMonthId = insertV14Budget("EXPENSE", "MONTH", "2026-10-01", "null", "null");
+        offMonthId = insertV14Budget(MEMBER, "EXPENSE", "MONTH", "2026-10-01", "null", "null");
         insertGroupAllocation(offMonthId);
+        // v1 은 몫 합 > 전체를 저장했다 — 개발 DB 에 남아 있을 수 있는 모양이다.
+        overShareMonthId = insertV14Budget(MEMBER_D, "EXPENSE", "MONTH", "2026-09-01", "'KRW'", "100.00");
+        jdbcTemplate.update(
+                "insert into budget_allocation (budget_id, category_id, amount) values (?, ?, 60.00), (?, ?, 60.00)",
+                overShareMonthId,
+                FOOD,
+                overShareMonthId,
+                CAFE);
+        jdbcTemplate.update(
+                "insert into budget_allocation (budget_id, payment_group, amount) values (?, 'CREDIT_CARD', 150.00)",
+                overShareMonthId);
 
         migrateToVersion(dataSource, "15");
     }
@@ -93,6 +107,24 @@ class BudgetMonthOnlyMigrationTest {
                         """,
                         String.class))
                 .isEmpty();
+    }
+
+    @Test
+    @DisplayName("V15 는 몫 합이 전체를 넘는 v1 의 (지출, 달) 행과 그 몫을 그대로 남긴다")
+    void v15_keeps_month_row_whose_shares_exceed_total() {
+        assertThat(jdbcTemplate.queryForList("select id from budget where member_id = ?", Long.class, MEMBER_D))
+                .containsExactly(overShareMonthId);
+        assertThat(jdbcTemplate.queryForObject(
+                        "select total_amount from budget where id = ?", String.class, overShareMonthId))
+                .isEqualTo("100.00");
+        assertThat(jdbcTemplate.queryForList(
+                        """
+                        select coalesce(cast(category_id as text), payment_group) || '=' || amount
+                        from budget_allocation where budget_id = ?
+                        """,
+                        String.class,
+                        overShareMonthId))
+                .containsExactlyInAnyOrder(FOOD + "=60.00", CAFE + "=60.00", "CREDIT_CARD=150.00");
     }
 
     @Test
@@ -129,12 +161,13 @@ class BudgetMonthOnlyMigrationTest {
                 .migrate();
     }
 
-    private static long insertV14Budget(String axis, String kind, String month, String currencySql, String totalSql) {
+    private static long insertV14Budget(
+            UUID member, String axis, String kind, String month, String currencySql, String totalSql) {
         Long id = jdbcTemplate.queryForObject(
                 "insert into budget (member_id, axis, kind, month, currency_code, total_amount)"
                         + " values (?, ?, ?, ?::date, " + currencySql + ", " + totalSql + ") returning id",
                 Long.class,
-                MEMBER,
+                member,
                 axis,
                 kind,
                 month);

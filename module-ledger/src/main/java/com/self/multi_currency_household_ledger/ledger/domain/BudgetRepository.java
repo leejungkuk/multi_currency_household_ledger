@@ -20,7 +20,7 @@ public interface BudgetRepository extends JpaRepository<Budget, Long> {
 
     boolean existsByMemberId(UUID memberId);
 
-    // 예산 쓰기 경로의 회원 단위 직렬화(DESIGN §2). 트랜잭션이 끝나면 풀린다. 행이 없는 달의 동시 insert 는 행 락이나
+    // 예산 쓰기 경로의 회원 단위 직렬화(DESIGN §7). 트랜잭션이 끝나면 풀린다. 행이 없는 달의 동시 insert 는 행 락이나
     // @Version 으로는 잡히지 않아 uk_budget 위반이 된다.
     @Query(
             value = "select 1 from pg_advisory_xact_lock(hashtext('budget:' || cast(:memberId as text)))",

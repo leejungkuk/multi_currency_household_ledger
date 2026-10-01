@@ -110,6 +110,8 @@ public class Budget extends BaseEntity {
                 toUniqueMap(groupAmounts, GroupAmount::paymentGroup, GroupAmount::amount, currency);
         Map<Long, BigDecimal> categories =
                 toUniqueMap(categoryAmounts, CategoryAmount::categoryId, CategoryAmount::amount, currency);
+        requireWithinTotal(groups.values(), total);
+        requireWithinTotal(categories.values(), total);
 
         this.currencyCode = currency;
         this.totalAmount = total;
@@ -153,6 +155,13 @@ public class Budget extends BaseEntity {
             }
         }
         return map;
+    }
+
+    /** 몫 합은 전체 이하여야 한다(같으면 통과). compareTo 라 스케일 차이는 무시한다. */
+    private static void requireWithinTotal(Collection<BigDecimal> shares, BigDecimal total) {
+        if (shares.stream().reduce(BigDecimal.ZERO, BigDecimal::add).compareTo(total) > 0) {
+            throw new BusinessException(BudgetErrorCode.BUDGET_ALLOCATION_EXCEEDS_TOTAL);
+        }
     }
 
     private static void requireValidAmount(BigDecimal amount, CurrencyCode currency) {

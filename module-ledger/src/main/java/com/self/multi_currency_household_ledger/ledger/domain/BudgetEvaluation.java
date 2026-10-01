@@ -25,11 +25,7 @@ public record BudgetEvaluation(
         BudgetLine total,
         Map<PaymentGroup, BudgetLine> paymentGroups,
         Map<Long, BudgetLine> categories,
-        BigDecimal otherCategoriesActualAmount,
-        BigDecimal paymentGroupUnallocatedAmount,
-        boolean paymentGroupAllocationExceeded,
-        BigDecimal categoryUnallocatedAmount,
-        boolean categoryAllocationExceeded,
+        BudgetLine otherCategories,
         int missingRateCount,
         DailyAllowance dailyAllowance) {
 
@@ -90,18 +86,18 @@ public record BudgetEvaluation(
                         categoryId,
                         BudgetLine.of(budget, categoryActual.getOrDefault(categoryId, BigDecimal.ZERO), digits)));
 
-        BigDecimal groupUnallocated = unallocated(amounts.total(), amounts.paymentGroupAmounts(), digits);
-        BigDecimal categoryUnallocated = unallocated(amounts.total(), amounts.categoryAmounts(), digits);
+        // 그 외 카테고리 몫 = 전체 − 카테고리 몫 합. 0 이하면 쓴 돈만 준다 — 음수는 v1 이 초과를 저장한 옛 행에서만 생긴다.
+        BigDecimal otherShare =
+                amounts.categoryAmounts().values().stream().reduce(amounts.total(), BigDecimal::subtract);
+        BudgetLine otherCategories = otherShare.signum() > 0
+                ? BudgetLine.of(otherShare, otherActual, digits)
+                : BudgetLine.actualOnly(otherActual, digits);
 
         return new BudgetEvaluation(
                 total,
                 Collections.unmodifiableMap(groups),
                 Collections.unmodifiableMap(categories),
-                BudgetLine.floor(otherActual, digits),
-                groupUnallocated,
-                groupUnallocated == null,
-                categoryUnallocated,
-                categoryUnallocated == null,
+                otherCategories,
                 missingRateCount,
                 dailyAllowance(amounts.total(), totalActual, total, remainingDaysIncludingToday, digits));
     }
@@ -118,12 +114,6 @@ public record BudgetEvaluation(
                 .krwAmount()
                 .multiply(BigDecimal.valueOf(currency.getUnit()))
                 .divide(tts, CONVERSION_SCALE, RoundingMode.HALF_UP));
-    }
-
-    /** 전체 − 몫 합계를 내림. 몫 합계가 전체를 넘으면 null. */
-    private static BigDecimal unallocated(BigDecimal total, Map<?, BigDecimal> shares, int digits) {
-        BigDecimal remaining = shares.values().stream().reduce(total, BigDecimal::subtract);
-        return remaining.signum() < 0 ? null : BudgetLine.floor(remaining, digits);
     }
 
     private static DailyAllowance dailyAllowance(

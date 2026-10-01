@@ -1085,12 +1085,6 @@
                         },
                         "type": "array"
                     },
-                    "categoryAllocationExceeded": {
-                        "type": "boolean"
-                    },
-                    "categoryUnallocatedAmount": {
-                        "type": "number"
-                    },
                     "currency": {
                         "enum": [
                             "KRW",
@@ -1131,14 +1125,8 @@
                         "format": "int32",
                         "type": "integer"
                     },
-                    "otherCategoriesActualAmount": {
-                        "type": "number"
-                    },
-                    "paymentGroupAllocationExceeded": {
-                        "type": "boolean"
-                    },
-                    "paymentGroupUnallocatedAmount": {
-                        "type": "number"
+                    "otherCategories": {
+                        "$ref": "#/components/schemas/BudgetLine"
                     },
                     "paymentGroups": {
                         "items": {

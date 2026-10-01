@@ -12,7 +12,7 @@ import java.util.List;
 
 /**
  * 한 달의 예산. 미설정(NOT_SET)이면 금액 필드는 모두 null 이고 배열은 비어 있다. 있으면 paymentGroups 는 항상 3개, categories 는 몫이 있는
- * 카테고리만 담는다. remainingDaysIncludingToday 는 요청한 달이 이번 달일 때만 있다(예산이 없어도 준다).
+ * 카테고리만 담고, otherCategories 는 몫이 없는 카테고리를 묶은 한 줄이다(몫 = 전체 − 카테고리 몫 합). remainingDaysIncludingToday 는 요청한 달이 이번 달일 때만 있다(예산이 없어도 준다).
  */
 public record MonthlyBudgetResponse(
         int year,
@@ -26,11 +26,7 @@ public record MonthlyBudgetResponse(
         BudgetLine total,
         List<BudgetPaymentGroupLine> paymentGroups,
         List<BudgetCategoryLine> categories,
-        BigDecimal otherCategoriesActualAmount,
-        BigDecimal paymentGroupUnallocatedAmount,
-        boolean paymentGroupAllocationExceeded,
-        BigDecimal categoryUnallocatedAmount,
-        boolean categoryAllocationExceeded,
+        BudgetLine otherCategories,
         int missingRateCount,
         BudgetEvaluation.DailyAllowance dailyAllowance) {
 
@@ -49,10 +45,6 @@ public record MonthlyBudgetResponse(
                 List.of(),
                 List.of(),
                 null,
-                null,
-                false,
-                null,
-                false,
                 0,
                 null);
     }
@@ -85,11 +77,7 @@ public record MonthlyBudgetResponse(
                 evaluation.total(),
                 paymentGroups,
                 categoryLines,
-                evaluation.otherCategoriesActualAmount(),
-                evaluation.paymentGroupUnallocatedAmount(),
-                evaluation.paymentGroupAllocationExceeded(),
-                evaluation.categoryUnallocatedAmount(),
-                evaluation.categoryAllocationExceeded(),
+                evaluation.otherCategories(),
                 evaluation.missingRateCount(),
                 evaluation.dailyAllowance());
     }

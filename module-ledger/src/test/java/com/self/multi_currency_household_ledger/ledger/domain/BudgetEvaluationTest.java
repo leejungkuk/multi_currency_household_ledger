@@ -245,7 +245,7 @@ class BudgetEvaluationTest {
             assertThat(evaluation.paymentGroups().get(PaymentGroup.CREDIT_CARD).actualAmount())
                     .isEqualByComparingTo("2.00");
             assertThat(evaluation.categories().get(FOOD).actualAmount()).isEqualByComparingTo("2.00");
-            assertThat(evaluation.otherCategoriesActualAmount()).isEqualByComparingTo("0");
+            assertThat(evaluation.otherCategories().actualAmount()).isEqualByComparingTo("0");
         }
 
         @Test
@@ -335,7 +335,7 @@ class BudgetEvaluationTest {
     }
 
     @Nested
-    @DisplayName("몫·미배분·하루 권장액")
+    @DisplayName("몫·그 외 카테고리·하루 권장액")
     class Allocation {
 
         @Test
@@ -371,7 +371,7 @@ class BudgetEvaluationTest {
         }
 
         @Test
-        @DisplayName("카테고리 줄은 몫이 있는 것만, 나머지 카테고리는 otherCategoriesActualAmount 로 합친다")
+        @DisplayName("카테고리 줄은 몫이 있는 것만, 나머지 카테고리는 otherCategories 줄의 actualAmount 로 합친다")
         void categories_only_with_allocation() {
             BudgetAmounts budget = new BudgetAmounts(
                     CurrencyCode.KRW, amount("1000"), Map.of(), Map.of(FOOD, amount("300"), 30L, amount("100")));
@@ -384,42 +384,109 @@ class BudgetEvaluationTest {
             assertThat(evaluation.categories().get(FOOD).actualAmount()).isEqualByComparingTo("250");
             assertThat(evaluation.categories().get(FOOD).status()).isEqualTo(BudgetStatus.NEAR_LIMIT);
             assertThat(evaluation.categories().get(30L).status()).isEqualTo(BudgetStatus.NONE);
-            assertThat(evaluation.otherCategoriesActualAmount()).isEqualByComparingTo("105");
+            assertThat(evaluation.otherCategories().actualAmount()).isEqualByComparingTo("105");
         }
 
         @Test
-        @DisplayName("미배분 = 전체 − 몫 합계, 몫이 없으면 전체, 몫 합계가 넘치면 null + exceeded")
-        void unallocated_amounts() {
+        @DisplayName("그 외 카테고리 줄 — 몫 = 전체 − 카테고리 몫 합(1000 − 600 = 400), 몫 없는 카테고리에 350 이면 NEAR_LIMIT·87%·남은 50")
+        void other_categories_line_uses_remaining_share() {
             BudgetAmounts budget = new BudgetAmounts(
                     CurrencyCode.KRW,
                     amount("1000"),
-                    Map.of(PaymentGroup.CREDIT_CARD, amount("600"), PaymentGroup.CASH_AND_DEBIT, amount("100")),
-                    Map.of(FOOD, amount("700"), CAFE, amount("500")));
+                    Map.of(PaymentGroup.CREDIT_CARD, amount("900")),
+                    Map.of(FOOD, amount("600")));
 
-            BudgetEvaluation evaluation = expense(budget, List.of());
+            BudgetLine other = expense(budget, List.of(inCategory(FOOD, "100"), inCategory(CAFE, "350")))
+                    .otherCategories();
 
-            assertThat(evaluation.paymentGroupUnallocatedAmount()).isEqualByComparingTo("300");
-            assertThat(evaluation.paymentGroupAllocationExceeded()).isFalse();
-            assertThat(evaluation.categoryUnallocatedAmount()).isNull();
-            assertThat(evaluation.categoryAllocationExceeded()).isTrue();
-
-            BudgetEvaluation noShares = expense(krwBudget("1000"), List.of());
-            assertThat(noShares.paymentGroupUnallocatedAmount()).isEqualByComparingTo("1000");
-            assertThat(noShares.paymentGroupAllocationExceeded()).isFalse();
-            assertThat(noShares.categoryUnallocatedAmount()).isEqualByComparingTo("1000");
-            assertThat(noShares.categoryAllocationExceeded()).isFalse();
+            assertThat(other.budgetAmount()).isEqualByComparingTo("400");
+            assertThat(other.actualAmount()).isEqualByComparingTo("350");
+            assertThat(other.status()).isEqualTo(BudgetStatus.NEAR_LIMIT);
+            assertThat(other.percent()).isEqualTo(87);
+            assertThat(other.remainingAmount()).isEqualByComparingTo("50");
+            assertThat(other.overAmount()).isNull();
         }
 
         @Test
-        @DisplayName("몫 합계가 전체와 정확히 같으면 미배분 0, 초과 아님")
-        void unallocated_exactly_zero() {
+        @DisplayName("그 외 카테고리 줄도 다른 줄처럼 넘는다 — 몫 400 에 450 이면 EXCEEDED·넘은 50·남은 null")
+        void other_categories_line_exceeds_like_other_lines() {
+            BudgetAmounts budget =
+                    new BudgetAmounts(CurrencyCode.KRW, amount("1000"), Map.of(), Map.of(FOOD, amount("600")));
+
+            BudgetLine other = expense(budget, List.of(inCategory(CAFE, "450"))).otherCategories();
+
+            assertThat(other.budgetAmount()).isEqualByComparingTo("400");
+            assertThat(other.actualAmount()).isEqualByComparingTo("450");
+            assertThat(other.status()).isEqualTo(BudgetStatus.EXCEEDED);
+            assertThat(other.percent()).isNull();
+            assertThat(other.remainingAmount()).isNull();
+            assertThat(other.overAmount()).isEqualByComparingTo("50");
+        }
+
+        @Test
+        @DisplayName("카테고리 몫 합 = 전체면 남는 몫이 없어 그 외 카테고리 줄은 쓴 돈만 있다")
+        void other_categories_line_is_actual_only_when_no_share_remains() {
             BudgetAmounts budget = new BudgetAmounts(
                     CurrencyCode.KRW, amount("1000"), Map.of(), Map.of(FOOD, amount("400"), CAFE, amount("600")));
 
-            BudgetEvaluation evaluation = expense(budget, List.of());
+            BudgetLine other = expense(budget, List.of(inCategory(40L, "30"))).otherCategories();
 
-            assertThat(evaluation.categoryUnallocatedAmount()).isEqualByComparingTo("0");
-            assertThat(evaluation.categoryAllocationExceeded()).isFalse();
+            assertThat(other.actualAmount()).isEqualByComparingTo("30");
+            assertThat(other.budgetAmount()).isNull();
+            assertThat(other.status()).isNull();
+            assertThat(other.percent()).isNull();
+            assertThat(other.remainingAmount()).isNull();
+            assertThat(other.overAmount()).isNull();
+        }
+
+        @Test
+        @DisplayName("카테고리 몫이 없으면 그 외 카테고리 줄 = 전체 줄(몫 = 전체, 쓴 돈 = 전체 실제)")
+        void other_categories_line_equals_total_without_category_shares() {
+            BudgetEvaluation evaluation =
+                    expense(krwBudget("1000"), List.of(inCategory(FOOD, "300"), inCategory(CAFE, "200")));
+
+            BudgetLine other = evaluation.otherCategories();
+            assertThat(other.budgetAmount()).isEqualByComparingTo("1000");
+            assertThat(other.actualAmount()).isEqualByComparingTo("500");
+            assertThat(other.status()).isEqualTo(BudgetStatus.IN_PROGRESS);
+            assertThat(other.percent()).isEqualTo(50);
+            assertThat(other).isEqualTo(evaluation.total());
+        }
+
+        @Test
+        @DisplayName("외화 예산에서 환율이 없는 몫 없는 카테고리 거래는 그 외 카테고리 쓴 돈에서 빠지고 missingRateCount 로만 센다")
+        void other_categories_line_excludes_missing_rate_transactions() {
+            TtsTimeline usdFromSep1 = TtsTimeline.of(
+                    List.of(ExchangeRate.of(CurrencyCode.USD, amount("1350"), LocalDate.of(2026, 9, 1))));
+            BudgetAmounts budget =
+                    new BudgetAmounts(CurrencyCode.USD, amount("100.00"), Map.of(), Map.of(FOOD, amount("40.00")));
+            BudgetTransaction beforeAnyRate = new BudgetTransaction(
+                    CurrencyCode.KRW, amount("13500"), amount("13500"), LocalDate.of(2026, 8, 31), CAFE, CARD);
+            BudgetTransaction withRate = inCategory(CAFE, "2700");
+
+            BudgetEvaluation evaluation =
+                    BudgetEvaluation.evaluate(budget, List.of(beforeAnyRate, withRate), usdFromSep1, null);
+
+            assertThat(evaluation.missingRateCount()).isEqualTo(1);
+            assertThat(evaluation.otherCategories().budgetAmount()).isEqualByComparingTo("60.00");
+            assertThat(evaluation.otherCategories().actualAmount()).isEqualByComparingTo("2.00");
+            assertThat(evaluation.otherCategories().percent()).isEqualTo(3);
+        }
+
+        @Test
+        @DisplayName("카테고리 몫 합이 전체를 넘는 v1 행(남는 몫 < 0)이면 예외 없이 쓴 돈만 있는 줄이다")
+        void other_categories_line_is_actual_only_when_shares_exceed_total() {
+            BudgetAmounts budget = new BudgetAmounts(
+                    CurrencyCode.KRW, amount("1000"), Map.of(), Map.of(FOOD, amount("700"), CAFE, amount("500")));
+
+            BudgetLine other = expense(budget, List.of(inCategory(40L, "5"))).otherCategories();
+
+            assertThat(other.actualAmount()).isEqualByComparingTo("5");
+            assertThat(other.budgetAmount()).isNull();
+            assertThat(other.status()).isNull();
+            assertThat(other.percent()).isNull();
+            assertThat(other.remainingAmount()).isNull();
+            assertThat(other.overAmount()).isNull();
         }
 
         @Test
