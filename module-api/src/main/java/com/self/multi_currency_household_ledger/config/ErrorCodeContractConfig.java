@@ -29,7 +29,8 @@ class ErrorCodeContractConfig {
 
     private static final String ERROR_CODES = "x-error-codes";
 
-    // FORBIDDEN 은 나오는 경로가 없고, CONCURRENT_MODIFICATION 은 @Version 을 가진 오퍼레이션이 직접 선언한다.
+    // FORBIDDEN 은 나오는 경로가 없고, CONCURRENT_MODIFICATION 은 기존 행을 고치거나 지우는 오퍼레이션이 직접 선언한다 —
+    // @Version 충돌 말고도, 찾은 행이 flush 전에 cascade 로 사라지면 0행 갱신·삭제가 낙관적 락 실패로 나간다.
     private static final Set<String> COMMON_CODES = Stream.of(
                     ErrorCode.Common.VALIDATION_ERROR,
                     ErrorCode.Common.INVALID_PARAMETER,

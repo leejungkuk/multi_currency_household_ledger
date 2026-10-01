@@ -1518,6 +1518,16 @@
                 },
                 "tags": [
                     "budget-controller"
+                ],
+                "x-error-codes": [
+                    "BUDGET_MONTH_OUT_OF_RANGE",
+                    "CONCURRENT_MODIFICATION",
+                    "INTERNAL_ERROR",
+                    "INVALID_PARAMETER",
+                    "MALFORMED_REQUEST",
+                    "TOO_MANY_REQUESTS",
+                    "UNAUTHORIZED",
+                    "VALIDATION_ERROR"
                 ]
             },
             "get": {
@@ -1579,6 +1589,14 @@
                 },
                 "tags": [
                     "budget-controller"
+                ],
+                "x-error-codes": [
+                    "INTERNAL_ERROR",
+                    "INVALID_PARAMETER",
+                    "MALFORMED_REQUEST",
+                    "TOO_MANY_REQUESTS",
+                    "UNAUTHORIZED",
+                    "VALIDATION_ERROR"
                 ]
             },
             "put": {
@@ -1666,6 +1684,22 @@
                 },
                 "tags": [
                     "budget-controller"
+                ],
+                "x-error-codes": [
+                    "BUDGET_ALLOCATION_EXCEEDS_TOTAL",
+                    "BUDGET_INVALID_ALLOCATION",
+                    "BUDGET_INVALID_AMOUNT",
+                    "BUDGET_MONTH_OUT_OF_RANGE",
+                    "BUDGET_TOTAL_REQUIRED",
+                    "CATEGORY_NOT_FOUND",
+                    "CONCURRENT_MODIFICATION",
+                    "INTERNAL_ERROR",
+                    "INVALID_PARAMETER",
+                    "MALFORMED_REQUEST",
+                    "REQUEST_BODY_TOO_LARGE",
+                    "TOO_MANY_REQUESTS",
+                    "UNAUTHORIZED",
+                    "VALIDATION_ERROR"
                 ]
             }
         },
