@@ -2108,6 +2108,15 @@
                 },
                 "tags": [
                     "exchange-rate-controller"
+                ],
+                "x-error-codes": [
+                    "INTERNAL_ERROR",
+                    "INVALID_DATE",
+                    "INVALID_PARAMETER",
+                    "MALFORMED_REQUEST",
+                    "TOO_MANY_REQUESTS",
+                    "UNAUTHORIZED",
+                    "VALIDATION_ERROR"
                 ]
             }
         },
@@ -2167,6 +2176,15 @@
                 },
                 "tags": [
                     "exchange-rate-controller"
+                ],
+                "x-error-codes": [
+                    "INTERNAL_ERROR",
+                    "INVALID_DATE_RANGE",
+                    "INVALID_PARAMETER",
+                    "MALFORMED_REQUEST",
+                    "TOO_MANY_REQUESTS",
+                    "UNAUTHORIZED",
+                    "VALIDATION_ERROR"
                 ]
             }
         },
@@ -2217,6 +2235,15 @@
                 },
                 "tags": [
                     "exchange-rate-controller"
+                ],
+                "x-error-codes": [
+                    "INTERNAL_ERROR",
+                    "INVALID_DATE",
+                    "INVALID_PARAMETER",
+                    "MALFORMED_REQUEST",
+                    "TOO_MANY_REQUESTS",
+                    "UNAUTHORIZED",
+                    "VALIDATION_ERROR"
                 ]
             }
         },
@@ -2256,6 +2283,14 @@
                 },
                 "tags": [
                     "exchange-rate-controller"
+                ],
+                "x-error-codes": [
+                    "INTERNAL_ERROR",
+                    "INVALID_PARAMETER",
+                    "MALFORMED_REQUEST",
+                    "TOO_MANY_REQUESTS",
+                    "UNAUTHORIZED",
+                    "VALIDATION_ERROR"
                 ]
             }
         },
@@ -2329,6 +2364,16 @@
                 },
                 "tags": [
                     "exchange-rate-controller"
+                ],
+                "x-error-codes": [
+                    "EXCHANGE_RATE_NOT_FOUND",
+                    "INTERNAL_ERROR",
+                    "INVALID_DATE",
+                    "INVALID_PARAMETER",
+                    "MALFORMED_REQUEST",
+                    "TOO_MANY_REQUESTS",
+                    "UNAUTHORIZED",
+                    "VALIDATION_ERROR"
                 ]
             }
         },

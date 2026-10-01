@@ -1,6 +1,7 @@
 package com.self.multi_currency_household_ledger.exchange.controller;
 
 import com.self.multi_currency_household_ledger.common.dto.ApiResponse;
+import com.self.multi_currency_household_ledger.common.exception.ApiErrorCodes;
 import com.self.multi_currency_household_ledger.common.exception.BusinessException;
 import com.self.multi_currency_household_ledger.common.web.CacheControlHeaders;
 import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
@@ -31,6 +32,7 @@ public class ExchangeRateController {
     private final Clock clock;
 
     @GetMapping
+    @ApiErrorCodes({"INVALID_DATE"})
     public ResponseEntity<ApiResponse<List<ExchangeRateResponse>>> getRatesByDate(
             @RequestParam("date") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
         List<ExchangeRateResponse> responses = exchangeRateService.getAllRatesByDate(date).stream()
@@ -40,6 +42,7 @@ public class ExchangeRateController {
     }
 
     @GetMapping("/range")
+    @ApiErrorCodes({"INVALID_DATE_RANGE"})
     public ResponseEntity<ApiResponse<List<ExchangeRateResponse>>> getRatesInRange(
             @RequestParam("from") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam("to") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
@@ -51,6 +54,7 @@ public class ExchangeRateController {
     }
 
     @GetMapping("/snapshot")
+    @ApiErrorCodes({"INVALID_DATE"})
     public ResponseEntity<ApiResponse<List<ExchangeRateResponse>>> getSnapshot(
             @RequestParam(value = "date", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
                     LocalDate date) {
@@ -63,6 +67,7 @@ public class ExchangeRateController {
 
     /** date 지정 시 해당일(없으면 직전 영업일 fallback), 생략 시 최신 — stale 판정 기준일은 생략 시 KST 오늘. */
     @GetMapping("/{currencyCode}")
+    @ApiErrorCodes({"INVALID_DATE", "EXCHANGE_RATE_NOT_FOUND"})
     public ResponseEntity<ApiResponse<ExchangeRateResponse>> getRate(
             @PathVariable("currencyCode") CurrencyCode currencyCode,
             @RequestParam(value = "date", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
@@ -79,6 +84,7 @@ public class ExchangeRateController {
     }
 
     @GetMapping("/status")
+    @ApiErrorCodes({})
     public ResponseEntity<ApiResponse<ExchangeRateStatusResponse>> getStatus() {
         return publicRead(ExchangeRateStatusResponse.from(exchangeRateService.getLatestRatesByCurrency()));
     }

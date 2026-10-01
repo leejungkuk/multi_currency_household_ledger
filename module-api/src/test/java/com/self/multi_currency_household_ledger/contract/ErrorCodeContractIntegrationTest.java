@@ -82,6 +82,19 @@ class ErrorCodeContractIntegrationTest {
                         equalTo(withCommon("BUDGET_MONTH_OUT_OF_RANGE", "CONCURRENT_MODIFICATION"))));
     }
 
+    @Test
+    void exchangeRateOperationsDeclareTheirErrorCodes() throws Exception {
+        mockMvc.perform(get("/v3/api-docs").with(jwt()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(exchangeRateGetCodes(""), equalTo(withCommon("INVALID_DATE"))))
+                .andExpect(jsonPath(exchangeRateGetCodes("/range"), equalTo(withCommon("INVALID_DATE_RANGE"))))
+                .andExpect(jsonPath(exchangeRateGetCodes("/snapshot"), equalTo(withCommon("INVALID_DATE"))))
+                .andExpect(jsonPath(
+                        exchangeRateGetCodes("/{currencyCode}"),
+                        equalTo(withCommon("EXCHANGE_RATE_NOT_FOUND", "INVALID_DATE"))))
+                .andExpect(jsonPath(exchangeRateGetCodes("/status"), equalTo(withCommon())));
+    }
+
     // 키 = 전부 선언됨. 예산 밖에 키가 생기면(롤아웃 순서 위반) 여기서 빨개진다 — 다음 PR 이 선언하면 이 집합을 같이 늘린다.
     @Test
     void undeclaredOperationHasNoErrorCodesKey() throws Exception {
@@ -104,7 +117,15 @@ class ErrorCodeContractIntegrationTest {
                         .map(operation -> operation.getKey() + " " + path.getKey()))
                 .toList();
         assertThat(keyed)
-                .containsExactlyInAnyOrder("get /api/v1/budgets", "put /api/v1/budgets", "delete /api/v1/budgets");
+                .containsExactlyInAnyOrder(
+                        "get /api/v1/budgets",
+                        "put /api/v1/budgets",
+                        "delete /api/v1/budgets",
+                        "get /api/v1/exchange-rates",
+                        "get /api/v1/exchange-rates/range",
+                        "get /api/v1/exchange-rates/snapshot",
+                        "get /api/v1/exchange-rates/{currencyCode}",
+                        "get /api/v1/exchange-rates/status");
     }
 
     // value(List) 는 JSONArray 를 기대값 타입(불변 List)으로 다시 매핑하다 null 이 된다 — 원시 값을 equalTo 로 비교한다.
@@ -112,6 +133,10 @@ class ErrorCodeContractIntegrationTest {
         return Stream.concat(COMMON.stream(), Arrays.stream(domainCodes))
                 .sorted()
                 .toList();
+    }
+
+    private static String exchangeRateGetCodes(String subPath) {
+        return "$.paths['/api/v1/exchange-rates" + subPath + "'].get['x-error-codes']";
     }
 
     @TestConfiguration
