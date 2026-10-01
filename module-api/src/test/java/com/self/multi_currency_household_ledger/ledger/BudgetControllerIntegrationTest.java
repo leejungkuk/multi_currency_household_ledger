@@ -11,9 +11,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.self.multi_currency_household_ledger.AuthUserFixture;
 import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
-import com.self.multi_currency_household_ledger.ledger.domain.BudgetApplyTo;
 import com.self.multi_currency_household_ledger.ledger.domain.PaymentGroup;
-import com.self.multi_currency_household_ledger.ledger.domain.TransactionType;
 import com.self.multi_currency_household_ledger.ledger.dto.SaveBudgetRequest;
 import com.self.multi_currency_household_ledger.ledger.service.BudgetService;
 import java.math.BigDecimal;
@@ -56,7 +54,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
-/** 월 예산 API — 서버 Clock 은 2026-09-15(KST) 로 고정한다. 이번 달 = 9월, 쓸 수 있는 달 = 9·10월. */
+/** 월 예산 API — 서버 Clock 은 2026-09-15(KST) 로 고정한다. 이번 달 = 2026-09, 쓸 수 있는 달 = 2000-01 ~ 2027-09. */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
 @AutoConfigureMockMvc
 @Import(BudgetControllerIntegrationTest.FixedClockConfig.class)
@@ -72,6 +70,7 @@ class BudgetControllerIntegrationTest {
 
     private static final UUID MEMBER_A = UUID.fromString("00000000-0000-0000-0000-000000000001");
     private static final UUID MEMBER_B = UUID.fromString("00000000-0000-0000-0000-000000000002");
+    private static final YearMonth AUGUST = YearMonth.of(2026, 8);
     private static final YearMonth SEPTEMBER = YearMonth.of(2026, 9);
     private static final YearMonth OCTOBER = YearMonth.of(2026, 10);
 
@@ -79,9 +78,8 @@ class BudgetControllerIntegrationTest {
     private static final long EXPENSE_CATEGORY_ID = 1L;
     private static final long INCOME_CATEGORY_ID = 14L;
 
-    private static final String KRW_1M =
-            """
-            {"applyTo":"%s","amounts":{"currency":"KRW","totalAmount":1000000}}""";
+    private static final String KRW_1M = """
+            {"currency":"KRW","totalAmount":1000000}""";
 
     @Autowired
     private MockMvc mockMvc;
@@ -109,34 +107,33 @@ class BudgetControllerIntegrationTest {
     }
 
     @Test
-    @DisplayName("예산 읽기·쓰기·되돌리기는 인증 없이는 모두 401 이다")
+    @DisplayName("예산 읽기·저장·삭제는 인증 없이는 모두 401 이다")
     void budget_endpoints_require_authentication() throws Exception {
         mockMvc.perform(get("/api/v1/budgets").param("year", "2026").param("month", "9"))
                 .andExpect(status().isUnauthorized());
-        mockMvc.perform(put("/api/v1/budgets/EXPENSE")
+        mockMvc.perform(put("/api/v1/budgets")
                         .param("year", "2026")
                         .param("month", "9")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(KRW_1M.formatted("THIS_MONTH")))
+                        .content(KRW_1M))
                 .andExpect(status().isUnauthorized());
-        mockMvc.perform(delete("/api/v1/budgets/EXPENSE/month-value")
-                        .param("year", "2026")
-                        .param("month", "9"))
+        mockMvc.perform(delete("/api/v1/budgets").param("year", "2026").param("month", "9"))
                 .andExpect(status().isUnauthorized());
     }
 
     @Test
-    @DisplayName("A 가 저장한 이번 달 지출 예산은 B 의 같은 달 GET 에 보이지 않는다 (IDOR)")
+    @DisplayName("A 가 저장한 달은 B 의 같은 달 GET 에 보이지 않는다 (IDOR)")
     void other_member_budget_is_not_visible() throws Exception {
-        save(MEMBER_A, "EXPENSE", SEPTEMBER, KRW_1M.formatted("THIS_MONTH")).andExpect(status().isOk());
+        save(MEMBER_A, SEPTEMBER, KRW_1M).andExpect(status().isOk());
 
         JsonNode memberB = read(MEMBER_B, SEPTEMBER);
-        assertThat(memberB.path("expense").path("source").asString()).isEqualTo("NOT_SET");
-        assertThat(memberB.path("expense").path("status").asString()).isEqualTo("NOT_SET");
+        assertThat(memberB.path("status").asString()).isEqualTo("NOT_SET");
+        assertThat(memberB.path("total").isNull()).isTrue();
         assertThat(memberB.path("hasAnyBudget").asBoolean()).isFalse();
 
         JsonNode memberA = read(MEMBER_A, SEPTEMBER);
-        assertThat(memberA.path("expense").path("source").asString()).isEqualTo("MONTH_VALUE");
+        assertThat(memberA.path("status").asString()).isEqualTo("NONE");
+        assertThat(memberA.path("total").path("budgetAmount").decimalValue()).isEqualByComparingTo("1000000");
         assertThat(memberA.path("hasAnyBudget").asBoolean()).isTrue();
     }
 
@@ -144,15 +141,15 @@ class BudgetControllerIntegrationTest {
     @DisplayName("B 가 A 의 커스텀 카테고리 id 로 PUT 하면 404 CATEGORY_NOT_FOUND 이고 A 의 행은 그대로다 (IDOR)")
     void other_member_custom_category_is_not_found() throws Exception {
         long memberACategoryId = createCustomCategory(MEMBER_A, "반려견");
-        String body = categoryBudget("THIS_MONTH", memberACategoryId, 300000);
-        save(MEMBER_A, "EXPENSE", SEPTEMBER, body).andExpect(status().isOk());
+        String body = categoryBudget(memberACategoryId, 300000);
+        save(MEMBER_A, SEPTEMBER, body).andExpect(status().isOk());
 
-        save(MEMBER_B, "EXPENSE", SEPTEMBER, body)
+        save(MEMBER_B, SEPTEMBER, body)
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("CATEGORY_NOT_FOUND"));
 
         assertThat(budgetRowCount(MEMBER_B)).isZero();
-        JsonNode memberA = read(MEMBER_A, SEPTEMBER).path("expense");
+        JsonNode memberA = read(MEMBER_A, SEPTEMBER);
         assertThat(memberA.path("categories")).hasSize(1);
         assertThat(memberA.path("categories").get(0).path("category").path("id").asLong())
                 .isEqualTo(memberACategoryId);
@@ -161,196 +158,340 @@ class BudgetControllerIntegrationTest {
     }
 
     @Test
-    @DisplayName("B 의 DELETE month-value 는 A 의 (MONTH, M) 행을 지우지 않는다 (IDOR)")
-    void other_member_revert_keeps_rows() throws Exception {
-        save(MEMBER_A, "EXPENSE", SEPTEMBER, KRW_1M.formatted("THIS_MONTH")).andExpect(status().isOk());
+    @DisplayName("B 의 같은 달 PUT·DELETE 는 A 의 행·몫을 건드리지 않는다 (IDOR)")
+    void other_member_put_and_delete_do_not_touch_member_a_row() throws Exception {
+        String memberABody =
+                """
+                {"currency":"KRW","totalAmount":1000000,
+                 "paymentGroupAmounts":[{"paymentGroup":"CREDIT_CARD","amount":600000}],
+                 "categoryAmounts":[{"categoryId":%d,"amount":300000}]}"""
+                        .formatted(EXPENSE_CATEGORY_ID);
+        JsonNode before = data(save(MEMBER_A, SEPTEMBER, memberABody).andExpect(status().isOk()));
 
-        revert(MEMBER_B, "EXPENSE", SEPTEMBER).andExpect(status().isOk());
+        save(MEMBER_B, SEPTEMBER, "{\"currency\":\"USD\",\"totalAmount\":5}").andExpect(status().isOk());
+        remove(MEMBER_B, SEPTEMBER)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("NOT_SET"));
 
+        assertThat(budgetRowCount(MEMBER_B)).isZero();
         assertThat(budgetRowCount(MEMBER_A)).isEqualTo(1);
-        assertThat(read(MEMBER_A, SEPTEMBER).path("expense").path("source").asString())
-                .isEqualTo("MONTH_VALUE");
+        assertThat(allocationCount(MEMBER_A)).isEqualTo(2);
+        assertThat(read(MEMBER_A, SEPTEMBER)).isEqualTo(before);
     }
 
     @Test
-    @DisplayName("DELETE month-value 는 내 (MONTH, M) 행을 지워 기본값으로 되돌리고, 되돌릴 값이 없어도 성공한다")
-    void revert_removes_month_value() throws Exception {
-        save(MEMBER_A, "EXPENSE", SEPTEMBER, KRW_1M.formatted("FROM_THIS_MONTH"))
-                .andExpect(status().isOk());
-        save(MEMBER_A, "EXPENSE", SEPTEMBER, offBody("THIS_MONTH")).andExpect(status().isOk());
+    @DisplayName("A 의 거래는 같은 달·같은 몫으로 저장한 B 의 예산 실제 금액에 들지 않는다 (IDOR — 예산 거래 쿼리의 회원 술어)")
+    void other_member_transactions_do_not_count_in_budget() throws Exception {
+        String body = categoryBudget(EXPENSE_CATEGORY_ID, 300000);
+        save(MEMBER_A, SEPTEMBER, body).andExpect(status().isOk());
+        save(MEMBER_B, SEPTEMBER, body).andExpect(status().isOk());
+        createEntry(MEMBER_A, "100000", "KRW", EXPENSE_CATEGORY_ID, 1, "2026-09-10"); // 몫 있는 카테고리 · 신용카드
+        createEntry(MEMBER_A, "50000", "KRW", 2, 2, "2026-09-11"); // 몫 없는 카테고리 · 현금·체크카드
 
-        revert(MEMBER_A, "EXPENSE", SEPTEMBER)
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.expense.source").value("DEFAULT"));
-        revert(MEMBER_A, "EXPENSE", SEPTEMBER)
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.expense.source").value("DEFAULT"));
+        JsonNode memberB = read(MEMBER_B, SEPTEMBER);
+        assertThat(memberB.path("status").asString()).isEqualTo("NONE");
+        assertThat(actualAmounts(memberB))
+                .usingElementComparator(BigDecimal::compareTo)
+                .containsExactly(
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO);
+
+        // 대조군 — 같은 거래가 A 의 예산에는 잡힌다.
+        JsonNode memberA = read(MEMBER_A, SEPTEMBER);
+        assertThat(memberA.path("status").asString()).isEqualTo("IN_PROGRESS");
+        assertThat(actualAmounts(memberA))
+                .usingElementComparator(BigDecimal::compareTo)
+                .containsExactly(
+                        new BigDecimal("150000"),
+                        new BigDecimal("100000"),
+                        new BigDecimal("50000"),
+                        BigDecimal.ZERO,
+                        new BigDecimal("100000"),
+                        new BigDecimal("50000"));
     }
 
     @Test
-    @DisplayName("지난 달 쓰기는 BUDGET_PAST_MONTH, 다다음 달은 BUDGET_MONTH_TOO_FAR, 다음 달 쓰기와 지난 달 읽기는 된다")
-    void write_window_is_this_and_next_month() throws Exception {
-        save(MEMBER_A, "EXPENSE", YearMonth.of(2026, 8), KRW_1M.formatted("THIS_MONTH"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("BUDGET_PAST_MONTH"));
-        revert(MEMBER_A, "EXPENSE", YearMonth.of(2026, 8))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("BUDGET_PAST_MONTH"));
-        save(MEMBER_A, "EXPENSE", YearMonth.of(2026, 11), KRW_1M.formatted("THIS_MONTH"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("BUDGET_MONTH_TOO_FAR"));
-        assertThat(budgetRowCount(MEMBER_A)).isZero();
+    @DisplayName("달마다 따로다 — M 저장 뒤 M+1 은 미설정이고, M+1 저장이 M 을 바꾸지 않는다")
+    void months_are_independent() throws Exception {
+        save(MEMBER_A, SEPTEMBER, KRW_1M).andExpect(status().isOk());
 
-        save(MEMBER_A, "EXPENSE", OCTOBER, KRW_1M.formatted("THIS_MONTH"))
+        JsonNode october = read(MEMBER_A, OCTOBER);
+        assertThat(october.path("status").asString()).isEqualTo("NOT_SET");
+        assertThat(october.path("hasAnyBudget").asBoolean()).isTrue();
+
+        save(MEMBER_A, OCTOBER, """
+                        {"currency":"USD","totalAmount":700}""")
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.editable").value(true))
-                .andExpect(jsonPath("$.data.remainingDaysIncludingToday").isEmpty());
-
-        JsonNode august = read(MEMBER_A, YearMonth.of(2026, 8));
-        assertThat(august.path("editable").asBoolean()).isFalse();
-        assertThat(august.path("currentYear").asInt()).isEqualTo(2026);
-        assertThat(august.path("currentMonth").asInt()).isEqualTo(9);
-        assertThat(august.path("remainingDaysIncludingToday").isNull()).isTrue();
+                .andExpect(jsonPath("$.data.currency").value("USD"));
 
         JsonNode september = read(MEMBER_A, SEPTEMBER);
-        assertThat(september.path("editable").asBoolean()).isTrue();
-        assertThat(september.path("remainingDaysIncludingToday").asInt()).isEqualTo(16);
+        assertThat(september.path("currency").asString()).isEqualTo("KRW");
+        assertThat(september.path("total").path("budgetAmount").decimalValue()).isEqualByComparingTo("1000000");
+        assertThat(budgetRowCount(MEMBER_A)).isEqualTo(2);
     }
 
     @Test
-    @DisplayName("FROM_THIS_MONTH 는 늦은 DEFAULT 와 M 의 MONTH 만 지우고, 이른 DEFAULT 와 M+1 의 MONTH 는 남긴다")
-    void from_this_month_deletes_later_defaults_and_this_month_value_only() throws Exception {
-        jdbcTemplate.update(
-                """
-                insert into budget (member_id, axis, kind, month, currency_code, total_amount)
-                values (?, 'EXPENSE', 'DEFAULT', date '2026-08-01', 'KRW', 500000)
-                """,
-                MEMBER_A);
-        save(MEMBER_A, "EXPENSE", OCTOBER, KRW_1M.formatted("FROM_THIS_MONTH")).andExpect(status().isOk());
-        save(MEMBER_A, "EXPENSE", SEPTEMBER, KRW_1M.formatted("THIS_MONTH")).andExpect(status().isOk());
-        save(MEMBER_A, "EXPENSE", OCTOBER, KRW_1M.formatted("THIS_MONTH")).andExpect(status().isOk());
-
-        save(
-                        MEMBER_A,
-                        "EXPENSE",
-                        SEPTEMBER,
-                        """
-                        {"applyTo":"FROM_THIS_MONTH","amounts":{"currency":"KRW","totalAmount":700000}}""")
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.expense.source").value("DEFAULT"))
-                .andExpect(jsonPath("$.data.expense.total.budgetAmount").value(700000));
-
-        assertThat(jdbcTemplate.queryForList(
-                        "select kind || ':' || month from budget where member_id = ? order by kind, month",
-                        String.class,
-                        MEMBER_A))
-                .containsExactly("DEFAULT:2026-08-01", "DEFAULT:2026-09-01", "MONTH:2026-10-01");
-        assertThat(read(MEMBER_A, OCTOBER).path("expense").path("source").asString())
-                .isEqualTo("MONTH_VALUE");
-    }
-
-    @Test
-    @DisplayName("같은 몫 세트를 두 번 PUT 해도 둘 다 200 이고 결과가 같다 — 그다음 amounts:null 이면 MONTH_OFF")
-    void same_allocation_set_is_idempotent_and_null_turns_off() throws Exception {
+    @DisplayName("PUT 은 그 달 세트를 통째로 바꾼다 — 같은 본문 두 번은 둘 다 200·같은 결과, 몫을 뺀 본문이면 그 몫이 사라진다")
+    void put_replaces_whole_set_and_is_idempotent() throws Exception {
         String body =
                 """
-                {"applyTo":"THIS_MONTH","amounts":{"currency":"KRW","totalAmount":1000000,
+                {"currency":"KRW","totalAmount":1000000,
                  "paymentGroupAmounts":[{"paymentGroup":"CREDIT_CARD","amount":600000}],
-                 "categoryAmounts":[{"categoryId":%d,"amount":300000}]}}"""
+                 "categoryAmounts":[{"categoryId":%d,"amount":300000}]}"""
                         .formatted(EXPENSE_CATEGORY_ID);
 
-        JsonNode first = data(save(MEMBER_A, "EXPENSE", SEPTEMBER, body).andExpect(status().isOk()));
-        JsonNode second = data(save(MEMBER_A, "EXPENSE", SEPTEMBER, body).andExpect(status().isOk()));
+        JsonNode first = data(save(MEMBER_A, SEPTEMBER, body).andExpect(status().isOk()));
+        JsonNode second = data(save(MEMBER_A, SEPTEMBER, body).andExpect(status().isOk()));
 
         assertThat(second).isEqualTo(first);
         assertThat(allocationCount(MEMBER_A)).isEqualTo(2);
-        JsonNode expense = second.path("expense");
-        assertThat(expense.path("paymentGroups")).hasSize(3);
-        assertThat(expense.path("paymentGroups").get(0).path("paymentGroup").asString())
+        assertThat(second.path("paymentGroups")).hasSize(3);
+        assertThat(second.path("paymentGroups").get(0).path("paymentGroup").asString())
                 .isEqualTo("CREDIT_CARD");
-        assertThat(expense.path("paymentGroups").get(0).path("budgetAmount").decimalValue())
+        assertThat(second.path("paymentGroups").get(0).path("budgetAmount").decimalValue())
                 .isEqualByComparingTo("600000");
-        assertThat(expense.path("paymentGroups").get(1).path("budgetAmount").isNull())
+        assertThat(second.path("paymentGroups").get(1).path("budgetAmount").isNull())
                 .isTrue();
-        assertThat(expense.path("categories").get(0).path("deleted").asBoolean())
-                .isFalse();
-        assertThat(expense.path("paymentGroupUnallocatedAmount").decimalValue()).isEqualByComparingTo("400000");
-        assertThat(expense.path("categoryUnallocatedAmount").decimalValue()).isEqualByComparingTo("700000");
+        assertThat(second.path("categories").get(0).path("deleted").asBoolean()).isFalse();
+        assertThat(second.path("otherCategories").path("budgetAmount").decimalValue())
+                .isEqualByComparingTo("700000");
 
-        JsonNode off =
-                data(save(MEMBER_A, "EXPENSE", SEPTEMBER, offBody("THIS_MONTH")).andExpect(status().isOk()));
-        assertThat(off.path("expense").path("source").asString()).isEqualTo("MONTH_OFF");
-        assertThat(off.path("expense").path("status").asString()).isEqualTo("OFF");
-        assertThat(off.path("expense").path("currency").isNull()).isTrue();
-        assertThat(off.path("expense").path("total").isNull()).isTrue();
-        assertThat(off.path("expense").path("paymentGroups")).isEmpty();
-        assertThat(off.path("expense").path("categories")).isEmpty();
-        assertThat(allocationCount(MEMBER_A)).isZero();
+        JsonNode withoutCategory = data(save(
+                        MEMBER_A,
+                        SEPTEMBER,
+                        """
+                                {"currency":"KRW","totalAmount":1000000,
+                                 "paymentGroupAmounts":[{"paymentGroup":"CREDIT_CARD","amount":600000}]}""")
+                .andExpect(status().isOk()));
+
+        assertThat(withoutCategory.path("categories")).isEmpty();
+        assertThat(withoutCategory
+                        .path("paymentGroups")
+                        .get(0)
+                        .path("budgetAmount")
+                        .decimalValue())
+                .isEqualByComparingTo("600000");
+        assertThat(allocationCount(MEMBER_A)).isEqualTo(1);
     }
 
     @Test
-    @DisplayName("몫만 바뀐 저장·같은 값 재저장·끔 재저장도 budget.updated_at 을 갱신한다 — 익명 정리의 활동 술어가 이 값을 본다")
+    @DisplayName("DELETE 는 그 달 전체를 NOT_SET 으로 돌려주고, 없는 달을 다시 지워도 200 이다")
+    void delete_returns_not_set_month_and_is_idempotent() throws Exception {
+        save(MEMBER_A, SEPTEMBER, categoryBudget(EXPENSE_CATEGORY_ID, 300000)).andExpect(status().isOk());
+
+        JsonNode deleted = data(remove(MEMBER_A, SEPTEMBER).andExpect(status().isOk()));
+
+        assertThat(deleted.path("year").asInt()).isEqualTo(2026);
+        assertThat(deleted.path("month").asInt()).isEqualTo(9);
+        assertThat(deleted.path("currentYear").asInt()).isEqualTo(2026);
+        assertThat(deleted.path("currentMonth").asInt()).isEqualTo(9);
+        assertThat(deleted.path("remainingDaysIncludingToday").asInt()).isEqualTo(16);
+        assertThat(deleted.path("hasAnyBudget").asBoolean()).isFalse();
+        assertThat(deleted.path("status").asString()).isEqualTo("NOT_SET");
+        assertThat(deleted.path("currency").isNull()).isTrue();
+        assertThat(deleted.path("total").isNull()).isTrue();
+        assertThat(deleted.path("paymentGroups")).isEmpty();
+        assertThat(deleted.path("categories")).isEmpty();
+        assertThat(deleted.path("missingRateCount").asInt()).isZero();
+        assertThat(deleted.path("dailyAllowance").isNull()).isTrue();
+        assertThat(budgetRowCount(MEMBER_A)).isZero();
+        assertThat(allocationCount(MEMBER_A)).isZero();
+
+        JsonNode again = data(remove(MEMBER_A, SEPTEMBER).andExpect(status().isOk()));
+        assertThat(again).isEqualTo(deleted);
+    }
+
+    @Test
+    @DisplayName("쓰기 범위는 2000-01 ~ 이번 달 + 12 다 — 지난 달도 쓰고, 범위 밖은 BUDGET_MONTH_OUT_OF_RANGE, 읽기는 범위 밖도 된다")
+    void write_range_is_2000_01_to_twelve_months_ahead() throws Exception {
+        save(MEMBER_A, AUGUST, KRW_1M)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.remainingDaysIncludingToday").isEmpty());
+        remove(MEMBER_A, AUGUST).andExpect(status().isOk());
+        save(MEMBER_A, YearMonth.of(2000, 1), KRW_1M).andExpect(status().isOk());
+        save(MEMBER_A, YearMonth.of(2027, 9), KRW_1M).andExpect(status().isOk());
+        assertThat(budgetRowCount(MEMBER_A)).isEqualTo(2);
+
+        save(MEMBER_A, YearMonth.of(2027, 10), KRW_1M)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BUDGET_MONTH_OUT_OF_RANGE"));
+        remove(MEMBER_A, YearMonth.of(2027, 10))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BUDGET_MONTH_OUT_OF_RANGE"));
+        save(MEMBER_A, YearMonth.of(1999, 12), KRW_1M)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BUDGET_MONTH_OUT_OF_RANGE"));
+        assertThat(budgetRowCount(MEMBER_A)).isEqualTo(2);
+
+        JsonNode tooFar = read(MEMBER_A, YearMonth.of(2027, 10));
+        assertThat(tooFar.path("status").asString()).isEqualTo("NOT_SET");
+        assertThat(tooFar.path("currentYear").asInt()).isEqualTo(2026);
+        assertThat(tooFar.path("currentMonth").asInt()).isEqualTo(9);
+        assertThat(tooFar.path("remainingDaysIncludingToday").isNull()).isTrue();
+        assertThat(read(MEMBER_A, SEPTEMBER).path("remainingDaysIncludingToday").asInt())
+                .isEqualTo(16);
+    }
+
+    @Test
+    @DisplayName("수입 카테고리 몫은 400 BUDGET_INVALID_ALLOCATION 이고 행이 생기지 않는다")
+    void income_category_share_is_invalid_allocation() throws Exception {
+        save(MEMBER_A, SEPTEMBER, categoryBudget(INCOME_CATEGORY_ID, 1000))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BUDGET_INVALID_ALLOCATION"));
+        assertThat(budgetRowCount(MEMBER_A)).isZero();
+    }
+
+    @Test
+    @DisplayName("hasAnyBudget 은 어느 달이든 행이 있으면 true 이고, 전부 지우면 false 다")
+    void has_any_budget_counts_any_month() throws Exception {
+        save(MEMBER_A, AUGUST, KRW_1M).andExpect(status().isOk());
+        save(MEMBER_A, OCTOBER, """
+                        {"currency":"KRW","totalAmount":0}""")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.hasAnyBudget").value(true));
+
+        JsonNode september = read(MEMBER_A, SEPTEMBER);
+        assertThat(september.path("status").asString()).isEqualTo("NOT_SET");
+        assertThat(september.path("hasAnyBudget").asBoolean()).isTrue();
+
+        remove(MEMBER_A, AUGUST)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.hasAnyBudget").value(true));
+        remove(MEMBER_A, OCTOBER)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.hasAnyBudget").value(false));
+        assertThat(read(MEMBER_A, SEPTEMBER).path("hasAnyBudget").asBoolean()).isFalse();
+    }
+
+    @Test
+    @DisplayName("몫만 바뀐 저장·같은 값 재저장도 budget.updated_at 을 갱신한다 — 익명 정리의 활동 술어가 이 값을 본다")
     void every_successful_save_touches_budget_updated_at() throws Exception {
         String creditCard =
                 """
-                {"applyTo":"THIS_MONTH","amounts":{"currency":"KRW","totalAmount":100000,
-                 "paymentGroupAmounts":[{"paymentGroup":"CREDIT_CARD","amount":%d}]}}""";
-        save(MEMBER_A, "EXPENSE", SEPTEMBER, creditCard.formatted(50000)).andExpect(status().isOk());
+                {"currency":"KRW","totalAmount":100000,
+                 "paymentGroupAmounts":[{"paymentGroup":"CREDIT_CARD","amount":%d}]}""";
+        save(MEMBER_A, SEPTEMBER, creditCard.formatted(50000)).andExpect(status().isOk());
 
         // auditing 은 서버 Clock 이 아니라 벽시계를 쓴다 — 저장 사이에 시간이 흐른 것을 행을 과거로 돌려 만든다.
         ageBudgetRows(MEMBER_A);
-        save(MEMBER_A, "EXPENSE", SEPTEMBER, creditCard.formatted(60000)).andExpect(status().isOk());
+        save(MEMBER_A, SEPTEMBER, creditCard.formatted(60000)).andExpect(status().isOk());
         assertThat(budgetTouched(MEMBER_A)).isTrue();
 
         ageBudgetRows(MEMBER_A);
-        save(MEMBER_A, "EXPENSE", SEPTEMBER, creditCard.formatted(60000)).andExpect(status().isOk());
-        assertThat(budgetTouched(MEMBER_A)).isTrue();
-
-        save(MEMBER_A, "EXPENSE", SEPTEMBER, offBody("THIS_MONTH")).andExpect(status().isOk());
-        ageBudgetRows(MEMBER_A);
-        save(MEMBER_A, "EXPENSE", SEPTEMBER, offBody("THIS_MONTH")).andExpect(status().isOk());
+        save(MEMBER_A, SEPTEMBER, creditCard.formatted(60000)).andExpect(status().isOk());
         assertThat(budgetTouched(MEMBER_A)).isTrue();
     }
 
     @Test
-    @DisplayName("다른 축의 카테고리 몫은 BUDGET_INVALID_ALLOCATION, 전체 없는 금액 세트는 BUDGET_TOTAL_REQUIRED")
+    @DisplayName("전체 없는 세트는 BUDGET_TOTAL_REQUIRED, 범위 밖 금액은 BUDGET_INVALID_AMOUNT, 통화 없는 본문은 VALIDATION_ERROR")
     void invalid_amounts_are_rejected_with_codes() throws Exception {
-        save(MEMBER_A, "EXPENSE", SEPTEMBER, categoryBudget("THIS_MONTH", INCOME_CATEGORY_ID, 1000))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("BUDGET_INVALID_ALLOCATION"));
-        save(
-                        MEMBER_A,
-                        "EXPENSE",
-                        SEPTEMBER,
-                        """
-                        {"applyTo":"THIS_MONTH","amounts":{"currency":"KRW"}}""")
+        save(MEMBER_A, SEPTEMBER, """
+                        {"currency":"KRW"}""")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("BUDGET_TOTAL_REQUIRED"));
-        save(MEMBER_A, "EXPENSE", SEPTEMBER, """
-                        {"amounts":null}""")
+        save(MEMBER_A, SEPTEMBER, """
+                        {"currency":"KRW","totalAmount":100000000}""")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BUDGET_INVALID_AMOUNT"));
+        save(MEMBER_A, SEPTEMBER, """
+                        {"totalAmount":1000}""")
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
         assertThat(budgetRowCount(MEMBER_A)).isZero();
     }
 
     @Test
-    @DisplayName("hasAnyBudget 은 끔 행만 있으면 false, 0원이라도 금액 세트가 있으면 true")
-    void has_any_budget_ignores_off_rows() throws Exception {
-        save(MEMBER_A, "EXPENSE", SEPTEMBER, offBody("THIS_MONTH")).andExpect(status().isOk());
-        save(MEMBER_A, "INCOME", SEPTEMBER, offBody("FROM_THIS_MONTH")).andExpect(status().isOk());
-
-        JsonNode offOnly = read(MEMBER_A, SEPTEMBER);
-        assertThat(offOnly.path("hasAnyBudget").asBoolean()).isFalse();
-        assertThat(offOnly.path("income").path("source").asString()).isEqualTo("DEFAULT_OFF");
+    @DisplayName("몫 합이 전체를 넘는 PUT 은 카테고리·결제수단 모두 400 BUDGET_ALLOCATION_EXCEEDS_TOTAL 이고 그 달은 그대로다")
+    void allocation_over_total_is_rejected_and_keeps_row() throws Exception {
+        String saved =
+                """
+                {"currency":"KRW","totalAmount":1000000,
+                 "paymentGroupAmounts":[{"paymentGroup":"CREDIT_CARD","amount":600000}],
+                 "categoryAmounts":[{"categoryId":%d,"amount":300000}]}"""
+                        .formatted(EXPENSE_CATEGORY_ID);
+        save(MEMBER_A, SEPTEMBER, saved).andExpect(status().isOk());
+        JsonNode before = read(MEMBER_A, SEPTEMBER);
 
         save(
                         MEMBER_A,
-                        "INCOME",
-                        OCTOBER,
+                        SEPTEMBER,
                         """
-                        {"applyTo":"THIS_MONTH","amounts":{"currency":"KRW","totalAmount":0}}""")
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.hasAnyBudget").value(true));
+                        {"currency":"KRW","totalAmount":1000000,
+                         "categoryAmounts":[{"categoryId":%d,"amount":600000},{"categoryId":2,"amount":400001}]}"""
+                                .formatted(EXPENSE_CATEGORY_ID))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BUDGET_ALLOCATION_EXCEEDS_TOTAL"));
+        assertThat(read(MEMBER_A, SEPTEMBER)).isEqualTo(before);
+
+        save(
+                        MEMBER_A,
+                        SEPTEMBER,
+                        """
+                        {"currency":"KRW","totalAmount":1000000,
+                         "paymentGroupAmounts":[{"paymentGroup":"CREDIT_CARD","amount":600000},
+                                                {"paymentGroup":"CASH_AND_DEBIT","amount":400001}]}""")
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BUDGET_ALLOCATION_EXCEEDS_TOTAL"));
+        assertThat(read(MEMBER_A, SEPTEMBER)).isEqualTo(before);
+        assertThat(allocationCount(MEMBER_A)).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("그 외 카테고리 줄 — 몫은 전체 − 카테고리 몫, 쓴 돈은 몫 없는 카테고리 거래다. 미설정 달이면 null")
+    void other_categories_line_is_returned() throws Exception {
+        createEntry(MEMBER_A, "100000", "KRW", EXPENSE_CATEGORY_ID, 1, "2026-09-10");
+        createEntry(MEMBER_A, "50000", "KRW", 2, 1, "2026-09-11");
+        createEntry(MEMBER_A, "20000", "KRW", 3, 2, "2026-09-12");
+        save(MEMBER_A, SEPTEMBER, categoryBudget(EXPENSE_CATEGORY_ID, 300000)).andExpect(status().isOk());
+
+        JsonNode other = read(MEMBER_A, SEPTEMBER).path("otherCategories");
+
+        assertThat(other.path("budgetAmount").decimalValue()).isEqualByComparingTo("700000");
+        assertThat(other.path("actualAmount").decimalValue()).isEqualByComparingTo("70000");
+        assertThat(other.path("status").asString()).isEqualTo("IN_PROGRESS");
+        assertThat(other.path("percent").asInt()).isEqualTo(10);
+        assertThat(other.path("remainingAmount").decimalValue()).isEqualByComparingTo("630000");
+        assertThat(other.path("overAmount").isNull()).isTrue();
+
+        JsonNode notSet = read(MEMBER_A, OCTOBER);
+        assertThat(notSet.path("status").asString()).isEqualTo("NOT_SET");
+        assertThat(notSet.has("otherCategories")).isTrue();
+        assertThat(notSet.path("otherCategories").isNull()).isTrue();
+    }
+
+    @Test
+    @DisplayName("v1 이 남긴 몫 합 > 전체 행도 읽힌다 — 그 외 카테고리는 쓴 돈만 있는 줄이다")
+    void legacy_row_with_shares_over_total_is_readable() throws Exception {
+        createEntry(MEMBER_A, "30000", "KRW", 3, 1, "2026-09-10"); // 몫 없는 카테고리
+        // 저장 API 는 합계 검사로 막으므로 JDBC 로만 넣을 수 있다.
+        Long budgetId = jdbcTemplate.queryForObject(
+                "insert into budget (member_id, month, currency_code, total_amount, created_at, updated_at)"
+                        + " values (?, date '2026-09-01', 'KRW', 100000, now(), now()) returning id",
+                Long.class,
+                MEMBER_A);
+        jdbcTemplate.update(
+                "insert into budget_allocation (budget_id, category_id, amount) values (?, ?, 60000), (?, 2, 60000)",
+                budgetId,
+                EXPENSE_CATEGORY_ID,
+                budgetId);
+        jdbcTemplate.update(
+                "insert into budget_allocation (budget_id, payment_group, amount) values (?, 'CREDIT_CARD', 150000)",
+                budgetId);
+
+        JsonNode budget = read(MEMBER_A, SEPTEMBER);
+
+        assertThat(budget.path("total").path("budgetAmount").decimalValue()).isEqualByComparingTo("100000");
+        assertThat(budget.path("total").path("actualAmount").decimalValue()).isEqualByComparingTo("30000");
+        assertThat(budget.path("total").path("status").asString()).isEqualTo("IN_PROGRESS");
+        assertThat(budget.path("categories")).hasSize(2);
+        JsonNode other = budget.path("otherCategories");
+        assertThat(other.path("budgetAmount").isNull()).isTrue();
+        assertThat(other.path("status").isNull()).isTrue();
+        assertThat(other.path("actualAmount").decimalValue()).isEqualByComparingTo("30000");
     }
 
     @Test
@@ -366,41 +507,41 @@ class BudgetControllerIntegrationTest {
         createEntry(MEMBER_A, "5000", "KRW", 2, 4, "2026-09-01"); // 9/1 이하 USD 환율 없음 → 제외
         save(
                         MEMBER_A,
-                        "EXPENSE",
                         SEPTEMBER,
                         """
-                        {"applyTo":"THIS_MONTH","amounts":{"currency":"USD","totalAmount":100.00,
-                         "categoryAmounts":[{"categoryId":%d,"amount":50.00}]}}"""
+                        {"currency":"USD","totalAmount":100.00,
+                         "categoryAmounts":[{"categoryId":%d,"amount":50.00}]}"""
                                 .formatted(EXPENSE_CATEGORY_ID))
                 .andExpect(status().isOk());
 
-        JsonNode expense = read(MEMBER_A, SEPTEMBER).path("expense");
+        JsonNode budget = read(MEMBER_A, SEPTEMBER);
 
-        assertThat(expense.path("currency").asString()).isEqualTo("USD");
-        assertThat(expense.path("missingRateCount").asInt()).isEqualTo(1);
-        assertThat(expense.path("total").path("actualAmount").decimalValue()).isEqualByComparingTo("20.00");
-        assertThat(expense.path("total").path("status").asString()).isEqualTo("IN_PROGRESS");
-        assertThat(expense.path("total").path("percent").asInt()).isEqualTo(20);
-        assertThat(expense.path("status").asString()).isEqualTo("IN_PROGRESS");
-        assertThat(expense.path("categories").get(0).path("actualAmount").decimalValue())
+        assertThat(budget.path("currency").asString()).isEqualTo("USD");
+        assertThat(budget.path("missingRateCount").asInt()).isEqualTo(1);
+        assertThat(budget.path("total").path("actualAmount").decimalValue()).isEqualByComparingTo("20.00");
+        assertThat(budget.path("total").path("status").asString()).isEqualTo("IN_PROGRESS");
+        assertThat(budget.path("total").path("percent").asInt()).isEqualTo(20);
+        assertThat(budget.path("status").asString()).isEqualTo("IN_PROGRESS");
+        assertThat(budget.path("categories").get(0).path("actualAmount").decimalValue())
                 .isEqualByComparingTo("20.00");
-        assertThat(expense.path("otherCategoriesActualAmount").decimalValue()).isEqualByComparingTo("0");
-        assertThat(expense.path("paymentGroups").get(0).path("actualAmount").decimalValue())
+        assertThat(budget.path("otherCategories").path("actualAmount").decimalValue())
+                .isEqualByComparingTo("0");
+        assertThat(budget.path("paymentGroups").get(0).path("actualAmount").decimalValue())
                 .isEqualByComparingTo("10.00");
-        assertThat(expense.path("paymentGroups").get(1).path("actualAmount").decimalValue())
+        assertThat(budget.path("paymentGroups").get(1).path("actualAmount").decimalValue())
                 .isEqualByComparingTo("10.00");
-        assertThat(expense.path("paymentGroups").get(2).path("actualAmount").decimalValue())
+        assertThat(budget.path("paymentGroups").get(2).path("actualAmount").decimalValue())
                 .isEqualByComparingTo("0");
         // (100 − 20) ÷ 16일 = 5.00
-        assertThat(expense.path("dailyAllowance").path("amount").decimalValue()).isEqualByComparingTo("5.00");
-        assertThat(expense.path("dailyAllowance").path("exceeded").asBoolean()).isFalse();
+        assertThat(budget.path("dailyAllowance").path("amount").decimalValue()).isEqualByComparingTo("5.00");
+        assertThat(budget.path("dailyAllowance").path("exceeded").asBoolean()).isFalse();
     }
 
     @Test
-    @DisplayName("같은 회원의 advisory lock 을 다른 트랜잭션이 쥐고 있으면 THIS_MONTH·FROM_THIS_MONTH 쓰기가 기다렸다가 둘 다 성공한다")
+    @DisplayName("같은 회원의 advisory lock 을 다른 트랜잭션이 쥐고 있으면 저장·삭제가 기다렸다가 둘 다 성공한다")
     void writes_wait_for_member_advisory_lock_then_both_succeed() throws Exception {
-        SaveBudgetRequest.BudgetAmountsRequest amounts = krwAmounts("1000");
-        budgetService.save(MEMBER_A, TransactionType.EXPENSE, SEPTEMBER, BudgetApplyTo.THIS_MONTH, amounts);
+        budgetService.save(MEMBER_A, SEPTEMBER, krwRequest("1000"));
+        budgetService.save(MEMBER_A, OCTOBER, krwRequest("1000"));
         ExecutorService executor = Executors.newFixedThreadPool(2);
         try (Connection holder = dataSource.getConnection()) {
             holder.setAutoCommit(false);
@@ -409,17 +550,13 @@ class BudgetControllerIntegrationTest {
                 lock.setString(1, MEMBER_A.toString());
                 lock.executeQuery().close();
             }
-            CompletableFuture<Void> thisMonth = CompletableFuture.runAsync(
-                    () -> budgetService.save(
-                            MEMBER_A, TransactionType.EXPENSE, SEPTEMBER, BudgetApplyTo.THIS_MONTH, krwAmounts("2000")),
-                    executor);
-            CompletableFuture<Void> fromThisMonth = CompletableFuture.runAsync(
-                    () -> budgetService.save(
-                            MEMBER_A, TransactionType.EXPENSE, SEPTEMBER, BudgetApplyTo.FROM_THIS_MONTH, amounts),
-                    executor);
+            CompletableFuture<Void> save = CompletableFuture.runAsync(
+                    () -> budgetService.save(MEMBER_A, SEPTEMBER, krwRequest("2000")), executor);
+            CompletableFuture<Void> delete =
+                    CompletableFuture.runAsync(() -> budgetService.delete(MEMBER_A, OCTOBER), executor);
 
-            // 시간이 아니라 DB 상태로 판정한다 — 두 쓰기가 실제로 advisory lock 을 기다리는 중이어야 한다.
-            // 락이 없으면 대기자가 생기지 않아 상한까지 2 가 되지 않는다.
+            // 시간이 아니라 DB 상태로 판정한다 — 저장과 삭제가 둘 다 실제로 advisory lock 을 기다리는 중이어야 한다.
+            // 어느 한쪽이라도 락을 잡지 않으면 대기자가 2 가 되지 않는다.
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
             long waiting = 0;
             while (System.nanoTime() < deadline) {
@@ -431,17 +568,19 @@ class BudgetControllerIntegrationTest {
                 Thread.sleep(20);
             }
             assertThat(waiting).isEqualTo(2);
-            assertThat(thisMonth).isNotDone();
-            assertThat(fromThisMonth).isNotDone();
+            assertThat(save).isNotDone();
+            assertThat(delete).isNotDone();
 
             holder.rollback();
-            CompletableFuture.allOf(thisMonth, fromThisMonth).get(30, TimeUnit.SECONDS);
+            CompletableFuture.allOf(save, delete).get(30, TimeUnit.SECONDS);
         } finally {
             executor.shutdownNow();
         }
-        assertThat(jdbcTemplate.queryForObject(
-                        "select count(*) from budget where member_id = ? and kind = 'DEFAULT'", Long.class, MEMBER_A))
-                .isEqualTo(1);
+        assertThat(jdbcTemplate.queryForList(
+                        "select cast(month as text) || ':' || total_amount from budget where member_id = ?",
+                        String.class,
+                        MEMBER_A))
+                .containsExactly("2026-09-01:2000.00");
     }
 
     @Test
@@ -450,7 +589,7 @@ class BudgetControllerIntegrationTest {
         long categoryId = createCustomCategory(MEMBER_A, "반려견");
         deleteCustomCategory(MEMBER_A, categoryId);
 
-        save(MEMBER_A, "EXPENSE", SEPTEMBER, categoryBudget("THIS_MONTH", categoryId, 300000))
+        save(MEMBER_A, SEPTEMBER, categoryBudget(categoryId, 300000))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("CATEGORY_NOT_FOUND"));
         assertThat(budgetRowCount(MEMBER_A)).isZero();
@@ -460,24 +599,10 @@ class BudgetControllerIntegrationTest {
     @DisplayName("지난 달 몫에 있던 카테고리를 삭제한 뒤 GET 하면 그 줄은 deleted:true 이고 이름이 채워져 있다")
     void past_month_line_of_deactivated_category_is_marked_deleted() throws Exception {
         long categoryId = createCustomCategory(MEMBER_A, "반려견");
-        // 지난 달은 API 로 쓸 수 없어 행을 직접 넣는다.
-        Long budgetId = jdbcTemplate.queryForObject(
-                """
-                insert into budget (member_id, axis, kind, month, currency_code, total_amount, created_at, updated_at)
-                values (?, 'EXPENSE', 'MONTH', date '2026-08-01', 'KRW', 1000000, now(), now()) returning id
-                """,
-                Long.class,
-                MEMBER_A);
-        jdbcTemplate.update(
-                "insert into budget_allocation (budget_id, category_id, amount) values (?, ?, 300000)",
-                budgetId,
-                categoryId);
+        save(MEMBER_A, AUGUST, categoryBudget(categoryId, 300000)).andExpect(status().isOk());
         deleteCustomCategory(MEMBER_A, categoryId);
 
-        JsonNode line = read(MEMBER_A, YearMonth.of(2026, 8))
-                .path("expense")
-                .path("categories")
-                .get(0);
+        JsonNode line = read(MEMBER_A, AUGUST).path("categories").get(0);
 
         assertThat(line.path("deleted").asBoolean()).isTrue();
         assertThat(line.path("category").path("id").asLong()).isEqualTo(categoryId);
@@ -493,11 +618,9 @@ class BudgetControllerIntegrationTest {
                 .collect(Collectors.joining(","));
         save(
                         MEMBER_A,
-                        "EXPENSE",
                         SEPTEMBER,
                         """
-                        {"applyTo":"THIS_MONTH","amounts":{"currency":"KRW","totalAmount":1000000,
-                         "categoryAmounts":[%s]}}"""
+                        {"currency":"KRW","totalAmount":1000000,"categoryAmounts":[%s]}"""
                                 .formatted(items))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
@@ -509,14 +632,14 @@ class BudgetControllerIntegrationTest {
     void write_after_member_deletion_is_unauthorized() throws Exception {
         jdbcTemplate.update("delete from auth.users where id = ?", MEMBER_A);
 
-        save(MEMBER_A, "EXPENSE", SEPTEMBER, KRW_1M.formatted("THIS_MONTH"))
+        save(MEMBER_A, SEPTEMBER, KRW_1M)
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
         assertThat(budgetRowCount(MEMBER_A)).isZero();
     }
 
-    private ResultActions save(UUID memberId, String axis, YearMonth month, String body) throws Exception {
-        return mockMvc.perform(put("/api/v1/budgets/{axis}", axis)
+    private ResultActions save(UUID memberId, YearMonth month, String body) throws Exception {
+        return mockMvc.perform(put("/api/v1/budgets")
                 .with(memberJwt(memberId))
                 .param("year", String.valueOf(month.getYear()))
                 .param("month", String.valueOf(month.getMonthValue()))
@@ -524,8 +647,8 @@ class BudgetControllerIntegrationTest {
                 .content(body));
     }
 
-    private ResultActions revert(UUID memberId, String axis, YearMonth month) throws Exception {
-        return mockMvc.perform(delete("/api/v1/budgets/{axis}/month-value", axis)
+    private ResultActions remove(UUID memberId, YearMonth month) throws Exception {
+        return mockMvc.perform(delete("/api/v1/budgets")
                 .with(memberJwt(memberId))
                 .param("year", String.valueOf(month.getYear()))
                 .param("month", String.valueOf(month.getMonthValue())));
@@ -573,16 +696,24 @@ class BudgetControllerIntegrationTest {
                 .andExpect(status().isOk());
     }
 
-    private static String categoryBudget(String applyTo, long categoryId, long amount) {
-        return """
-                {"applyTo":"%s","amounts":{"currency":"KRW","totalAmount":1000000,
-                 "categoryAmounts":[{"categoryId":%d,"amount":%d}]}}"""
-                .formatted(applyTo, categoryId, amount);
+    /** total · 결제수단 그룹 3개 · 첫 카테고리 · 그 외 카테고리의 actualAmount 를 이 순서로. */
+    private static List<BigDecimal> actualAmounts(JsonNode budget) {
+        JsonNode groups = budget.path("paymentGroups");
+        assertThat(groups).hasSize(3);
+        return List.of(
+                budget.path("total").path("actualAmount").decimalValue(),
+                groups.get(0).path("actualAmount").decimalValue(),
+                groups.get(1).path("actualAmount").decimalValue(),
+                groups.get(2).path("actualAmount").decimalValue(),
+                budget.path("categories").get(0).path("actualAmount").decimalValue(),
+                budget.path("otherCategories").path("actualAmount").decimalValue());
     }
 
-    private static String offBody(String applyTo) {
+    private static String categoryBudget(long categoryId, long amount) {
         return """
-                {"applyTo":"%s","amounts":null}""".formatted(applyTo);
+                {"currency":"KRW","totalAmount":1000000,
+                 "categoryAmounts":[{"categoryId":%d,"amount":%d}]}"""
+                .formatted(categoryId, amount);
     }
 
     private long budgetRowCount(UUID memberId) {
@@ -610,8 +741,8 @@ class BudgetControllerIntegrationTest {
                 memberId);
     }
 
-    private static SaveBudgetRequest.BudgetAmountsRequest krwAmounts(String total) {
-        return new SaveBudgetRequest.BudgetAmountsRequest(
+    private static SaveBudgetRequest krwRequest(String total) {
+        return new SaveBudgetRequest(
                 CurrencyCode.KRW,
                 new BigDecimal(total),
                 List.of(new SaveBudgetRequest.PaymentGroupAmountRequest(

@@ -279,8 +279,8 @@ class LedgerPurgeControllerIntegrationTest {
     private long insertBudget(UUID memberId) {
         return jdbcTemplate.queryForObject(
                 """
-                insert into budget (member_id, axis, kind, month, currency_code, total_amount, created_at, updated_at)
-                values (?, 'EXPENSE', 'DEFAULT', date '2026-04-01', 'KRW', 1000000, now(), now()) returning id
+                insert into budget (member_id, month, currency_code, total_amount, created_at, updated_at)
+                values (?, date '2026-04-01', 'KRW', 1000000, now(), now()) returning id
                 """,
                 Long.class,
                 memberId);

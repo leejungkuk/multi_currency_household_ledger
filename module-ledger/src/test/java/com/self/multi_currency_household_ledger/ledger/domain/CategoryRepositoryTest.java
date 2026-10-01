@@ -200,8 +200,8 @@ class CategoryRepositoryTest {
         categoryRepository.saveAndFlush(orphan);
         Long budgetId = jdbcTemplate.queryForObject(
                 """
-                insert into budget (member_id, axis, kind, month, currency_code, total_amount, created_at, updated_at)
-                values (?, 'EXPENSE', 'MONTH', date '2026-08-01', 'KRW', 1000, now(), now()) returning id
+                insert into budget (member_id, month, currency_code, total_amount, created_at, updated_at)
+                values (?, date '2026-08-01', 'KRW', 1000, now(), now()) returning id
                 """,
                 Long.class,
                 MEMBER_A);

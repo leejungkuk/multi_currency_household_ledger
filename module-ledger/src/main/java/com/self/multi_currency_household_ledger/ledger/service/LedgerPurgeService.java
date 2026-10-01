@@ -38,7 +38,7 @@ public class LedgerPurgeService {
 
     public void purge(UUID memberId) {
         int deletedRows = transactionTemplate.execute(status -> {
-            // 예산 저장·카테고리 detach 와 같은 회원 락으로 줄 세운다 — 첫 쓰기 전에 잡아야 경합 부류가 없어진다.
+            // 예산 저장·삭제와 같은 회원 락으로 줄 세운다 — 첫 쓰기 전에 잡아야 경합 부류가 없어진다.
             budgetRepository.lockMember(memberId);
             // fk_ledger_category 에 cascade 가 없어 참조 거래가 남아 있으면 카테고리 삭제가 FK 위반이다 — 거래를 먼저 지운다.
             int deletedEntries = ledgerEntryRepository.deleteAllByMemberId(memberId);

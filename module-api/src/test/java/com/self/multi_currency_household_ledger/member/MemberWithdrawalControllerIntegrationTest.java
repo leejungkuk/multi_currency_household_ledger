@@ -475,8 +475,8 @@ class MemberWithdrawalControllerIntegrationTest {
     private long insertBudget(UUID memberId) {
         Long id = jdbcTemplate.queryForObject(
                 """
-                insert into budget (member_id, axis, kind, month, currency_code, total_amount)
-                values (?, 'EXPENSE', 'DEFAULT', date '2026-04-01', 'KRW', 100000.00)
+                insert into budget (member_id, month, currency_code, total_amount)
+                values (?, date '2026-04-01', 'KRW', 100000.00)
                 returning id
                 """,
                 Long.class,
