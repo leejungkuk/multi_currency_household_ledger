@@ -206,7 +206,7 @@ class CategoryRepositoryTest {
                 Long.class,
                 MEMBER_A);
         jdbcTemplate.update(
-                "insert into budget_allocation (budget_id, category_id, amount) values (?, ?, 100)",
+                "insert into budget_category_allocation (budget_id, category_id, amount) values (?, ?, 100)",
                 budgetId,
                 referenced.getId());
 
@@ -216,7 +216,9 @@ class CategoryRepositoryTest {
         assertThat(categoryRepository.findById(orphan.getId())).isEmpty();
         assertThat(categoryRepository.findById(referenced.getId())).isPresent();
         assertThat(jdbcTemplate.queryForObject(
-                        "select count(*) from budget_allocation where category_id = ?", Long.class, referenced.getId()))
+                        "select count(*) from budget_category_allocation where category_id = ?",
+                        Long.class,
+                        referenced.getId()))
                 .isEqualTo(1L);
     }
 

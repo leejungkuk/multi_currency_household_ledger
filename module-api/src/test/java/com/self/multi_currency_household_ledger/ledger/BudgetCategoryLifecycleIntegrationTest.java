@@ -437,7 +437,7 @@ class BudgetCategoryLifecycleIntegrationTest {
 
     private void insertAllocation(long budgetId, long categoryId, long amount) {
         jdbcTemplate.update(
-                "insert into budget_allocation (budget_id, category_id, amount) values (?, ?, ?)",
+                "insert into budget_category_allocation (budget_id, category_id, amount) values (?, ?, ?)",
                 budgetId,
                 categoryId,
                 amount);
@@ -445,9 +445,7 @@ class BudgetCategoryLifecycleIntegrationTest {
 
     private List<Long> allocatedCategories(long budgetId) {
         return jdbcTemplate.queryForList(
-                "select category_id from budget_allocation where budget_id = ? and category_id is not null",
-                Long.class,
-                budgetId);
+                "select category_id from budget_category_allocation where budget_id = ?", Long.class, budgetId);
     }
 
     private List<String> budgetMonths(UUID memberId) {
@@ -458,9 +456,10 @@ class BudgetCategoryLifecycleIntegrationTest {
     private List<Map<String, Object>> allocationSnapshot(UUID memberId) {
         return jdbcTemplate.queryForList(
                 """
-                select a.id, a.budget_id, a.payment_group, a.category_id, a.amount
-                from budget_allocation a join budget b on b.id = a.budget_id
-                where b.member_id = ? order by a.id
+                select b.id, b.credit_card_amount, b.cash_and_debit_amount, b.account_and_other_amount,
+                       a.category_id, a.amount
+                from budget b left join budget_category_allocation a on a.budget_id = b.id
+                where b.member_id = ? order by b.id, a.category_id
                 """,
                 memberId);
     }

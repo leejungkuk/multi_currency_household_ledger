@@ -4,31 +4,32 @@ import com.self.multi_currency_household_ledger.common.entity.BaseEntity;
 import com.self.multi_currency_household_ledger.common.exception.BusinessException;
 import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
 import com.self.multi_currency_household_ledger.ledger.exception.BudgetErrorCode;
-import jakarta.persistence.CascadeType;
+import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.OneToMany;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.MapKeyColumn;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.YearMonth;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
-import java.util.stream.Collectors;
+import java.util.function.UnaryOperator;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -59,8 +60,22 @@ public class Budget extends BaseEntity {
     @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal totalAmount;
 
-    @OneToMany(mappedBy = "budget", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<BudgetAllocation> allocations = new ArrayList<>();
+    /** 결제수단 몫. null 이면 그 그룹 몫이 없다. */
+    @Column(precision = 19, scale = 2)
+    private BigDecimal creditCardAmount;
+
+    @Column(precision = 19, scale = 2)
+    private BigDecimal cashAndDebitAmount;
+
+    @Column(precision = 19, scale = 2)
+    private BigDecimal accountAndOtherAmount;
+
+    /** 카테고리 몫(카테고리 id → 금액). */
+    @ElementCollection
+    @CollectionTable(name = "budget_category_allocation", joinColumns = @JoinColumn(name = "budget_id"))
+    @MapKeyColumn(name = "category_id")
+    @Column(name = "amount", nullable = false, precision = 19, scale = 2)
+    private Map<Long, BigDecimal> categoryAmounts = new HashMap<>();
 
     /** 새 행은 flush 전에 반드시 {@link #replaceAmounts} 로 값을 채운다 — 통화·금액 컬럼이 not null 이다. */
     public Budget(UUID memberId, YearMonth month) {
@@ -70,32 +85,28 @@ public class Budget extends BaseEntity {
 
     public BudgetAmounts amounts() {
         Map<PaymentGroup, BigDecimal> groups = new EnumMap<>(PaymentGroup.class);
-        Map<Long, BigDecimal> categories = new LinkedHashMap<>();
-        for (BudgetAllocation allocation : allocations) {
-            if (allocation.getPaymentGroup() != null) {
-                groups.put(allocation.getPaymentGroup(), allocation.getAmount());
-            } else {
-                categories.put(allocation.getCategoryId(), allocation.getAmount());
+        for (PaymentGroup group : PaymentGroup.values()) {
+            BigDecimal amount = groupAmount(group, UnaryOperator.identity());
+            if (amount != null) {
+                groups.put(group, amount);
             }
         }
         return new BudgetAmounts(
                 currencyCode,
                 totalAmount,
                 Collections.unmodifiableMap(groups),
-                Collections.unmodifiableMap(categories));
+                Collections.unmodifiableMap(new LinkedHashMap<>(categoryAmounts)));
     }
 
     /** 카테고리 몫의 카테고리 id 들. */
     public Set<Long> allocatedCategoryIds() {
-        return allocations.stream()
-                .map(BudgetAllocation::getCategoryId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
+        return Set.copyOf(categoryAmounts.keySet());
     }
 
     /**
-     * 금액 세트를 통째로 교체한다. 몫은 키별 제자리 갱신이다 — 있던 키는 금액만 바꾸고, 빠진 키는 지우고, 새 키만 더한다. 전부 지우고 새로 넣으면
-     * Hibernate 가 insert 를 orphan delete 보다 먼저 flush 해 unique 위반이 난다. 검증을 모두 통과해야 상태가 바뀐다.
+     * 금액 세트를 통째로 교체한다. 요청에 없는 결제수단 그룹은 null 이 된다. 카테고리 몫은 같은 Map 에서 키별로 갱신한다 — 빠진 키는 지우고, 있던 키는
+     * 금액만 바꾸고, 새 키만 더한다. Map 을 갈아 끼우면 Hibernate 가 그 예산의 몫 행을 전부 지우고 다시 넣는다. 검증을 모두 통과해야 상태가
+     * 바뀐다.
      */
     public void replaceAmounts(
             CurrencyCode currency,
@@ -115,18 +126,12 @@ public class Budget extends BaseEntity {
 
         this.currencyCode = currency;
         this.totalAmount = total;
-        allocations.removeIf(allocation -> allocation.getPaymentGroup() != null
-                ? !groups.containsKey(allocation.getPaymentGroup())
-                : !categories.containsKey(allocation.getCategoryId()));
-        for (BudgetAllocation allocation : allocations) {
-            BigDecimal amount = allocation.getPaymentGroup() != null
-                    ? groups.remove(allocation.getPaymentGroup())
-                    : categories.remove(allocation.getCategoryId());
-            allocation.changeAmount(amount);
+        for (PaymentGroup group : PaymentGroup.values()) {
+            groupAmount(group, ignored -> groups.get(group));
         }
-        groups.forEach((group, amount) -> attach(BudgetAllocation.forPaymentGroup(group, amount)));
-        categories.forEach((categoryId, amount) -> attach(BudgetAllocation.forCategory(categoryId, amount)));
-        // 몫만 바뀌면 이 행은 더럽혀지지 않는다 — 익명 정리의 활동 술어가 budget.updated_at 을 보므로 저장마다 갱신한다.
+        this.categoryAmounts.keySet().retainAll(categories.keySet());
+        this.categoryAmounts.putAll(categories);
+        // 카테고리 몫만 바뀌면 이 행은 더럽혀지지 않는다 — 익명 정리의 활동 술어가 budget.updated_at 을 보므로 저장마다 갱신한다.
         markModified();
     }
 
@@ -139,9 +144,16 @@ public class Budget extends BaseEntity {
         }
     }
 
-    private void attach(BudgetAllocation allocation) {
-        allocation.attachTo(this);
-        allocations.add(allocation);
+    /**
+     * 그룹의 몫 컬럼을 {@code change} 로 바꾸고 그 값을 돌려준다(읽기만 할 때는 identity). PaymentGroup ↔ 컬럼 매핑은 여기 한 곳이다 — default 가
+     * 없어 그룹이 늘면 컴파일이 깨진다.
+     */
+    private BigDecimal groupAmount(PaymentGroup group, UnaryOperator<BigDecimal> change) {
+        return switch (group) {
+            case CREDIT_CARD -> creditCardAmount = change.apply(creditCardAmount);
+            case CASH_AND_DEBIT -> cashAndDebitAmount = change.apply(cashAndDebitAmount);
+            case ACCOUNT_AND_OTHER -> accountAndOtherAmount = change.apply(accountAndOtherAmount);
+        };
     }
 
     private static <T, K> Map<K, BigDecimal> toUniqueMap(
