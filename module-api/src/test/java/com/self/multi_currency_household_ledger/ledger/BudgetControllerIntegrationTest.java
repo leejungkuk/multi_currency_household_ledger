@@ -467,19 +467,19 @@ class BudgetControllerIntegrationTest {
     @DisplayName("v1 이 남긴 몫 합 > 전체 행도 읽힌다 — 그 외 카테고리는 쓴 돈만 있는 줄이다")
     void legacy_row_with_shares_over_total_is_readable() throws Exception {
         createEntry(MEMBER_A, "30000", "KRW", 3, 1, "2026-09-10"); // 몫 없는 카테고리
-        // 저장 API 는 합계 검사로 막으므로 JDBC 로만 넣을 수 있다.
+        // 저장 API 는 합계 검사로 막으므로 JDBC 로만 넣을 수 있다. 결제수단 몫 합 > 전체는 V16 의
+        // ck_budget_payment_groups_within_total 이 막아 남을 수 없으므로 카테고리 몫만 넘긴다.
         Long budgetId = jdbcTemplate.queryForObject(
-                "insert into budget (member_id, month, currency_code, total_amount, created_at, updated_at)"
-                        + " values (?, date '2026-09-01', 'KRW', 100000, now(), now()) returning id",
+                "insert into budget (member_id, month, currency_code, total_amount, credit_card_amount,"
+                        + " created_at, updated_at)"
+                        + " values (?, date '2026-09-01', 'KRW', 100000, 100000, now(), now()) returning id",
                 Long.class,
                 MEMBER_A);
         jdbcTemplate.update(
-                "insert into budget_allocation (budget_id, category_id, amount) values (?, ?, 60000), (?, 2, 60000)",
+                "insert into budget_category_allocation (budget_id, category_id, amount)"
+                        + " values (?, ?, 60000), (?, 2, 60000)",
                 budgetId,
                 EXPENSE_CATEGORY_ID,
-                budgetId);
-        jdbcTemplate.update(
-                "insert into budget_allocation (budget_id, payment_group, amount) values (?, 'CREDIT_CARD', 150000)",
                 budgetId);
 
         JsonNode budget = read(MEMBER_A, SEPTEMBER);
@@ -736,8 +736,14 @@ class BudgetControllerIntegrationTest {
 
     private long allocationCount(UUID memberId) {
         return jdbcTemplate.queryForObject(
-                "select count(*) from budget_allocation a join budget b on b.id = a.budget_id where b.member_id = ?",
+                """
+                select (select count(*) from budget_category_allocation a join budget b on b.id = a.budget_id
+                        where b.member_id = ?)
+                     + (select count(credit_card_amount) + count(cash_and_debit_amount) + count(account_and_other_amount)
+                        from budget where member_id = ?)
+                """,
                 Long.class,
+                memberId,
                 memberId);
     }
 

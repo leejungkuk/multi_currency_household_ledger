@@ -486,7 +486,7 @@ class MemberWithdrawalControllerIntegrationTest {
 
     private void insertCategoryAllocation(long budgetId, long categoryId) {
         jdbcTemplate.update(
-                "insert into budget_allocation (budget_id, category_id, amount) values (?, ?, 50000.00)",
+                "insert into budget_category_allocation (budget_id, category_id, amount) values (?, ?, 50000.00)",
                 budgetId,
                 categoryId);
     }
@@ -499,7 +499,7 @@ class MemberWithdrawalControllerIntegrationTest {
 
     private long allocationCount(long budgetId) {
         Long count = jdbcTemplate.queryForObject(
-                "select count(*) from budget_allocation where budget_id = ?", Long.class, budgetId);
+                "select count(*) from budget_category_allocation where budget_id = ?", Long.class, budgetId);
         return count == null ? 0L : count;
     }
 

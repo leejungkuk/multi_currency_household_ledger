@@ -15,12 +15,21 @@ import com.self.multi_currency_household_ledger.ledger.domain.Category;
 import com.self.multi_currency_household_ledger.ledger.domain.CategoryRepository;
 import com.self.multi_currency_household_ledger.ledger.domain.TransactionType;
 import com.self.multi_currency_household_ledger.ledger.dto.SyncLedgerEntryRequest;
+import com.self.multi_currency_household_ledger.ledger.service.LedgerPurgeService;
 import com.self.multi_currency_household_ledger.ledger.service.LedgerService;
 import java.math.BigDecimal;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -71,6 +80,12 @@ class LedgerPurgeControllerIntegrationTest {
 
     @Autowired
     private CategoryRepository categoryRepository;
+
+    @Autowired
+    private LedgerPurgeService ledgerPurgeService;
+
+    @Autowired
+    private DataSource dataSource;
 
     @MockitoBean
     @SuppressWarnings("UnusedVariable")
@@ -165,11 +180,50 @@ class LedgerPurgeControllerIntegrationTest {
 
         assertThat(count("select count(*) from budget where member_id = ?", MEMBER_A))
                 .isZero();
-        assertThat(count("select count(*) from budget_allocation where budget_id = ?", memberABudget))
+        assertThat(count("select count(*) from budget_category_allocation where budget_id = ?", memberABudget))
                 .isZero();
         assertThat(categoryRowCount(customCategoryId)).isZero();
-        assertThat(count("select count(*) from budget_allocation where budget_id = ?", memberBBudget))
+        assertThat(count("select count(*) from budget_category_allocation where budget_id = ?", memberBBudget))
                 .isEqualTo(1L);
+    }
+
+    @Test
+    @DisplayName("purge 는 budget 행을 카테고리 몫보다 먼저 잠근다 — auth.users 삭제 cascade 와 같은 순서")
+    void purge_locks_budget_before_its_category_shares() throws Exception {
+        long budgetId = insertBudget(MEMBER_A);
+        insertAllocation(budgetId, SYSTEM_CATEGORY_ID);
+
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try (Connection holder = dataSource.getConnection()) {
+            holder.setAutoCommit(false);
+            try (PreparedStatement lock = holder.prepareStatement("select id from budget where id = ? for update")) {
+                lock.setLong(1, budgetId);
+                lock.executeQuery().close();
+            }
+            CompletableFuture<Void> purge =
+                    CompletableFuture.runAsync(() -> ledgerPurgeService.purge(MEMBER_A), executor);
+
+            assertThat(awaitWaiter("not granted and locktype = 'transactionid'"))
+                    .isNotNull();
+            // purge 가 budget 행에서 막혀 있는 동안 몫 행은 아직 잠기지 않았어야 한다.
+            try (PreparedStatement share = holder.prepareStatement(
+                    "select 1 from budget_category_allocation where budget_id = ? and category_id = ? for update nowait")) {
+                share.setLong(1, budgetId);
+                share.setLong(2, SYSTEM_CATEGORY_ID);
+                try (ResultSet rows = share.executeQuery()) {
+                    assertThat(rows.next()).isTrue();
+                }
+            }
+
+            holder.rollback();
+            purge.get(30, TimeUnit.SECONDS);
+        } finally {
+            executor.shutdownNow();
+        }
+
+        assertThat(count("select count(*) from budget where id = ?", budgetId)).isZero();
+        assertThat(count("select count(*) from budget_category_allocation where budget_id = ?", budgetId))
+                .isZero();
     }
 
     @Test
@@ -288,7 +342,7 @@ class LedgerPurgeControllerIntegrationTest {
 
     private void insertAllocation(long budgetId, long categoryId) {
         jdbcTemplate.update(
-                "insert into budget_allocation (budget_id, category_id, amount) values (?, ?, 1000)",
+                "insert into budget_category_allocation (budget_id, category_id, amount) values (?, ?, 1000)",
                 budgetId,
                 categoryId);
     }
@@ -342,6 +396,20 @@ class LedgerPurgeControllerIntegrationTest {
     private long count(String sql, Object... args) {
         Long count = jdbcTemplate.queryForObject(sql, Long.class, args);
         return count == null ? 0L : count;
+    }
+
+    /** 조건에 맞는 락 대기자가 생길 때까지 폴링해 그 pid 를 돌려준다 — 시간이 아닌 pg_locks 로 판정한다. 없으면 null. */
+    private Integer awaitWaiter(String condition) throws InterruptedException {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (System.nanoTime() < deadline) {
+            List<Integer> pids = jdbcTemplate.queryForList(
+                    "select pid from pg_locks where " + condition + " limit 1", Integer.class);
+            if (!pids.isEmpty()) {
+                return pids.get(0);
+            }
+            Thread.sleep(20);
+        }
+        return null;
     }
 
     private Map<String, Object> memberEntrySnapshot(UUID memberId) {

@@ -42,7 +42,8 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
     // 참조가 하나라도 있으면 지우지 않는다(FK 안전망) — 서브쿼리를 소유자로 좁히면 어떤 이유로든 남은 타 회원
     // 참조를 못 보고 DELETE 가 fk_ledger_category 위반으로 터져 생성 요청이 500 으로 샌다.
     // 소유자 격리는 바깥의 c.ownerMemberId 술어가 담당하고, 인덱스는 idx_ledger_category(category_id) 를 탄다.
-    // 예산 몫도 참조로 센다 — budget_allocation.category_id 는 on delete cascade 라 지우면 남은 몫이 조용히 사라진다.
+    // 예산 카테고리 몫도 참조로 센다 — budget_category_allocation.category_id 는 on delete cascade 라 지우면 남은 몫이
+    // 조용히 사라진다. 인덱스는 idx_budget_category_allocation_category(category_id) 를 탄다.
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query(
             """
@@ -51,7 +52,7 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
               and c.isActive = false
               and c.updatedAt < :cutoff
               and not exists (select 1 from LedgerEntry e where e.category = c)
-              and not exists (select 1 from BudgetAllocation a where a.categoryId = c.id)
+              and not exists (select 1 from Budget b join b.categoryAmounts a where key(a) = c.id)
             """)
     int deleteOrphanedInactive(@Param("ownerMemberId") UUID ownerMemberId, @Param("cutoff") LocalDateTime cutoff);
 

@@ -2,7 +2,6 @@ package com.self.multi_currency_household_ledger.ledger.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.assertj.core.api.Assertions.tuple;
 import static org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase.Replace.NONE;
 
 import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
@@ -17,6 +16,8 @@ import java.time.YearMonth;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
+import org.hibernate.SessionFactory;
+import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -65,15 +66,56 @@ class BudgetRepositoryTest {
                 .orElseThrow();
 
         assertThat(loaded.getId()).isEqualTo(memberASeptember.getId());
-        assertThat(loaded.getAllocations())
-                .extracting(BudgetAllocation::getPaymentGroup, BudgetAllocation::getCategoryId)
-                .containsExactlyInAnyOrder(tuple(PaymentGroup.CREDIT_CARD, null), tuple(null, 1L));
+        assertThat(loaded.amounts().paymentGroupAmounts()).containsOnlyKeys(PaymentGroup.CREDIT_CARD);
+        assertThat(loaded.amounts().categoryAmounts()).containsOnlyKeys(1L);
         assertThat(budgetRepository.findByMemberIdAndMonth(MEMBER_B, SEPTEMBER.atDay(1)))
                 .map(Budget::getId)
                 .contains(memberBSeptember.getId());
         assertThat(budgetRepository.findByMemberIdAndMonth(
                         MEMBER_A, SEPTEMBER.plusMonths(2).atDay(1)))
                 .isEmpty();
+    }
+
+    @Test
+    @DisplayName("회원·달 조회는 예산 행과 카테고리 몫을 SQL 한 번에 읽고, 결제수단 몫·카테고리 몫이 저장한 그대로다")
+    void find_by_member_and_month_reads_budget_and_category_shares_in_one_statement() {
+        budgetRepository.save(budget(
+                MEMBER_A,
+                SEPTEMBER,
+                List.of(
+                        new GroupAmount(PaymentGroup.CREDIT_CARD, new BigDecimal("300.00")),
+                        new GroupAmount(PaymentGroup.ACCOUNT_AND_OTHER, new BigDecimal("200.00"))),
+                1L,
+                2L));
+        entityManager.flush();
+        entityManager.clear();
+        Statistics stats = entityManager
+                .getEntityManagerFactory()
+                .unwrap(SessionFactory.class)
+                .getStatistics();
+        boolean statisticsEnabled = stats.isStatisticsEnabled();
+        stats.setStatisticsEnabled(true);
+        stats.clear();
+        try {
+            BudgetAmounts amounts = budgetRepository
+                    .findByMemberIdAndMonth(MEMBER_A, SEPTEMBER.atDay(1))
+                    .orElseThrow()
+                    .amounts();
+
+            assertThat(amounts.total()).isEqualByComparingTo("1000.00");
+            assertThat(amounts.paymentGroupAmounts())
+                    .containsOnlyKeys(PaymentGroup.CREDIT_CARD, PaymentGroup.ACCOUNT_AND_OTHER);
+            assertThat(amounts.paymentGroupAmounts().get(PaymentGroup.CREDIT_CARD))
+                    .isEqualByComparingTo("300.00");
+            assertThat(amounts.paymentGroupAmounts().get(PaymentGroup.ACCOUNT_AND_OTHER))
+                    .isEqualByComparingTo("200.00");
+            assertThat(amounts.categoryAmounts()).containsOnlyKeys(1L, 2L);
+            assertThat(amounts.categoryAmounts().get(1L)).isEqualByComparingTo("100.00");
+            assertThat(amounts.categoryAmounts().get(2L)).isEqualByComparingTo("100.00");
+            assertThat(stats.getPrepareStatementCount()).isEqualTo(1);
+        } finally {
+            stats.setStatisticsEnabled(statisticsEnabled);
+        }
     }
 
     @Test
@@ -117,8 +159,8 @@ class BudgetRepositoryTest {
     @DisplayName("회원 전체 삭제는 그 회원의 예산과 몫만 지운다")
     void delete_all_by_member_id_removes_budgets_and_allocations() {
         List<GroupAmount> cashAndDebit = List.of(new GroupAmount(PaymentGroup.CASH_AND_DEBIT, new BigDecimal("10.00")));
-        budgetRepository.save(budget(MEMBER_A, SEPTEMBER, cashAndDebit));
-        budgetRepository.save(budget(MEMBER_B, SEPTEMBER, cashAndDebit));
+        budgetRepository.save(budget(MEMBER_A, SEPTEMBER, cashAndDebit, 1L));
+        budgetRepository.save(budget(MEMBER_B, SEPTEMBER, cashAndDebit, 1L));
         entityManager.flush();
 
         int deleted = budgetRepository.deleteAllByMemberId(MEMBER_A);
@@ -148,7 +190,7 @@ class BudgetRepositoryTest {
     }
 
     private int allocationCount() {
-        Integer count = jdbcTemplate.queryForObject("select count(*) from budget_allocation", Integer.class);
+        Integer count = jdbcTemplate.queryForObject("select count(*) from budget_category_allocation", Integer.class);
         return count == null ? 0 : count;
     }
 }

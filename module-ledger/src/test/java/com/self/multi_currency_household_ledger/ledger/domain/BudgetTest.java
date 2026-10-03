@@ -2,7 +2,6 @@ package com.self.multi_currency_household_ledger.ledger.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.assertj.core.api.Assertions.tuple;
 
 import com.self.multi_currency_household_ledger.common.exception.BusinessException;
 import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
@@ -11,7 +10,9 @@ import com.self.multi_currency_household_ledger.ledger.domain.Budget.GroupAmount
 import com.self.multi_currency_household_ledger.ledger.exception.BudgetErrorCode;
 import java.math.BigDecimal;
 import java.time.YearMonth;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -52,7 +53,7 @@ class BudgetTest {
     }
 
     @Test
-    @DisplayName("몫 교체는 키별 제자리 갱신이다 — 있던 키는 같은 객체의 금액만 바뀌고, 빠진 키는 지우고, 새 키만 더한다")
+    @DisplayName("몫 교체는 키별 제자리 갱신이다 — 카테고리 몫은 같은 Map 에서 있던 키는 금액만 바뀌고, 빠진 키는 지우고, 새 키만 더한다")
     void replace_amounts_updates_allocations_in_place() {
         Budget budget = emptyBudget();
         budget.replaceAmounts(
@@ -62,8 +63,7 @@ class BudgetTest {
                         new GroupAmount(PaymentGroup.CREDIT_CARD, won("100")),
                         new GroupAmount(PaymentGroup.CASH_AND_DEBIT, won("200"))),
                 List.of(new CategoryAmount(3L, won("300")), new CategoryAmount(4L, won("400"))));
-        BudgetAllocation creditCard = allocationOf(budget, PaymentGroup.CREDIT_CARD);
-        BudgetAllocation category3 = allocationOf(budget, 3L);
+        Map<Long, BigDecimal> categoryAmounts = budget.getCategoryAmounts();
 
         budget.replaceAmounts(
                 CurrencyCode.KRW,
@@ -73,34 +73,27 @@ class BudgetTest {
                         new GroupAmount(PaymentGroup.ACCOUNT_AND_OTHER, won("50"))),
                 List.of(new CategoryAmount(3L, won("350")), new CategoryAmount(5L, won("500"))));
 
-        assertThat(allocationOf(budget, PaymentGroup.CREDIT_CARD)).isSameAs(creditCard);
-        assertThat(allocationOf(budget, 3L)).isSameAs(category3);
-        assertThat(budget.getAllocations())
-                .extracting(BudgetAllocation::getPaymentGroup, BudgetAllocation::getCategoryId, a -> a.getAmount()
-                        .stripTrailingZeros()
-                        .toPlainString())
-                .containsExactlyInAnyOrder(
-                        tuple(PaymentGroup.CREDIT_CARD, null, "150"),
-                        tuple(PaymentGroup.ACCOUNT_AND_OTHER, null, "50"),
-                        tuple(null, 3L, "350"),
-                        tuple(null, 5L, "500"));
-        assertThat(budget.getAllocations())
-                .allSatisfy(a -> assertThat(a.getBudget()).isSameAs(budget));
+        // Map 을 새로 갈아 끼우면 Hibernate 는 그 예산의 카테고리 몫 행을 전부 지우고 다시 넣는다.
+        assertThat(budget.getCategoryAmounts()).isSameAs(categoryAmounts);
+        assertThat(shares(budget))
+                .containsExactlyInAnyOrder("CREDIT_CARD=150", "ACCOUNT_AND_OTHER=50", "3=350", "5=500");
     }
 
     @Test
-    @DisplayName("같은 몫 세트를 다시 보내면(멱등 재전송) 객체가 그대로이고 결과가 같다")
+    @DisplayName("같은 몫 세트를 다시 보내면(멱등 재전송) 카테고리 몫 Map 이 그대로이고 결과가 같다")
     void replace_amounts_is_idempotent() {
         Budget budget = emptyBudget();
         List<GroupAmount> groups = List.of(new GroupAmount(PaymentGroup.CREDIT_CARD, won("100")));
         List<CategoryAmount> categories = List.of(new CategoryAmount(3L, won("300")));
         budget.replaceAmounts(CurrencyCode.KRW, won("1000"), groups, categories);
-        List<BudgetAllocation> before = List.copyOf(budget.getAllocations());
+        Map<Long, BigDecimal> categoryAmounts = budget.getCategoryAmounts();
+        BudgetAmounts before = budget.amounts();
 
         budget.replaceAmounts(CurrencyCode.KRW, won("1000"), groups, categories);
 
-        assertThat(budget.getAllocations()).containsExactlyInAnyOrderElementsOf(before);
-        assertThat(budget.getAllocations()).hasSize(2);
+        assertThat(budget.getCategoryAmounts()).isSameAs(categoryAmounts);
+        assertThat(budget.amounts()).isEqualTo(before);
+        assertThat(shares(budget)).hasSize(2);
     }
 
     @Test
@@ -115,8 +108,41 @@ class BudgetTest {
 
         budget.replaceAmounts(CurrencyCode.USD, won("12.50"), List.of(), List.of());
 
-        assertThat(budget.getAllocations()).isEmpty();
+        assertThat(shares(budget)).isEmpty();
+        assertThat(budget.getCreditCardAmount()).isNull();
         assertThat(budget.getCurrencyCode()).isEqualTo(CurrencyCode.USD);
+    }
+
+    @Test
+    @DisplayName("결제수단 몫은 그룹마다 제 컬럼에 담긴다 — 셋을 넣으면 셋이 읽히고, 다음 교체에서 하나만 넣으면 나머지 둘은 null 이 된다")
+    void payment_group_amounts_round_trip_through_columns() {
+        Budget budget = emptyBudget();
+
+        budget.replaceAmounts(
+                CurrencyCode.KRW,
+                won("1000"),
+                List.of(
+                        new GroupAmount(PaymentGroup.CREDIT_CARD, won("100")),
+                        new GroupAmount(PaymentGroup.CASH_AND_DEBIT, won("200")),
+                        new GroupAmount(PaymentGroup.ACCOUNT_AND_OTHER, won("300"))),
+                List.of());
+
+        assertThat(budget.getCreditCardAmount()).isEqualByComparingTo("100");
+        assertThat(budget.getCashAndDebitAmount()).isEqualByComparingTo("200");
+        assertThat(budget.getAccountAndOtherAmount()).isEqualByComparingTo("300");
+        assertThat(shares(budget))
+                .containsExactlyInAnyOrder("CREDIT_CARD=100", "CASH_AND_DEBIT=200", "ACCOUNT_AND_OTHER=300");
+
+        budget.replaceAmounts(
+                CurrencyCode.KRW,
+                won("1000"),
+                List.of(new GroupAmount(PaymentGroup.CASH_AND_DEBIT, won("250"))),
+                List.of());
+
+        assertThat(budget.getCreditCardAmount()).isNull();
+        assertThat(budget.getCashAndDebitAmount()).isEqualByComparingTo("250");
+        assertThat(budget.getAccountAndOtherAmount()).isNull();
+        assertThat(budget.amounts().paymentGroupAmounts()).containsOnlyKeys(PaymentGroup.CASH_AND_DEBIT);
     }
 
     @Test
@@ -239,7 +265,7 @@ class BudgetTest {
 
         assertThat(budget.getCurrencyCode()).isEqualTo(CurrencyCode.KRW);
         assertThat(budget.getTotalAmount()).isEqualByComparingTo("1000");
-        assertThat(budget.getAllocations()).hasSize(1);
+        assertThat(shares(budget)).containsExactly("CREDIT_CARD=100");
     }
 
     @Test
@@ -262,11 +288,7 @@ class BudgetTest {
 
         assertThat(budget.getCurrencyCode()).isEqualTo(CurrencyCode.KRW);
         assertThat(budget.getTotalAmount()).isEqualByComparingTo("1000");
-        assertThat(budget.getAllocations())
-                .extracting(BudgetAllocation::getPaymentGroup, BudgetAllocation::getCategoryId, a -> a.getAmount()
-                        .stripTrailingZeros()
-                        .toPlainString())
-                .containsExactlyInAnyOrder(tuple(PaymentGroup.CREDIT_CARD, null, "100"), tuple(null, 3L, "300"));
+        assertThat(shares(budget)).containsExactlyInAnyOrder("CREDIT_CARD=100", "3=300");
     }
 
     @Test
@@ -285,7 +307,7 @@ class BudgetTest {
                 BudgetErrorCode.BUDGET_ALLOCATION_EXCEEDS_TOTAL);
 
         assertThat(budget.getTotalAmount()).isNull();
-        assertThat(budget.getAllocations()).isEmpty();
+        assertThat(shares(budget)).isEmpty();
     }
 
     @Test
@@ -302,7 +324,7 @@ class BudgetTest {
                 List.of(new CategoryAmount(3L, won("100.00"))));
 
         assertThat(budget.getTotalAmount()).isEqualByComparingTo("100");
-        assertThat(budget.getAllocations()).hasSize(3);
+        assertThat(shares(budget)).hasSize(3);
     }
 
     @Test
@@ -321,7 +343,7 @@ class BudgetTest {
                         List.of(new GroupAmount(PaymentGroup.CREDIT_CARD, won("101"))),
                         List.of()),
                 BudgetErrorCode.BUDGET_ALLOCATION_EXCEEDS_TOTAL);
-        assertThat(budget.getAllocations()).isEmpty();
+        assertThat(shares(budget)).isEmpty();
     }
 
     @Test
@@ -353,18 +375,17 @@ class BudgetTest {
         assertThat(emptyBudget().allocatedCategoryIds()).isEmpty();
     }
 
-    private static BudgetAllocation allocationOf(Budget budget, PaymentGroup group) {
-        return budget.getAllocations().stream()
-                .filter(a -> a.getPaymentGroup() == group)
-                .findFirst()
-                .orElseThrow();
-    }
-
-    private static BudgetAllocation allocationOf(Budget budget, Long categoryId) {
-        return budget.getAllocations().stream()
-                .filter(a -> categoryId.equals(a.getCategoryId()))
-                .findFirst()
-                .orElseThrow();
+    /** 몫을 "키=금액" 으로 편다 — 결제수단 몫은 그룹 이름, 카테고리 몫은 카테고리 id 가 키다. */
+    private static List<String> shares(Budget budget) {
+        BudgetAmounts amounts = budget.amounts();
+        List<String> shares = new ArrayList<>();
+        amounts.paymentGroupAmounts()
+                .forEach((group, amount) ->
+                        shares.add(group + "=" + amount.stripTrailingZeros().toPlainString()));
+        amounts.categoryAmounts()
+                .forEach((categoryId, amount) -> shares.add(
+                        categoryId + "=" + amount.stripTrailingZeros().toPlainString()));
+        return shares;
     }
 
     private static void assertCode(Executable call, BudgetErrorCode expected) {
