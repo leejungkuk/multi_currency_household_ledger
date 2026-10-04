@@ -397,20 +397,16 @@ class AnonymousAccountCleanupIntegrationTest {
     /** 예산 행과 결제수단 몫 1개를 넣는다. {@code at} 이 null 이면 감사 컬럼 없이 넣는다. */
     private void insertBudgetWithAllocation(UUID memberId, Instant at) {
         LocalDateTime audit = at == null ? null : local(at);
-        Long budgetId = jdbcTemplate.queryForObject(
+        jdbcTemplate.update(
                 """
-                insert into budget (member_id, month, currency_code, total_amount, created_at, updated_at)
-                values (?, ?, 'KRW', 100000.00, ?, ?)
-                returning id
+                insert into budget (member_id, month, currency_code, total_amount, credit_card_amount,
+                                    created_at, updated_at)
+                values (?, ?, 'KRW', 100000.00, 50000.00, ?, ?)
                 """,
-                Long.class,
                 memberId,
                 LocalDate.of(2025, 1, 1),
                 audit,
                 audit);
-        jdbcTemplate.update(
-                "insert into budget_allocation (budget_id, payment_group, amount) values (?, 'CREDIT_CARD', 50000.00)",
-                budgetId);
     }
 
     /** naive {@code timestamp(6)} 감사 컬럼은 JVM 기본 존으로 기록되므로 서비스의 cutoffLocal 과 같은 변환을 쓴다. */
@@ -458,7 +454,10 @@ class AnonymousAccountCleanupIntegrationTest {
     }
 
     private long budgetAllocationCount() {
-        Long count = jdbcTemplate.queryForObject("select count(*) from budget_allocation", Long.class);
+        Long count = jdbcTemplate.queryForObject(
+                "select count(credit_card_amount) + count(cash_and_debit_amount) + count(account_and_other_amount)"
+                        + " + (select count(*) from budget_category_allocation) from budget",
+                Long.class);
         return count == null ? 0L : count;
     }
 
