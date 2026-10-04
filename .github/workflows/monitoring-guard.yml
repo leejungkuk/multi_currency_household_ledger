@@ -36,3 +36,7 @@ jobs:
 
       - name: Test monitoring sync regressions
         run: bash tools/monitoring-sync.sh --self-test
+
+      - name: Test deploy agent regressions
+        # 같은 셸 계층(호스트 에이전트)의 회귀 시험이라 이미 required check 인 이 워크플로에서 돈다.
+        run: bash tools/deploy-agent.sh --self-test
