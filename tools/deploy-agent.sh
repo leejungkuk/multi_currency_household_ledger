@@ -290,7 +290,7 @@ color_state() {
   # 서비스를 끊는다 — 컨테이너가 없다는 답일 때만 멈춤이다.
   if ! running=$(docker inspect "$container" --format '{{.State.Running}}' 2>&1); then
     case "$running" in
-      *'No such object'*) printf 'stopped\n' ;;
+      *[Nn]o\ [Ss]uch\ [Oo]bject*) printf 'stopped\n' ;; # 운영 Docker 29 는 소문자, 맥 28 은 대문자로 답한다
       *) printf 'unknown\n' ;;
     esac
     return 0
@@ -1126,7 +1126,7 @@ self_test_compose() {
 self_test_inspect() {
   local dir="$SELF_TEST_DOCKER/$1" restarts=0
   if [[ ! -d "$dir" || "$2" != --format ]]; then
-    printf 'Error: No such object: %s\n' "$1" >&2
+    printf '%s: %s\n' "${SELF_TEST_MISSING_WORDING:-error: no such object}" "$1" >&2
     return 1
   fi
   if [[ -e "$dir/inspect_fail" ]]; then
@@ -1799,6 +1799,22 @@ self_test_hold_window_defers() {
     grep -q '보류 창' "$SELF_TEST_EVENTS"
 }
 
+self_test_missing_container_wording_both_versions() {
+  local wording n=0
+  # 운영 Docker 29.7.2 와 맥 Docker 28.3.2 의 '컨테이너 없음' 문구(2026-10-05 실측). 두 색 모두 없으면(컷오버 첫 배포)
+  # 판정 불가가 아니라 부트스트랩으로 blue 에 배포한다.
+  for wording in 'error: no such object' 'Error: No such object'; do
+    n=$((n + 1))
+    self_test_setup "missing-wording-$n"
+    SELF_TEST_MISSING_WORDING=$wording
+    with_lock run_cycle >/dev/null 2>&1
+    self_test_events_are \
+      'compose pull api-blue' 'compose up -d --no-deps api-blue' 'rm blue' 'touch blue' "sleep $GATE_SETTLE_SEC" \
+      'edge /api/v1/assets' 'edge /api/v1/ledgers' 'edge /actuator/health' 'edge /api/v1/ledgers/import' 'edge /' \
+      'docker image prune -f' 'notify default' || return 1
+  done
+}
+
 self_test_run_case() {
   local name="$1" function_name="$2" rc
   SELF_TEST_CASES=$((SELF_TEST_CASES + 1))
@@ -1884,11 +1900,12 @@ self_test() {
   self_test_run_case '닫힌 잔여 색 정지' self_test_leftover_closed_color_is_stopped
   self_test_run_case '잔여 정지 뒤 같은 주기에 배포' self_test_leftover_stopped_then_deployed
   self_test_run_case '보류 창은 미룸' self_test_hold_window_defers
+  self_test_run_case '컨테이너 없음 문구는 두 Docker 버전 모두 멈춤' self_test_missing_container_wording_both_versions
 
   rm -rf -- "$SELF_TEST_ROOT"
   printf '%d건 실행, 실패 %d건\n' "$SELF_TEST_CASES" "$SELF_TEST_FAILURES"
   # 0건 실행이 통과하지 않게 케이스 수를 못박는다 — 케이스 줄을 지워도 여기서 빨개진다.
-  ((SELF_TEST_CASES == 37 && SELF_TEST_FAILURES == 0))
+  ((SELF_TEST_CASES == 38 && SELF_TEST_FAILURES == 0))
 }
 
 main() {

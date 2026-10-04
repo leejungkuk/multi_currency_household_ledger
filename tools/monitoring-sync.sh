@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# woni 관측 스택을 실행 중 api 이미지의 revision 커밋과 동기화한다.
+# woni 관측 스택을 실행 중 api 이미지의 revision 커밋과 동기화한다. api 는 두 색(woni-api-blue·woni-api-green)이고
+# 평상시 한 색만 running 이다. running 인 색들의 revision 이 하나로 모일 때만 동기화하고, 두 색이 다르거나(중단된 배포의
+# 잔여) running 인 색이 없으면 그 주기를 건너뛴다. 게이트(라우팅)는 배포 에이전트만 다루므로 여기서는 보지 않는다.
 # 설계 SSOT는 .claude/plan/monitoring-sync-plan.md §4다. systemd timer(300초)가 인자 없이 호출한다.
 # Linux 호스트 전용이다(flock·GNU timeout). macOS에서는 bash -n·shellcheck·--dry-run만 지원한다.
 # --dry-run은 docker·monitoring/·상태 파일에 쓰지 않는다. 판정에 필요한 git fetch만 예외로 허용한다.
@@ -14,9 +16,9 @@
 
 set -euo pipefail
 
-readonly CONTAINER="woni-api"
-readonly API_SERVICE="api"
-readonly CADDY_SERVICE="caddy"
+readonly API_CONTAINERS=(woni-api-blue woni-api-green)
+# 관측 compose 에 들어오면 실행을 거부할 서비스(positive list, ADR-016). api 는 컷오버 도중 옛 compose 를 만나도 지키려고 남긴다.
+readonly PROTECTED_SERVICES=(api api-blue api-green caddy)
 readonly HEALTH_POLL_SEC=10
 readonly SETTLE_SEC=60
 readonly FAILURE_THRESHOLD=3
@@ -63,7 +65,7 @@ new_temp_dir() {
 usage() {
   cat <<'EOF'
 사용법: tools/monitoring-sync.sh [모드]
-  (없음)       1회 판정·동기화 (systemd가 호출)
+  (없음)       running 인 api 색의 revision으로 1회 판정·동기화 (systemd가 호출)
   --dry-run    판정만 출력. docker·monitoring/·상태 파일에 쓰지 않는다
                단, revision 객체 확보를 위한 git fetch는 예외로 허용한다
   --retry      실패 기록·카운터·미완료 marker를 비운다
@@ -142,11 +144,34 @@ hard_state_write() {
   return 1
 }
 
+# running 인 색들의 revision 이 하나로 모이면 그 값, 아니면(두 색 불일치·라벨 이상·running 없음·inspect 실패) 빈 값이다.
+# 컨테이너가 없다는 답일 때만 그 색을 멈춤으로 읽는다 — inspect 의 일시 실패를 멈춤으로 읽으면 revision 이 다른 두 색이
+# running 일 때 나머지 색의 revision 으로 동기화한다(배포 에이전트 color_state 와 같은 규칙). 그 답의 대소문자는 Docker
+# 버전마다 다르다(운영 29 는 'error: no such object', 맥 28 은 'Error: No such object').
 container_revision() {
-  local rev
-  rev=$(docker inspect "$CONTAINER" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' 2>/dev/null) || return 0
-  [[ "$rev" =~ ^[0-9a-f]{40}$ ]] && printf '%s\n' "$rev"
+  local container state rev candidate=""
+  for container in "${API_CONTAINERS[@]}"; do
+    if ! state=$(docker inspect "$container" --format '{{.State.Running}} {{index .Config.Labels "org.opencontainers.image.revision"}}' 2>&1); then
+      case "$state" in
+        *[Nn]o\ [Ss]uch\ [Oo]bject*) continue ;;
+        *) return 0 ;;
+      esac
+    fi
+    [[ "$state" == "true "* ]] || continue
+    rev=${state#true }
+    [[ "$rev" =~ ^[0-9a-f]{40}$ && ( -z "$candidate" || "$rev" == "$candidate" ) ]] || return 0
+    candidate=$rev
+  done
+  [[ -n "$candidate" ]] && printf '%s\n' "$candidate"
   return 0
+}
+
+is_protected_service() {
+  local protected
+  for protected in "${PROTECTED_SERVICES[@]}"; do
+    [[ "$1" == "$protected" ]] && return 0
+  done
+  return 1
 }
 
 classify_timeout() {
@@ -304,7 +329,7 @@ read_services() {
   fi
   if (cd "$DEPLOY_DIR" && timeout --kill-after=10 "$max_seconds" docker compose -f "$base_file" config --services >"$temp"); then
     while IFS= read -r service; do
-      if [[ "$service" == "$API_SERVICE" || "$service" == "$CADDY_SERVICE" ]]; then
+      if is_protected_service "$service"; then
         warn "관측 서비스 목록에 보호 서비스가 포함돼 실행을 거부합니다: $service"
         return 1
       fi
@@ -379,7 +404,7 @@ rollback() {
 
     if ((added_count > 0)); then
       for service in "${added_services[@]}"; do
-        if [[ "$service" == "$API_SERVICE" || "$service" == "$CADDY_SERVICE" ]]; then
+        if is_protected_service "$service"; then
           warn "복원 제거 집합에 보호 서비스가 포함돼 중단합니다: $service"
           return 1
         fi
@@ -617,12 +642,16 @@ observe_services() {
   ((elapsed >= SETTLE_SEC && consecutive >= 2))
 }
 
+# api 두 색 중 평상시 멈춘 색은 늘 down 이다 — woni-api 타깃은 하나라도 up 이면 통과, 그 밖의 타깃은 전부 up 이어야 한다.
 soft_smoke() {
   local prometheus grafana unhealthy
   local -a failures=()
   if prometheus=$(curl -fsS --max-time 15 http://127.0.0.1:9090/api/v1/targets 2>/dev/null); then
-    unhealthy=$(jq -r 'if .status == "success" then [.data.activeTargets[]? | select(.health != "up")] | length else -1 end' \
-      <<<"$prometheus" 2>/dev/null) || unhealthy=-1
+    unhealthy=$(jq -r 'if .status == "success" then
+        [.data.activeTargets[]?] as $targets
+        | ([$targets[] | select(.labels.job != "woni-api" and .health != "up")] | length)
+          + (if any($targets[]; .labels.job == "woni-api" and .health == "up") then 0 else 1 end)
+      else -1 end' <<<"$prometheus" 2>/dev/null) || unhealthy=-1
     [[ "$unhealthy" == "0" ]] || failures+=("Prometheus targets=$unhealthy")
   else
     failures+=("Prometheus 연결 실패")
@@ -890,7 +919,7 @@ run_cycle() {
   local rev tree rc
   rev=$(container_revision)
   if [[ ! "$rev" =~ ^[0-9a-f]{40}$ ]]; then
-    log "api 컨테이너 revision 라벨이 없거나 올바른 40hex가 아니라 건너뜁니다."
+    log "running 인 api 색이 없거나 두 색 revision이 다르거나 라벨이 올바른 40hex가 아니라 건너뜁니다."
     return 0
   fi
 
@@ -1113,7 +1142,7 @@ self_test_exit_contract() {
 self_test_protected_services() {
   self_test_setup protected-services
   local protected value rc
-  for protected in "$API_SERVICE" "$CADDY_SERVICE"; do
+  for protected in api api-blue api-green caddy; do
     SELF_TEST_DOCKER_SERVICES="$protected"
     if read_services value ../monitoring/docker-compose.yml >/dev/null 2>&1; then return 1; fi
     SELF_TEST_DOCKER_SERVICES=prometheus
@@ -1121,6 +1150,130 @@ self_test_protected_services() {
     if rollback "$protected" >/dev/null 2>&1; then rc=0; else rc=$?; fi
     [[ "$rc" == 1 && ! -s "$SELF_TEST_EVENTS" ]] || return 1
   done
+}
+
+# 색별 docker inspect 스텁. SELF_TEST_BLUE·SELF_TEST_GREEN = '<Running> <revision 라벨>', 비면 그 색 컨테이너가 없고
+# (문구는 SELF_TEST_MISSING_WORDING, 기본은 운영 Docker 29 의 문구) daemon-error 면 컨테이너 부재가 아닌 오류로 실패한다.
+self_test_stub_colors() {
+  docker() {
+    local spec
+    case "$*" in
+      'inspect woni-api-blue '*) spec="$SELF_TEST_BLUE" ;;
+      'inspect woni-api-green '*) spec="$SELF_TEST_GREEN" ;;
+      *) spec="" ;;
+    esac
+    if [[ -z "$spec" ]]; then
+      printf '%s: %s\n' "${SELF_TEST_MISSING_WORDING:-error: no such object}" "${2:-}" >&2
+      return 1
+    fi
+    if [[ "$spec" == daemon-error ]]; then
+      printf 'Error response from daemon: self-test\n' >&2
+      return 1
+    fi
+    printf '%s\n' "$spec"
+  }
+}
+
+self_test_live_revision_single_running_color() {
+  self_test_setup live-revision-single
+  local blue=1111111111111111111111111111111111111111 green=2222222222222222222222222222222222222222
+  self_test_stub_colors
+  SELF_TEST_BLUE="false $blue"
+  SELF_TEST_GREEN="true $green"
+  [[ "$(container_revision)" == "$green" ]] || return 1
+  SELF_TEST_BLUE=""
+  [[ "$(container_revision)" == "$green" ]] || return 1
+  SELF_TEST_BLUE="true $blue"
+  SELF_TEST_GREEN="false $green"
+  [[ "$(container_revision)" == "$blue" ]]
+}
+
+self_test_live_revision_same_on_both_colors() {
+  self_test_setup live-revision-same
+  local rev=3333333333333333333333333333333333333333
+  self_test_stub_colors
+  SELF_TEST_BLUE="true $rev"
+  SELF_TEST_GREEN="true $rev"
+  [[ "$(container_revision)" == "$rev" ]]
+}
+
+self_test_live_revision_skips_divergent_colors() {
+  self_test_setup live-revision-divergent
+  local blue=4444444444444444444444444444444444444444 green=5555555555555555555555555555555555555555
+  self_test_stub_colors
+  SELF_TEST_BLUE="true $blue"
+  SELF_TEST_GREEN="true $green"
+  [[ -z "$(container_revision)" ]] || return 1
+  SELF_TEST_BLUE="false $blue"
+  SELF_TEST_GREEN="false $green"
+  [[ -z "$(container_revision)" ]] || return 1
+  SELF_TEST_BLUE=""
+  SELF_TEST_GREEN=""
+  [[ -z "$(container_revision)" ]]
+}
+
+self_test_live_revision_skips_inspect_failure() {
+  self_test_setup live-revision-inspect-failure
+  local blue=6666666666666666666666666666666666666666 green=7777777777777777777777777777777777777777
+  self_test_stub_colors
+  # 조회에 실패한 색은 다른 revision 으로 running 일 수 있다 — 나머지 색의 값으로 맞추지 않고 건너뛴다.
+  SELF_TEST_BLUE=daemon-error
+  SELF_TEST_GREEN="true $green"
+  [[ -z "$(container_revision)" ]] || return 1
+  SELF_TEST_BLUE="true $blue"
+  SELF_TEST_GREEN=daemon-error
+  [[ -z "$(container_revision)" ]]
+}
+
+self_test_live_revision_missing_wording_both_versions() {
+  self_test_setup live-revision-missing-wording
+  local green=8888888888888888888888888888888888888888 wording
+  self_test_stub_colors
+  SELF_TEST_BLUE=""
+  SELF_TEST_GREEN="true $green"
+  # 운영 Docker 29.7.2 와 맥 Docker 28.3.2 의 '컨테이너 없음' 문구(2026-10-05 실측) — 둘 다 그 색을 멈춤으로 읽는다.
+  for wording in 'error: no such object' 'Error: No such object'; do
+    SELF_TEST_MISSING_WORDING=$wording
+    [[ "$(container_revision)" == "$green" ]] || return 1
+  done
+}
+
+# 9090 은 SELF_TEST_PROMETHEUS 를 Prometheus targets 응답으로, 3000 은 정상 Grafana health 를 낸다.
+self_test_stub_smoke_endpoints() {
+  curl() {
+    case "$*" in
+      *'127.0.0.1:9090/api/v1/targets'*) printf '%s\n' "$SELF_TEST_PROMETHEUS" ;;
+      *'127.0.0.1:3000/api/health'*) printf '{"database":"ok"}\n' ;;
+      *) return 0 ;;
+    esac
+  }
+}
+
+# $@='<job>=<health>' → status success 인 Prometheus targets 응답.
+self_test_targets() {
+  printf '%s\n' "$@" |
+    jq -Rn '{status: "success", data: {activeTargets: [inputs | split("=") | {labels: {job: .[0]}, health: .[1]}]}}'
+}
+
+self_test_soft_smoke_tolerates_stopped_color() {
+  self_test_setup soft-smoke-stopped-color
+  self_test_stub_smoke_endpoints
+  SELF_TEST_PROMETHEUS=$(self_test_targets woni-api=up woni-api=down prometheus=up loki=up)
+  soft_smoke
+}
+
+self_test_soft_smoke_fails_without_live_color() {
+  self_test_setup soft-smoke-no-live-color
+  self_test_stub_smoke_endpoints
+  SELF_TEST_PROMETHEUS=$(self_test_targets woni-api=down woni-api=down prometheus=up)
+  if soft_smoke; then return 1; fi
+  # api 한 색이 up 이어도 다른 타깃의 down 은 가리지 않는다.
+  SELF_TEST_PROMETHEUS=$(self_test_targets woni-api=up woni-api=down prometheus=down)
+  if soft_smoke; then return 1; fi
+  SELF_TEST_PROMETHEUS='{"status":"error"}'
+  if soft_smoke; then return 1; fi
+  SELF_TEST_PROMETHEUS='not-json'
+  if soft_smoke; then return 1; fi
 }
 
 self_test_idempotent() {
@@ -1295,6 +1448,13 @@ self_test() {
   self_test_run_case '복원 config 재파싱' self_test_reparse_restart_partial
   self_test_run_case 'D8 종료 코드' self_test_exit_contract
   self_test_run_case '보호 서비스 거부' self_test_protected_services
+  self_test_run_case 'revision: running 인 색 하나' self_test_live_revision_single_running_color
+  self_test_run_case 'revision: 두 색 같은 값' self_test_live_revision_same_on_both_colors
+  self_test_run_case 'revision: 두 색 불일치·running 없음은 건너뜀' self_test_live_revision_skips_divergent_colors
+  self_test_run_case 'revision: inspect 실패는 건너뜀' self_test_live_revision_skips_inspect_failure
+  self_test_run_case 'revision: 컨테이너 없음 문구는 두 Docker 버전 모두' self_test_live_revision_missing_wording_both_versions
+  self_test_run_case '스모크: api 멈춘 색은 통과' self_test_soft_smoke_tolerates_stopped_color
+  self_test_run_case '스모크: api 살아 있는 색 없음·다른 타깃 down 은 실패' self_test_soft_smoke_fails_without_live_color
   self_test_run_case '멱등' self_test_idempotent
   self_test_run_case 'resync pending은 멱등 단락을 통과' self_test_resync_pending_bypasses_idempotent_skip
   self_test_run_case 'resync 명령은 pending 기록' self_test_resync_records_pending

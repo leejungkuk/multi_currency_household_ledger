@@ -78,7 +78,7 @@
             "uid": "prometheus"
           },
           "editorMode": "code",
-          "expr": "up{job=\"woni-api\"}",
+          "expr": "max(up{job=\"woni-api\"})",
           "range": true,
           "refId": "A"
         }
