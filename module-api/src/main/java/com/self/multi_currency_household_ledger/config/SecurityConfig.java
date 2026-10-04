@@ -88,9 +88,15 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .cors(cors -> cors.configurationSource(corsConfigurationSource))
                 .authorizeHttpRequests(authorize -> authorize
-                        // security-ack: 배포 플랫폼·컨테이너 재시작 판정과 외부 모니터링이 토큰 없이 읽어야 하는
-                        // liveness 신호. show-details=never 라 응답은 {"status":"UP"} 뿐이고 GET 만 연다.
+                        // security-ack: 컨테이너 health 판정(Docker HEALTHCHECK — UP·OUT_OF_SERVICE 를 healthy 로 본다)과
+                        // 외부 모니터링이 토큰 없이 읽는 루트 health. show-details=never 라 응답은 status 와
+                        // groups(그룹 이름) 뿐이고 GET 만 연다. 게이트가 닫히면 503 OUT_OF_SERVICE 다.
                         .requestMatchers(HttpMethod.GET, "/actuator/health")
+                        .permitAll()
+                        // security-ack: 두 색 배포에서 Caddy active health check 가 토큰 없이 읽는 투입 신호.
+                        // 응답은 status 뿐이다. 방어선은 /actuator/prometheus 와 같이 포트 격리(9091 내부 전용)다.
+                        // 정확 일치로 이 경로만 연다 — liveness 는 읽는 곳이 없어 열지 않는다.
+                        .requestMatchers(HttpMethod.GET, "/actuator/health/readiness")
                         .permitAll()
                         // security-ack: Prometheus 스크랩 경로. 본문에 JVM 상태·DB 풀 수치·엔드포인트별 URI 가
                         // 그대로 실리므로 공개돼선 안 된다. 방어선은 인증이 아니라 포트 격리다 — actuator 는

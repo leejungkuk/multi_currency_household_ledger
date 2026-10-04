@@ -50,6 +50,7 @@ class PermitAllSnapshotTest {
 
     private static final List<String> EXPECTED_RULES = List.of(
             "GET /actuator/health -> permitAll",
+            "GET /actuator/health/readiness -> permitAll",
             "GET /actuator/prometheus -> permitAll",
             "GET /api/v1/exchange-rates -> permitAll",
             "GET /api/v1/exchange-rates/range -> permitAll",
