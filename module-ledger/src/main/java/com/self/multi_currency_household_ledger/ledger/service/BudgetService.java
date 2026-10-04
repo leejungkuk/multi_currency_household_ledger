@@ -17,6 +17,7 @@ import com.self.multi_currency_household_ledger.ledger.dto.SaveBudgetRequest;
 import com.self.multi_currency_household_ledger.ledger.exception.LedgerErrorCode;
 import java.time.Clock;
 import java.time.YearMonth;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
@@ -72,7 +73,7 @@ public class BudgetService {
         // 그 달 행에 이미 몫이 있는 카테고리는 삭제됐어도 받는다 — 새로 넣는 id 만 활성·소유를 확인한다(DESIGN §4).
         Set<Long> newCategoryIds = new HashSet<>(request.categoryIds());
         existing.ifPresent(budget -> newCategoryIds.removeAll(budget.allocatedCategoryIds()));
-        List<Category> newCategories = findUsableCategories(memberId, newCategoryIds);
+        List<Category> newCategories = findAddableCategories(memberId, month, newCategoryIds);
 
         Budget budget = existing.orElseGet(() -> new Budget(memberId, month));
         budget.requireAllocatable(newCategories);
@@ -94,16 +95,27 @@ public class BudgetService {
         return read(memberId, month);
     }
 
-    private List<Category> findUsableCategories(UUID memberId, Set<Long> ids) {
+    private List<Category> findAddableCategories(UUID memberId, YearMonth month, Set<Long> ids) {
         if (ids.isEmpty()) {
             return List.of();
         }
         // 없는·삭제된·다른 회원의 카테고리는 모두 빠진다 — IDOR 이 막히는 지점이다.
-        List<Category> categories = categoryRepository.findUsableByIds(memberId, ids);
+        List<Category> categories = new ArrayList<>(categoryRepository.findUsableByIds(memberId, ids));
+        if (categories.size() < ids.size()) {
+            // 빠진 id 가 있을 때만 — 그 달 지출이 있는 삭제 카테고리는 다시 넣을 수 있다(DESIGN §2 저장). 활성·비활성이라 겹치지 않는다.
+            findDeletedWithExpenses(memberId, month).stream()
+                    .filter(category -> ids.contains(category.getId()))
+                    .forEach(categories::add);
+        }
         if (categories.size() < ids.size()) {
             throw new BusinessException(LedgerErrorCode.CATEGORY_NOT_FOUND);
         }
         return categories;
+    }
+
+    private List<Category> findDeletedWithExpenses(UUID memberId, YearMonth month) {
+        return categoryRepository.findDeletedWithExpenses(
+                memberId, month.atDay(1), month.plusMonths(1).atDay(1));
     }
 
     private MonthlyBudgetResponse read(UUID memberId, YearMonth month) {
@@ -112,9 +124,10 @@ public class BudgetService {
         YearMonth current = now.current();
         Integer remainingDays = now.remainingDaysIncludingToday(month);
         Optional<Budget> budget = budgetRepository.findByMemberIdAndMonth(memberId, month.atDay(1));
+        List<Category> deletedWithSpending = findDeletedWithExpenses(memberId, month);
         if (budget.isEmpty()) {
             return MonthlyBudgetResponse.notSet(
-                    month, current, remainingDays, budgetRepository.existsByMemberId(memberId));
+                    month, current, remainingDays, budgetRepository.existsByMemberId(memberId), deletedWithSpending);
         }
 
         BudgetAmounts amounts = budget.get().amounts();
@@ -134,6 +147,7 @@ public class BudgetService {
                         month.plusMonths(1).atDay(1)),
                 timeline,
                 remainingDays);
-        return MonthlyBudgetResponse.of(month, current, remainingDays, amounts.currency(), evaluation, categories);
+        return MonthlyBudgetResponse.of(
+                month, current, remainingDays, amounts.currency(), evaluation, categories, deletedWithSpending);
     }
 }

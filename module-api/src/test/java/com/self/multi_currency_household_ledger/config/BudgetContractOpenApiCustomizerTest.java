@@ -35,6 +35,20 @@ class BudgetContractOpenApiCustomizerTest {
     }
 
     @Test
+    void describes_deleted_categories_with_spending() {
+        OpenAPI openApi = openApi("categories");
+
+        customizer.customise(openApi);
+
+        assertThat(schema(openApi, "MonthlyBudgetResponse")
+                        .getProperties()
+                        .get("deletedCategoriesWithSpending")
+                        .getDescription())
+                .isEqualTo(
+                        "이 달에 지출 거래가 1건 이상 있는 삭제된 카테고리(몫 유무와 무관, 카테고리 정렬값·id 순). PUT categoryAmounts 에 넣으면 저장이 받는다. 몫이 없으면 그 지출은 otherCategories 에 들어 있다.");
+    }
+
+    @Test
     void fails_when_budget_property_is_missing() {
         OpenAPI openApi = openApi("categoryLines");
 
@@ -55,7 +69,8 @@ class BudgetContractOpenApiCustomizerTest {
                                 "MonthlyBudgetResponse",
                                 new ObjectSchema()
                                         .addProperty(responseCategoriesName, new ArraySchema())
-                                        .addProperty("paymentGroups", new ArraySchema())));
+                                        .addProperty("paymentGroups", new ArraySchema())
+                                        .addProperty("deletedCategoriesWithSpending", new ArraySchema())));
     }
 
     private static Schema<?> schema(OpenAPI openApi, String name) {

@@ -1,5 +1,6 @@
 package com.self.multi_currency_household_ledger.ledger.domain;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
@@ -36,6 +37,29 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
     // 정렬하지 않는다 — 줄 순서는 예산 몫(Budget.amounts)이 정한다.
     @Query("select c from Category c where c.id in :ids and (c.ownerMemberId is null or c.ownerMemberId = :memberId)")
     List<Category> findVisibleByIds(@Param("memberId") UUID memberId, @Param("ids") Collection<Long> ids);
+
+    // 예산에 다시 넣을 수 있는 삭제 카테고리 — 그 달 [startDate, endDate) 에 이 회원의 지출 거래가 1건 이상 있는 보이는 비활성 지출 카테고리.
+    // 월 예산 읽기(목록)와 저장(새 몫 허용)이 이 쿼리 하나로 판정한다 — 두 벌이면 "보였는데 저장이 거절" 틈이 생긴다.
+    // 카테고리 소유 술어와 거래 member_id 술어를 둘 다 건다(IDOR). 서브쿼리는 idx_ledger_category·idx_ledger_member_date 를 탄다.
+    @Query(
+            """
+            select c from Category c
+            where (c.ownerMemberId is null or c.ownerMemberId = :memberId)
+              and c.isActive = false
+              and c.transactionType = com.self.multi_currency_household_ledger.ledger.domain.TransactionType.EXPENSE
+              and exists (
+                  select 1 from LedgerEntry entry
+                  where entry.memberId = :memberId
+                    and entry.category.id = c.id
+                    and entry.transactionType = com.self.multi_currency_household_ledger.ledger.domain.TransactionType.EXPENSE
+                    and entry.transactionDate >= :startDate
+                    and entry.transactionDate < :endDate)
+            order by c.sortOrder asc, c.id asc
+            """)
+    List<Category> findDeletedWithExpenses(
+            @Param("memberId") UUID memberId,
+            @Param("startDate") LocalDate startDate,
+            @Param("endDate") LocalDate endDate);
 
     // 시스템 카테고리는 owner_member_id 가 null 이라 등가 비교에 매칭되지 않는다.
     // JPQL bulk delete 전 flush 로 변경을 선반영하고 삭제 후 컨텍스트를 비워 stale 엔티티를 남기지 않는다.
