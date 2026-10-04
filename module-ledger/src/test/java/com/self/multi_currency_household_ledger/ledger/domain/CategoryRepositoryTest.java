@@ -3,10 +3,16 @@ package com.self.multi_currency_household_ledger.ledger.domain;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase.Replace.NONE;
 
+import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
 import com.self.multi_currency_household_ledger.ledger.AuthUserFixture;
 import com.self.multi_currency_household_ledger.ledger.TestJpaConfig;
 import com.self.multi_currency_household_ledger.ledger.TestLedgerApplication;
+import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -25,9 +31,19 @@ class CategoryRepositoryTest {
 
     private static final UUID MEMBER_A = UUID.fromString("00000000-0000-0000-0000-000000000001");
     private static final UUID MEMBER_B = UUID.fromString("00000000-0000-0000-0000-000000000002");
+    private static final LocalDate SEPTEMBER = LocalDate.of(2026, 9, 1);
+    private static final LocalDate OCTOBER = LocalDate.of(2026, 10, 1);
+    private static final Clock FIXED_CLOCK =
+            Clock.fixed(Instant.parse("2026-10-15T03:00:00Z"), ZoneId.of("Asia/Seoul"));
 
     @Autowired
     private CategoryRepository categoryRepository;
+
+    @Autowired
+    private LedgerEntryRepository ledgerEntryRepository;
+
+    @Autowired
+    private AssetRepository assetRepository;
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
@@ -220,6 +236,128 @@ class CategoryRepositoryTest {
                         Long.class,
                         referenced.getId()))
                 .isEqualTo(1L);
+    }
+
+    @Test
+    @DisplayName("그 달에 이 회원의 지출 거래가 있는 삭제된 지출 카테고리만 sort_order·id 순으로 돌려준다")
+    void find_deleted_with_expenses_returns_members_deleted_expense_categories_spent_in_month() {
+        DeletedSpendingFixture fixture = deletedSpendingFixture();
+
+        assertThat(categoryRepository.findDeletedWithExpenses(MEMBER_A, SEPTEMBER, OCTOBER))
+                .extracting(Category::getId)
+                .containsExactly(fixture.w2().getId(), fixture.w().getId());
+    }
+
+    @Test
+    @DisplayName("삭제된 카테고리 판정은 그 회원의 카테고리·거래로만 한다 — A 의 거래는 B 의 판정에 쓰이지 않는다")
+    void find_deleted_with_expenses_is_scoped_to_member() {
+        DeletedSpendingFixture fixture = deletedSpendingFixture();
+
+        assertThat(categoryRepository.findDeletedWithExpenses(MEMBER_B, SEPTEMBER, OCTOBER))
+                .extracting(Category::getId)
+                .containsExactly(fixture.z().getId());
+    }
+
+    @Test
+    @DisplayName("정렬값이 같은 삭제 카테고리는 id 오름차순으로 돌려준다 — 커스텀은 정렬값 기본값이 같아 동률이 흔하다")
+    void find_deleted_with_expenses_breaks_sort_order_ties_by_id() {
+        Asset asset = assetRepository.save(new Asset("TEST_CASH", "테스트 현금", "Test Cash", 100));
+        // id 가 큰 쪽을 먼저 넣어 물리 순서를 id 순서와 반대로 둔다 — 보조 정렬이 없으면 이 순서로 나올 수 있다.
+        Category larger = deletedCategoryWithId(20002L);
+        Category smaller = deletedCategoryWithId(20001L);
+        entry(MEMBER_A, larger, asset, "2026-09-10");
+        entry(MEMBER_A, smaller, asset, "2026-09-10");
+        ledgerEntryRepository.flush();
+
+        assertThat(categoryRepository.findDeletedWithExpenses(MEMBER_A, SEPTEMBER, OCTOBER))
+                .extracting(Category::getId)
+                .containsExactly(20001L, 20002L);
+    }
+
+    @Test
+    @DisplayName("비활성 시스템 카테고리(V6 LEGACY_CATEGORY_*)도 그 회원의 그 달 지출이 있으면 돌려준다 — 거래가 없는 회원에게는 안 나온다")
+    void find_deleted_with_expenses_includes_inactive_system_category() {
+        Asset asset = assetRepository.save(new Asset("TEST_CASH", "테스트 현금", "Test Cash", 100));
+        // 시스템 예약 범위(22~9999, V11) 안의 id 로 owner_member_id 가 null 인 비활성 지출 카테고리를 넣는다.
+        jdbcTemplate.update(
+                """
+                insert into category (id, transaction_type, code, display_name_ko, display_name_en, sort_order,
+                                      owner_member_id, is_active)
+                values (9001, 'EXPENSE', 'TEST_LEGACY_S', '옛 시스템', 'Legacy', 1000, null, false)
+                """);
+        Category system = categoryRepository.findById(9001L).orElseThrow();
+        entry(MEMBER_A, system, asset, "2026-09-10");
+        ledgerEntryRepository.flush();
+
+        assertThat(categoryRepository.findDeletedWithExpenses(MEMBER_A, SEPTEMBER, OCTOBER))
+                .extracting(Category::getId)
+                .contains(9001L);
+        assertThat(categoryRepository.findDeletedWithExpenses(MEMBER_B, SEPTEMBER, OCTOBER))
+                .extracting(Category::getId)
+                .doesNotContain(9001L);
+    }
+
+    private record DeletedSpendingFixture(Category w, Category w2, Category z) {}
+
+    /**
+     * 회원 A: 삭제된 W(9/30 지출)·W2(9/1 지출, W 보다 늦게 만들었지만 정렬값이 작다)·V(8/31·10/1 지출만)·U(거래 없음)·수입 I(9월 수입),
+     * 활성 X(9월 지출). 회원 B: 삭제된 Z(B 의 9월 지출), 삭제된 Z2(A 의 9월 지출만 — 서비스로는 못 만드는 행이지만 카테고리 소유 술어와 거래
+     * member_id 술어를 시험하려고 넣는다).
+     */
+    private DeletedSpendingFixture deletedSpendingFixture() {
+        Asset asset = assetRepository.save(new Asset("TEST_CASH", "테스트 현금", "Test Cash", 100));
+        Category w = deletedCategory(MEMBER_A, TransactionType.EXPENSE, "W", 1000);
+        Category w2 = deletedCategory(MEMBER_A, TransactionType.EXPENSE, "W2", 999);
+        Category v = deletedCategory(MEMBER_A, TransactionType.EXPENSE, "V", 1000);
+        deletedCategory(MEMBER_A, TransactionType.EXPENSE, "U", 1000);
+        Category i = deletedCategory(MEMBER_A, TransactionType.INCOME, "I", 1000);
+        Category x = categoryRepository.saveAndFlush(Category.custom(MEMBER_A, TransactionType.EXPENSE, "X", null));
+        Category z = deletedCategory(MEMBER_B, TransactionType.EXPENSE, "Z", 1000);
+        Category z2 = deletedCategory(MEMBER_B, TransactionType.EXPENSE, "Z2", 1000);
+        entry(MEMBER_A, w, asset, "2026-09-30");
+        entry(MEMBER_A, w2, asset, "2026-09-01");
+        entry(MEMBER_A, v, asset, "2026-08-31");
+        entry(MEMBER_A, v, asset, "2026-10-01");
+        entry(MEMBER_A, i, asset, "2026-09-10");
+        entry(MEMBER_A, x, asset, "2026-09-10");
+        entry(MEMBER_B, z, asset, "2026-09-10");
+        entry(MEMBER_A, z2, asset, "2026-09-10");
+        ledgerEntryRepository.flush();
+        return new DeletedSpendingFixture(w, w2, z);
+    }
+
+    private Category deletedCategory(UUID ownerMemberId, TransactionType type, String name, int sortOrder) {
+        Category category = Category.custom(ownerMemberId, type, name, null);
+        category.applySortOrder(sortOrder);
+        category.deactivate();
+        return categoryRepository.saveAndFlush(category);
+    }
+
+    /** id 를 지정해 넣은 회원 A 의 삭제된 지출 커스텀 카테고리(정렬값 1000 — Category.custom 기본값). */
+    private Category deletedCategoryWithId(long id) {
+        jdbcTemplate.update(
+                """
+                insert into category (id, transaction_type, code, display_name_ko, display_name_en, sort_order,
+                                      owner_member_id, is_active)
+                values (?, 'EXPENSE', 'CUSTOM', '동률', '동률', 1000, ?, false)
+                """,
+                id,
+                MEMBER_A);
+        return categoryRepository.findById(id).orElseThrow();
+    }
+
+    /** 카테고리 타입을 따르는 KRW 거래 한 건. */
+    private void entry(UUID memberId, Category category, Asset asset, String date) {
+        ledgerEntryRepository.save(LedgerEntry.of(
+                memberId,
+                category,
+                asset,
+                new BigDecimal("1000"),
+                CurrencyCode.KRW,
+                LocalDate.parse(date),
+                null,
+                null,
+                FIXED_CLOCK));
     }
 
     private long systemCategoryCount() {

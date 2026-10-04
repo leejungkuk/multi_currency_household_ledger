@@ -1,6 +1,10 @@
 package com.self.multi_currency_household_ledger.ledger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -10,6 +14,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.self.multi_currency_household_ledger.AuthUserFixture;
+import com.self.multi_currency_household_ledger.ledger.domain.CategoryRepository;
 import com.self.multi_currency_household_ledger.ledger.service.CatalogService;
 import com.self.multi_currency_household_ledger.ledger.service.LedgerPurgeService;
 import java.sql.Connection;
@@ -47,6 +52,7 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.JwtRequestPostProcessor;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -97,6 +103,10 @@ class BudgetCategoryLifecycleIntegrationTest {
     @MockitoBean
     @SuppressWarnings("UnusedVariable")
     private JwtDecoder jwtDecoder;
+
+    // 삭제 카테고리 쿼리 호출 수를 센다 — 동작은 실제 저장소에 위임한다.
+    @MockitoSpyBean
+    private CategoryRepository categoryRepository;
 
     @BeforeEach
     void setUp() {
@@ -337,6 +347,136 @@ class BudgetCategoryLifecycleIntegrationTest {
         assertThat(isActive(xB)).isFalse();
     }
 
+    @Test
+    @DisplayName("그 달 지출이 있는 삭제된 C 는 줄을 빼고 저장한 뒤에도 목록에 남고, 다시 넣는 PUT 은 200 이며 C 가 줄 끝에 온다")
+    void deleted_category_spent_in_month_can_be_readded_after_removal() throws Exception {
+        long c = createCustomCategory(MEMBER_A, "반려견");
+        createEntry(MEMBER_A, "30000", c, "2026-09-10");
+        save(MEMBER_A, SEPTEMBER, categoryBudget(c, SYSTEM_CATEGORY_ID)).andExpect(status().isOk());
+        deleteCustomCategory(MEMBER_A, c).andExpect(status().isOk());
+
+        JsonNode editing = read(MEMBER_A, SEPTEMBER);
+        assertThat(categoryIds(editing)).containsExactly(c, SYSTEM_CATEGORY_ID);
+        assertThat(editing.path("categories").get(0).path("deleted").asBoolean())
+                .isTrue();
+        assertThat(deletedWithSpendingIds(editing)).containsExactly(c);
+
+        save(MEMBER_A, SEPTEMBER, categoryBudget(SYSTEM_CATEGORY_ID)).andExpect(status().isOk());
+        JsonNode removed = read(MEMBER_A, SEPTEMBER);
+        assertThat(categoryIds(removed)).containsExactly(SYSTEM_CATEGORY_ID);
+        assertThat(deletedWithSpendingIds(removed)).containsExactly(c);
+        assertThat(removed.path("otherCategories").path("actualAmount").decimalValue())
+                .isEqualByComparingTo("30000");
+
+        JsonNode readded = data(
+                save(MEMBER_A, SEPTEMBER, categoryBudget(SYSTEM_CATEGORY_ID, c)).andExpect(status().isOk()));
+        assertThat(categoryIds(readded)).containsExactly(SYSTEM_CATEGORY_ID, c);
+        assertThat(readded.path("categories").get(1).path("deleted").asBoolean())
+                .isTrue();
+    }
+
+    @Test
+    @DisplayName("예산이 없는 달에도 그 달 지출이 있는 삭제된 C 가 목록에 있고, C 를 넣는 PUT 은 200 이다")
+    void not_set_month_lists_deleted_category_spent_in_month_and_accepts_it() throws Exception {
+        long c = createCustomCategory(MEMBER_A, "반려견");
+        createEntry(MEMBER_A, "30000", c, "2026-10-05");
+        deleteCustomCategory(MEMBER_A, c).andExpect(status().isOk());
+
+        JsonNode notSet = read(MEMBER_A, OCTOBER);
+        assertThat(notSet.path("status").asString()).isEqualTo("NOT_SET");
+        assertThat(deletedWithSpendingIds(notSet)).containsExactly(c);
+
+        JsonNode saved = data(save(MEMBER_A, OCTOBER, categoryBudget(c)).andExpect(status().isOk()));
+        assertThat(categoryIds(saved)).containsExactly(c);
+        assertThat(saved.path("categories").get(0).path("deleted").asBoolean()).isTrue();
+    }
+
+    @Test
+    @DisplayName("삭제된 C 의 지출이 8/31·10/1 뿐이면 9월 목록에 없고 9월에 C 를 넣는 PUT 은 404 이며 9월 행은 그대로다")
+    void deleted_category_spent_only_in_other_months_is_not_listed_or_accepted() throws Exception {
+        long c = createCustomCategory(MEMBER_A, "반려견");
+        createEntry(MEMBER_A, "40000", c, "2026-08-31");
+        createEntry(MEMBER_A, "30000", c, "2026-10-01");
+        save(MEMBER_A, SEPTEMBER, categoryBudget(SYSTEM_CATEGORY_ID)).andExpect(status().isOk());
+        deleteCustomCategory(MEMBER_A, c).andExpect(status().isOk());
+        List<Map<String, Object>> before = allocationSnapshot(MEMBER_A);
+
+        assertThat(deletedWithSpendingIds(read(MEMBER_A, SEPTEMBER))).isEmpty();
+        assertThat(deletedWithSpendingIds(read(MEMBER_A, AUGUST))).containsExactly(c);
+        assertThat(deletedWithSpendingIds(read(MEMBER_A, OCTOBER))).containsExactly(c);
+
+        save(MEMBER_A, SEPTEMBER, categoryBudget(c))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("CATEGORY_NOT_FOUND"));
+
+        assertThat(allocationSnapshot(MEMBER_A)).isEqualTo(before);
+        assertThat(categoryIds(read(MEMBER_A, SEPTEMBER))).containsExactly(SYSTEM_CATEGORY_ID);
+    }
+
+    @Test
+    @DisplayName("USD 예산에서 환율이 없어 환산되지 못한 C 의 지출이 있어도 C 는 목록에 있고 C 를 넣는 PUT 은 200 이다")
+    void deleted_category_with_unconverted_spending_is_still_listed() throws Exception {
+        jdbcTemplate.update("delete from exchange_rate where currency_code = 'USD'");
+        long c = createCustomCategory(MEMBER_A, "반려견");
+        createEntry(MEMBER_A, "30000", c, "2026-09-10");
+        save(MEMBER_A, SEPTEMBER, """
+                        {"currency":"USD","totalAmount":1000}""")
+                .andExpect(status().isOk());
+        deleteCustomCategory(MEMBER_A, c).andExpect(status().isOk());
+
+        JsonNode september = read(MEMBER_A, SEPTEMBER);
+        assertThat(september.path("missingRateCount").asInt()).isGreaterThanOrEqualTo(1);
+        assertThat(deletedWithSpendingIds(september)).containsExactly(c);
+
+        JsonNode saved = data(save(
+                        MEMBER_A,
+                        SEPTEMBER,
+                        """
+                        {"currency":"USD","totalAmount":1000,
+                         "categoryAmounts":[{"categoryId":%d,"amount":300}]}"""
+                                .formatted(c))
+                .andExpect(status().isOk()));
+        assertThat(saved.path("currency").asString()).isEqualTo("USD");
+        assertThat(categoryIds(saved)).containsExactly(c);
+    }
+
+    @Test
+    @DisplayName("A 의 삭제된 C 는 B 의 목록에 없고 B 가 C 를 넣는 PUT 은 404 이며 A 의 몫은 그대로다 (IDOR)")
+    void other_member_cannot_list_or_add_member_a_deleted_category() throws Exception {
+        long c = createCustomCategory(MEMBER_A, "반려견");
+        createEntry(MEMBER_A, "30000", c, "2026-09-10");
+        save(MEMBER_A, SEPTEMBER, categoryBudget(c, SYSTEM_CATEGORY_ID)).andExpect(status().isOk());
+        deleteCustomCategory(MEMBER_A, c).andExpect(status().isOk());
+        List<Map<String, Object>> memberABefore = allocationSnapshot(MEMBER_A);
+
+        assertThat(deletedWithSpendingIds(read(MEMBER_B, SEPTEMBER))).isEmpty();
+        save(MEMBER_B, SEPTEMBER, categoryBudget(c))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("CATEGORY_NOT_FOUND"));
+
+        assertThat(allocationSnapshot(MEMBER_A)).isEqualTo(memberABefore);
+        assertThat(budgetMonths(MEMBER_B)).isEmpty();
+        assertThat(deletedWithSpendingIds(read(MEMBER_A, SEPTEMBER))).containsExactly(c);
+    }
+
+    @Test
+    @DisplayName("사용 가능한 카테고리만 넣는 PUT 은 저장 검증에서 삭제 카테고리 쿼리를 부르지 않고, 삭제된 C 를 새로 넣을 때만 부른다")
+    void saving_only_usable_categories_does_not_query_deleted_categories() throws Exception {
+        long c = createCustomCategory(MEMBER_A, "반려견");
+        createEntry(MEMBER_A, "30000", c, "2026-09-10");
+        deleteCustomCategory(MEMBER_A, c).andExpect(status().isOk());
+
+        clearInvocations(categoryRepository);
+        save(MEMBER_A, SEPTEMBER, categoryBudget(SYSTEM_CATEGORY_ID)).andExpect(status().isOk());
+        // PUT 응답을 만드는 읽기의 1회뿐이다.
+        verify(categoryRepository, times(1)).findDeletedWithExpenses(any(), any(), any());
+
+        clearInvocations(categoryRepository);
+        save(MEMBER_A, SEPTEMBER, categoryBudget(SYSTEM_CATEGORY_ID, c)).andExpect(status().isOk());
+        // 저장 검증 1회 + 읽기 1회.
+        verify(categoryRepository, times(2)).findDeletedWithExpenses(any(), any(), any());
+    }
+
     /** 조건에 맞는 락 대기자가 생길 때까지 폴링해 그 pid 를 돌려준다 — 시간이 아닌 pg_locks 로 판정한다. 없으면 null. */
     private Integer awaitWaiter(String condition) throws InterruptedException {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
@@ -378,6 +518,15 @@ class BudgetCategoryLifecycleIntegrationTest {
         List<Long> ids = new ArrayList<>();
         budget.path("categories")
                 .forEach(line -> ids.add(line.path("category").path("id").asLong()));
+        return ids;
+    }
+
+    /** deletedCategoriesWithSpending 의 id 들. 필드가 없거나 null 이면 실패한다 — 빈 경우도 배열이어야 한다. */
+    private static List<Long> deletedWithSpendingIds(JsonNode budget) {
+        JsonNode categories = budget.path("deletedCategoriesWithSpending");
+        assertThat(categories.isArray()).isTrue();
+        List<Long> ids = new ArrayList<>();
+        categories.forEach(category -> ids.add(category.path("id").asLong()));
         return ids;
     }
 

@@ -8,7 +8,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * 월 예산 카테고리 줄 순서의 뜻을 API 계약에 싣는다. 도메인 모듈에 swagger 의존을 넣지 않으려고 DTO 의 {@code @Schema} 대신 여기서
+ * 월 예산 카테고리 줄 순서와 다시 넣을 수 있는 삭제 카테고리 목록의 뜻을 API 계약에 싣는다. 도메인 모듈에 swagger 의존을 넣지 않으려고 DTO 의 {@code @Schema} 대신 여기서
  * 단다.
  *
  * <p>스키마나 속성이 없으면 예외를 던진다 — DTO 속성 이름이 바뀌었을 때 설명이 조용히 사라지지 않고 스냅샷 생성이 실패해야 한다.
@@ -31,6 +31,11 @@ class BudgetContractConfig {
                     "MonthlyBudgetResponse",
                     "categories",
                     DISPLAY_ORDER + "저장한 줄 순서(PUT categoryAmounts 의 배열 순서)이며, 삭제된 카테고리 줄(deleted: true)도 저장된 자리에 있다.");
+            describe(
+                    openApi,
+                    "MonthlyBudgetResponse",
+                    "deletedCategoriesWithSpending",
+                    "이 달에 지출 거래가 1건 이상 있는 삭제된 카테고리(몫 유무와 무관, 카테고리 정렬값·id 순). PUT categoryAmounts 에 넣으면 저장이 받는다. 몫이 없으면 그 지출은 otherCategories 에 들어 있다.");
         };
     }
 

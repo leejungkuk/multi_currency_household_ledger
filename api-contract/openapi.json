@@ -1115,6 +1115,13 @@
                     "dailyAllowance": {
                         "$ref": "#/components/schemas/DailyAllowance"
                     },
+                    "deletedCategoriesWithSpending": {
+                        "description": "\uc774 \ub2ec\uc5d0 \uc9c0\ucd9c \uac70\ub798\uac00 1\uac74 \uc774\uc0c1 \uc788\ub294 \uc0ad\uc81c\ub41c \uce74\ud14c\uace0\ub9ac(\ubaab \uc720\ubb34\uc640 \ubb34\uad00, \uce74\ud14c\uace0\ub9ac \uc815\ub82c\uac12\u00b7id \uc21c). PUT categoryAmounts \uc5d0 \ub123\uc73c\uba74 \uc800\uc7a5\uc774 \ubc1b\ub294\ub2e4. \ubaab\uc774 \uc5c6\uc73c\uba74 \uadf8 \uc9c0\ucd9c\uc740 otherCategories \uc5d0 \ub4e4\uc5b4 \uc788\ub2e4.",
+                        "items": {
+                            "$ref": "#/components/schemas/CategoryResponse"
+                        },
+                        "type": "array"
+                    },
                     "hasAnyBudget": {
                         "type": "boolean"
                     },
