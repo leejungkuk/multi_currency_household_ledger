@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.self.multi_currency_household_ledger.common.exception.BusinessException;
 import com.self.multi_currency_household_ledger.exchange.domain.CurrencyCode;
+import com.self.multi_currency_household_ledger.ledger.domain.Budget.CategoryAllocation;
 import com.self.multi_currency_household_ledger.ledger.domain.Budget.CategoryAmount;
 import com.self.multi_currency_household_ledger.ledger.domain.Budget.GroupAmount;
 import com.self.multi_currency_household_ledger.ledger.exception.BudgetErrorCode;
@@ -63,7 +64,7 @@ class BudgetTest {
                         new GroupAmount(PaymentGroup.CREDIT_CARD, won("100")),
                         new GroupAmount(PaymentGroup.CASH_AND_DEBIT, won("200"))),
                 List.of(new CategoryAmount(3L, won("300")), new CategoryAmount(4L, won("400"))));
-        Map<Long, BigDecimal> categoryAmounts = budget.getCategoryAmounts();
+        Map<Long, CategoryAllocation> categoryAmounts = budget.getCategoryAmounts();
 
         budget.replaceAmounts(
                 CurrencyCode.KRW,
@@ -86,7 +87,7 @@ class BudgetTest {
         List<GroupAmount> groups = List.of(new GroupAmount(PaymentGroup.CREDIT_CARD, won("100")));
         List<CategoryAmount> categories = List.of(new CategoryAmount(3L, won("300")));
         budget.replaceAmounts(CurrencyCode.KRW, won("1000"), groups, categories);
-        Map<Long, BigDecimal> categoryAmounts = budget.getCategoryAmounts();
+        Map<Long, CategoryAllocation> categoryAmounts = budget.getCategoryAmounts();
         BudgetAmounts before = budget.amounts();
 
         budget.replaceAmounts(CurrencyCode.KRW, won("1000"), groups, categories);
@@ -94,6 +95,32 @@ class BudgetTest {
         assertThat(budget.getCategoryAmounts()).isSameAs(categoryAmounts);
         assertThat(budget.amounts()).isEqualTo(before);
         assertThat(shares(budget)).hasSize(2);
+    }
+
+    @Test
+    @DisplayName("카테고리 몫은 요청 목록 순서로 읽힌다 — 순서만 바꾼 요청도 새 순서가 되고, 같은 요청을 다시 보내면 순서·금액이 같다")
+    void category_amounts_keep_request_order() {
+        Budget budget = emptyBudget();
+
+        budget.replaceAmounts(
+                CurrencyCode.KRW,
+                won("1000"),
+                List.of(),
+                List.of(
+                        new CategoryAmount(30L, won("300")),
+                        new CategoryAmount(10L, won("100")),
+                        new CategoryAmount(20L, won("200"))));
+        assertThat(budget.amounts().categoryAmounts().keySet()).containsExactly(30L, 10L, 20L);
+
+        List<CategoryAmount> reordered =
+                List.of(new CategoryAmount(20L, won("200")), new CategoryAmount(30L, won("300")));
+        budget.replaceAmounts(CurrencyCode.KRW, won("1000"), List.of(), reordered);
+        BudgetAmounts before = budget.amounts();
+        assertThat(before.categoryAmounts().keySet()).containsExactly(20L, 30L);
+
+        budget.replaceAmounts(CurrencyCode.KRW, won("1000"), List.of(), reordered);
+        assertThat(budget.amounts().categoryAmounts().keySet()).containsExactly(20L, 30L);
+        assertThat(budget.amounts()).isEqualTo(before);
     }
 
     @Test
@@ -266,6 +293,38 @@ class BudgetTest {
         assertThat(budget.getCurrencyCode()).isEqualTo(CurrencyCode.KRW);
         assertThat(budget.getTotalAmount()).isEqualByComparingTo("1000");
         assertThat(shares(budget)).containsExactly("CREDIT_CARD=100");
+    }
+
+    @Test
+    @DisplayName("순서를 바꾸는 요청이 검증에 걸리면(같은 카테고리 두 번·합계 초과) 저장된 줄 순서가 그대로다")
+    void rejected_save_keeps_previous_line_order() {
+        Budget budget = emptyBudget();
+        budget.replaceAmounts(
+                CurrencyCode.KRW,
+                won("1000"),
+                List.of(),
+                List.of(new CategoryAmount(30L, won("300")), new CategoryAmount(10L, won("100"))));
+
+        assertCode(
+                () -> budget.replaceAmounts(
+                        CurrencyCode.KRW,
+                        won("1000"),
+                        List.of(),
+                        List.of(
+                                new CategoryAmount(10L, won("100")),
+                                new CategoryAmount(30L, won("300")),
+                                new CategoryAmount(10L, won("100")))),
+                BudgetErrorCode.BUDGET_INVALID_ALLOCATION);
+        assertCode(
+                () -> budget.replaceAmounts(
+                        CurrencyCode.KRW,
+                        won("1000"),
+                        List.of(),
+                        List.of(new CategoryAmount(10L, won("700")), new CategoryAmount(30L, won("301")))),
+                BudgetErrorCode.BUDGET_ALLOCATION_EXCEEDS_TOTAL);
+
+        assertThat(budget.amounts().categoryAmounts().keySet()).containsExactly(30L, 10L);
+        assertThat(shares(budget)).containsExactly("30=300", "10=100");
     }
 
     @Test

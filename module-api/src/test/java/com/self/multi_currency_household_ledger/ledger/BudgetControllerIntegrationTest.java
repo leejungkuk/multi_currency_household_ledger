@@ -21,6 +21,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.YearMonth;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -276,6 +277,78 @@ class BudgetControllerIntegrationTest {
                         .decimalValue())
                 .isEqualByComparingTo("600000");
         assertThat(allocationCount(MEMBER_A)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("PUT categoryAmounts 의 배열 순서가 그 달의 줄 순서다 — PUT 응답·GET 의 categories 가 카테고리 정렬값·id 순서가 아니라 보낸 순서다")
+    void put_saves_category_line_order_and_get_returns_it() throws Exception {
+        long custom = createCustomCategory(MEMBER_A, "반려견");
+        // 요청 순서 [C, 3, 1] 이 카테고리 sort_order 순서 [1, C, 3]·id 순서 [1, 3, C] 와 모두 다르게 한다.
+        jdbcTemplate.update("update category set sort_order = 2 where id = ?", custom);
+
+        JsonNode saved = data(save(
+                        MEMBER_A,
+                        SEPTEMBER,
+                        categoryLines(share(custom, 300000), share(3, 200000), share(EXPENSE_CATEGORY_ID, 100000)))
+                .andExpect(status().isOk()));
+
+        List<String> expected = List.of(custom + "=300000", "3=200000", EXPENSE_CATEGORY_ID + "=100000");
+        assertThat(lines(saved)).isEqualTo(expected);
+        assertThat(lines(read(MEMBER_A, SEPTEMBER))).isEqualTo(expected);
+    }
+
+    @Test
+    @DisplayName("금액은 그대로 두고 순서만 바꾼 PUT 도 새 순서로 저장되고, 같은 요청을 다시 보내면 categories 가 직전과 같다")
+    void put_with_only_reordered_lines_saves_new_order() throws Exception {
+        long custom = createCustomCategory(MEMBER_A, "반려견");
+        save(
+                        MEMBER_A,
+                        SEPTEMBER,
+                        categoryLines(share(custom, 300000), share(3, 200000), share(EXPENSE_CATEGORY_ID, 100000)))
+                .andExpect(status().isOk());
+        String reordered = categoryLines(share(EXPENSE_CATEGORY_ID, 100000), share(custom, 300000), share(3, 200000));
+
+        JsonNode first = data(save(MEMBER_A, SEPTEMBER, reordered).andExpect(status().isOk()));
+        List<String> expected = List.of(EXPENSE_CATEGORY_ID + "=100000", custom + "=300000", "3=200000");
+        assertThat(lines(first)).isEqualTo(expected);
+        assertThat(lines(read(MEMBER_A, SEPTEMBER))).isEqualTo(expected);
+
+        JsonNode second = data(save(MEMBER_A, SEPTEMBER, reordered).andExpect(status().isOk()));
+        assertThat(second.path("categories")).isEqualTo(first.path("categories"));
+    }
+
+    @Test
+    @DisplayName("삭제한 카테고리의 줄은 저장한 자리에 deleted:true 로 남고, 그 줄을 맨 앞으로 옮기는 PUT 도 받는다")
+    void deleted_category_line_keeps_its_saved_position() throws Exception {
+        long deletedLater = createCustomCategory(MEMBER_A, "반려견");
+        save(
+                        MEMBER_A,
+                        SEPTEMBER,
+                        categoryLines(
+                                share(EXPENSE_CATEGORY_ID, 100000), share(deletedLater, 300000), share(3, 200000)))
+                .andExpect(status().isOk());
+        deleteCustomCategory(MEMBER_A, deletedLater);
+
+        JsonNode afterDelete = read(MEMBER_A, SEPTEMBER);
+        assertThat(lines(afterDelete))
+                .containsExactly(EXPENSE_CATEGORY_ID + "=100000", deletedLater + "=300000", "3=200000");
+        JsonNode categories = afterDelete.path("categories");
+        assertThat(List.of(
+                        categories.get(0).path("deleted").asBoolean(),
+                        categories.get(1).path("deleted").asBoolean(),
+                        categories.get(2).path("deleted").asBoolean()))
+                .containsExactly(false, true, false);
+
+        JsonNode moved = data(save(
+                        MEMBER_A,
+                        SEPTEMBER,
+                        categoryLines(
+                                share(deletedLater, 300000), share(EXPENSE_CATEGORY_ID, 100000), share(3, 200000)))
+                .andExpect(status().isOk()));
+        List<String> expected = List.of(deletedLater + "=300000", EXPENSE_CATEGORY_ID + "=100000", "3=200000");
+        assertThat(lines(moved)).isEqualTo(expected);
+        assertThat(lines(read(MEMBER_A, SEPTEMBER))).isEqualTo(expected);
+        assertThat(moved.path("categories").get(0).path("deleted").asBoolean()).isTrue();
     }
 
     @Test
@@ -714,6 +787,30 @@ class BudgetControllerIntegrationTest {
                 {"currency":"KRW","totalAmount":1000000,
                  "categoryAmounts":[{"categoryId":%d,"amount":%d}]}"""
                 .formatted(categoryId, amount);
+    }
+
+    /** KRW 1,000,000 에 카테고리 몫을 이 순서로 담은 본문. */
+    private static String categoryLines(String... shares) {
+        return """
+                {"currency":"KRW","totalAmount":1000000,"categoryAmounts":[%s]}"""
+                .formatted(String.join(",", shares));
+    }
+
+    private static String share(long categoryId, long amount) {
+        return "{\"categoryId\":%d,\"amount\":%d}".formatted(categoryId, amount);
+    }
+
+    /** categories 를 응답 순서대로 "카테고리id=몫금액" 으로 편다. */
+    private static List<String> lines(JsonNode budget) {
+        List<String> lines = new ArrayList<>();
+        for (JsonNode line : budget.path("categories")) {
+            lines.add(line.path("category").path("id").asLong() + "="
+                    + line.path("budgetAmount")
+                            .decimalValue()
+                            .stripTrailingZeros()
+                            .toPlainString());
+        }
+        return lines;
     }
 
     private long budgetRowCount(UUID memberId) {

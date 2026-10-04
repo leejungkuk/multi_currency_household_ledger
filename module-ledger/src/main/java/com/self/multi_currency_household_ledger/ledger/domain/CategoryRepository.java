@@ -33,8 +33,8 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
     List<Category> findUsableByIds(@Param("memberId") UUID memberId, @Param("ids") Collection<Long> ids);
 
     // 예산 몫 표시용 — 삭제(비활성)된 카테고리도 남은 몫에 이름을 보여야 하므로 isActive 를 걸지 않는다.
-    @Query(
-            "select c from Category c where c.id in :ids and (c.ownerMemberId is null or c.ownerMemberId = :memberId) order by c.sortOrder asc, c.id asc")
+    // 정렬하지 않는다 — 줄 순서는 예산 몫(Budget.amounts)이 정한다.
+    @Query("select c from Category c where c.id in :ids and (c.ownerMemberId is null or c.ownerMemberId = :memberId)")
     List<Category> findVisibleByIds(@Param("memberId") UUID memberId, @Param("ids") Collection<Long> ids);
 
     // 시스템 카테고리는 owner_member_id 가 null 이라 등가 비교에 매칭되지 않는다.

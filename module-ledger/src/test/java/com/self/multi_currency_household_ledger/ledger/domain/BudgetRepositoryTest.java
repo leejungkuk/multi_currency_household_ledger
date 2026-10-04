@@ -119,6 +119,123 @@ class BudgetRepositoryTest {
     }
 
     @Test
+    @DisplayName("카테고리 몫은 저장한 줄 순서로 읽힌다 — 카테고리 sort_order·id 순서가 아니고, 다시 저장한 순서도 그대로 읽힌다")
+    void category_shares_are_read_in_saved_line_order() {
+        // 줄 순서 [3, C, 1] 이 카테고리 sort_order 순서 [1, C, 3]·id 순서 [1, 3, C] 와 모두 다르게 한다.
+        Category custom = Category.custom(MEMBER_A, TransactionType.EXPENSE, "반려견", "🐶");
+        custom.applySortOrder(2);
+        entityManager.persist(custom);
+        long customId = custom.getId();
+        budgetRepository.save(budget(MEMBER_A, SEPTEMBER, List.of(), 3L, customId, 1L));
+        entityManager.flush();
+        entityManager.clear();
+
+        Budget loaded = budgetRepository
+                .findByMemberIdAndMonth(MEMBER_A, SEPTEMBER.atDay(1))
+                .orElseThrow();
+        assertThat(loaded.amounts().categoryAmounts().keySet()).containsExactly(3L, customId, 1L);
+
+        loaded.replaceAmounts(
+                CurrencyCode.KRW,
+                new BigDecimal("1000.00"),
+                List.of(),
+                List.of(
+                        new CategoryAmount(1L, new BigDecimal("100.00")),
+                        new CategoryAmount(3L, new BigDecimal("100.00")),
+                        new CategoryAmount(customId, new BigDecimal("100.00"))));
+        entityManager.flush();
+        entityManager.clear();
+
+        assertThat(budgetRepository
+                        .findByMemberIdAndMonth(MEMBER_A, SEPTEMBER.atDay(1))
+                        .orElseThrow()
+                        .amounts()
+                        .categoryAmounts()
+                        .keySet())
+                .containsExactly(1L, 3L, customId);
+    }
+
+    @Test
+    @DisplayName("같은 요청을 다시 저장하면 몫 행 문장이 없고, 순서만 바꾸면 자리가 바뀐 줄만 제자리 UPDATE 한다 — 몫 행을 지우고 다시 넣지 않는다")
+    void unchanged_lines_are_not_rewritten_and_reorder_updates_in_place() {
+        // 금액을 scale 0 으로 넣어 DB 에서 scale 2 로 읽히게 한다 — 스케일 차이를 바뀐 값으로 보면 같은 요청에도 UPDATE 가 나간다.
+        Budget budget = new Budget(MEMBER_A, SEPTEMBER);
+        budget.replaceAmounts(CurrencyCode.KRW, new BigDecimal("1000"), List.of(), wholeAmountLines(1L, 2L, 3L));
+        budgetRepository.save(budget);
+        entityManager.flush();
+        entityManager.clear();
+        Statistics stats = entityManager
+                .getEntityManagerFactory()
+                .unwrap(SessionFactory.class)
+                .getStatistics();
+        boolean statisticsEnabled = stats.isStatisticsEnabled();
+        stats.setStatisticsEnabled(true);
+        try {
+            Budget loaded = budgetRepository
+                    .findByMemberIdAndMonth(MEMBER_A, SEPTEMBER.atDay(1))
+                    .orElseThrow();
+
+            loaded.replaceAmounts(CurrencyCode.KRW, new BigDecimal("1000"), List.of(), wholeAmountLines(1L, 2L, 3L));
+            stats.clear();
+            entityManager.flush();
+            // markModified 의 budget UPDATE 뿐이다.
+            assertThat(stats.getPrepareStatementCount()).isEqualTo(1);
+
+            loaded.replaceAmounts(CurrencyCode.KRW, new BigDecimal("1000"), List.of(), wholeAmountLines(1L, 3L, 2L));
+            stats.clear();
+            entityManager.flush();
+            assertThat(stats.getCollectionRecreateCount()).isZero();
+            assertThat(stats.getCollectionRemoveCount()).isZero();
+            // budget UPDATE 1 + 자리가 바뀐 2·3 의 UPDATE 2. 1 은 그대로다.
+            assertThat(stats.getPrepareStatementCount()).isEqualTo(3);
+        } finally {
+            stats.setStatisticsEnabled(statisticsEnabled);
+        }
+        entityManager.clear();
+
+        assertThat(budgetRepository
+                        .findByMemberIdAndMonth(MEMBER_A, SEPTEMBER.atDay(1))
+                        .orElseThrow()
+                        .amounts()
+                        .categoryAmounts()
+                        .keySet())
+                .containsExactly(1L, 3L, 2L);
+    }
+
+    @Test
+    @DisplayName("줄 순서가 같은 몫은 카테고리 id 순으로 읽힌다 — sort_order 를 모르는 쓰기가 default 0 으로 넣은 행")
+    void equal_sort_orders_are_read_in_category_id_order() {
+        // 32 는 어떤 작은 HashMap 크기에서도 버킷 0 이라 HashMap 순회는 [32, 13] 이다 — 동률을 id 로 깨지 않으면 그 순서로 나온다.
+        jdbcTemplate.update(
+                """
+                insert into category (id, transaction_type, code, display_name_ko, display_name_en, owner_member_id)
+                values (32, 'EXPENSE', 'CUSTOM', '반려견', '반려견', ?)
+                """,
+                MEMBER_A);
+        Long budgetId = jdbcTemplate.queryForObject(
+                """
+                insert into budget (member_id, month, currency_code, total_amount, created_at, updated_at)
+                values (?, ?, 'KRW', 1000, now(), now()) returning id
+                """,
+                Long.class,
+                MEMBER_A,
+                SEPTEMBER.atDay(1));
+        // sort_order 를 빼고 넣어 default 0 이 들어가게 한다.
+        jdbcTemplate.update(
+                "insert into budget_category_allocation (budget_id, category_id, amount) values (?, 32, 100), (?, 13, 100)",
+                budgetId,
+                budgetId);
+
+        assertThat(budgetRepository
+                        .findByMemberIdAndMonth(MEMBER_A, SEPTEMBER.atDay(1))
+                        .orElseThrow()
+                        .amounts()
+                        .categoryAmounts()
+                        .keySet())
+                .containsExactly(13L, 32L);
+    }
+
+    @Test
     @DisplayName("hasAnyBudget 은 그 회원의 행만 센다")
     void exists_by_member_id_is_scoped_to_member() {
         assertThat(budgetRepository.existsByMemberId(MEMBER_A)).isFalse();
@@ -181,6 +298,12 @@ class BudgetRepositoryTest {
                         .mapToObj(id -> new CategoryAmount(id, new BigDecimal("100.00")))
                         .toList());
         return budget;
+    }
+
+    private static List<CategoryAmount> wholeAmountLines(long... categoryIds) {
+        return Arrays.stream(categoryIds)
+                .mapToObj(id -> new CategoryAmount(id, new BigDecimal("100")))
+                .toList();
     }
 
     private int budgetRowCount(UUID memberId) {
