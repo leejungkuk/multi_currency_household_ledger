@@ -40,3 +40,7 @@ jobs:
       - name: Test deploy agent regressions
         # 같은 셸 계층(호스트 에이전트)의 회귀 시험이라 이미 required check 인 이 워크플로에서 돈다.
         run: bash tools/deploy-agent.sh --self-test
+
+      - name: Test migration DDL guard regressions
+        # 승격 게이트(promote-deploy.yml)가 쓰는 감지기라 PR 에서 규칙 회귀를 막는다.
+        run: python3 tools/migration-ddl-guard.py --self-test
