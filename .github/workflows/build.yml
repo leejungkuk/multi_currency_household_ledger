@@ -34,7 +34,7 @@ jobs:
           java-version: '21'
 
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb  # v6
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6  # v6
 
       # 시크릿(exchange.eximbank.api-key 등)은 불필요하다: @SpringBootTest도 테스트 프로퍼티로
       # 더미 키를 주입하며 외부 API를 호출하지 않는다.
