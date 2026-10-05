@@ -30,6 +30,6 @@ jobs:
       # 이 액션이 Gradle 셋업을 내장하므로 setup-gradle 을 따로 두지 않는다.
       # generate-and-upload = 그래프를 만들어 워크플로 아티팩트로만 저장하고, 제출은 하지 않는다.
       - name: Generate and save dependency graph
-        uses: gradle/actions/dependency-submission@9c971963bec38e04b3d30dcc455b5382be2fdbfb  # v6
+        uses: gradle/actions/dependency-submission@3f5f9adaf7d9fecd50b5935e54106014257a94e6  # v6
         with:
           dependency-graph: generate-and-upload
