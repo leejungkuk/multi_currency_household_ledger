@@ -87,15 +87,21 @@ class ActuatorEndpointIntegrationTest {
         assertThat(rateLimitFilterProvider.getIfAvailable()).isNotNull();
     }
 
+    /**
+     * probes 가 켜져 루트 응답에 그룹 이름 목록({@code groups})이 붙는다 — Caddy 가 두 색 투입을 readiness 로 정하기 때문이다. 9091 내부 전용이라
+     * 받아들였고, 그 외 필드(지시자별 상태·상세)는 여전히 나가지 않는다.
+     */
     @Test
-    @DisplayName("health 응답은 status 외 상세 정보를 노출하지 않는다")
+    @DisplayName("health 응답은 status·groups 외 상세 정보를 노출하지 않는다")
     void health_does_not_expose_details() throws Exception {
         JsonNode body =
                 objectMapper.readTree(get(managementPort, "/actuator/health").body());
 
         assertThat(body.has("components")).isFalse();
         assertThat(body.has("details")).isFalse();
-        assertThat(body.properties()).extracting(java.util.Map.Entry::getKey).containsExactly("status");
+        assertThat(body.properties())
+                .extracting(java.util.Map.Entry::getKey)
+                .containsExactlyInAnyOrder("status", "groups");
     }
 
     @Test

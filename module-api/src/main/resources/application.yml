@@ -80,6 +80,10 @@ server:
     min-response-size: 2KB
 
 woni:
+  deploy-gate:
+    # 두 색 배포의 투입 게이트 파일(DeployGateHealthIndicator). 비면 게이트가 없다 — 늘 UP 이라 로컬 실행·테스트는
+    # 지금과 같다. 경로는 이미지가 정한다(Dockerfile 의 ENV WONI_DEPLOY_GATE_FILE).
+    file: ${WONI_DEPLOY_GATE_FILE:}
   security:
     # 최대 import 1000건은 memo 255자 한글 기준 약 933KB(911KiB)라 1536KB가 약 1.68배 여유다.
     # 300KB로 낮추면 정상 iOS 동기화가 깨진다. Caddy의 2MB보다 낮아 앱이 실질 구속조건이 되고,
@@ -158,17 +162,20 @@ management:
         include: health,prometheus
   endpoint:
     health:
-      # 컨테이너 재시작 판정용이라 {"status":"UP"} 외에는 내보내지 않는다(DB 종류·디스크 용량 등 은닉).
-      # DB 연결 상태는 노출되지 않을 뿐 판정에는 그대로 반영된다.
+      # 컨테이너 health 판정(Docker HEALTHCHECK)과 외부 모니터링용이라 루트 응답은 status 와 groups(그룹 이름) 뿐이다(DB 종류·디스크 용량 등 은닉).
+      # DB 연결 상태는 노출되지 않을 뿐 판정에는 그대로 반영되고, 게이트가 닫히면 503 OUT_OF_SERVICE 다.
       show-details: never
       probes:
-        # Boot 4 가 이 기본값을 false→true 로 뒤집었다. 켜지면 응답에 groups:["liveness","readiness"] 가
-        # 실려 show-details=never 인데도 status 외 필드가 무토큰 permitAll 경로로 나간다.
-        # 지금은 단일 컨테이너 배포라 liveness/readiness 를 읽는 오케스트레이터가 없으므로 꺼서
-        # Boot 3 와 같은 {"status":"UP"} 을 유지한다.
-        # k8s 등으로 옮겨 프로브가 필요해지면 이 줄을 지워 되살리고, 그때 늘어나는 응답 필드를
-        # ActuatorEndpointIntegrationTest 의 기대값과 함께 의도적으로 갱신한다.
-        enabled: false
+        # 두 색 배포에서 Caddy 가 9091 /actuator/health/readiness 를 읽어 색별 투입을 정한다(배포 에이전트는
+        # 게이트 파일로 그 응답을 여닫는다). 켜면 루트 응답에 groups:["liveness","readiness"] 가 실려
+        # show-details=never 인데도 status 외 필드가 무토큰 경로로 나가지만, 그룹 이름뿐이고 9091 은 내부 전용이라
+        # 받아들였다 — ActuatorEndpointIntegrationTest 의 기대값을 함께 바꿨다.
+        enabled: true
+      group:
+        readiness:
+          # DB 를 넣지 않는다. 두 색이 같은 DB 를 쓰므로 Supabase 가 잠깐 느리거나 커넥션 풀이 차면 두 색이 동시에
+          # 회전에서 빠져 Caddy 가 전부 503 을 낸다. DB 장애는 루트 health(Docker HEALTHCHECK)가 본다.
+          include: readinessState,deployGate
   metrics:
     tags:
       # 여러 인스턴스·환경의 시계열을 Grafana 에서 구분하는 공통 라벨.

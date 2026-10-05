@@ -38,10 +38,16 @@ ENV SPRING_PROFILES_ACTIVE=prod
 # 메모리가 큰 인스턴스로 옮기면 JAVA_OPTS 로 올린다.
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=60.0"
 
-# start-period 는 1GB E2 의 느린 JVM 기동(1~2분)을 감안한 값이다.
-# status 는 DB 연결까지 반영하므로 Supabase 가 끊기면 unhealthy 로 떨어진다.
+# 두 색 배포의 투입 게이트 파일(application.yml 의 woni.deploy-gate.file). 배포 에이전트가 docker exec 로 이 파일을
+# touch(투입)·rm(철수)한다. USER woni 가 쓸 수 있는 /tmp 에 두며, 컨테이너를 재생성하면 사라진다(게이트 닫힘).
+ENV WONI_DEPLOY_GATE_FILE=/tmp/woni-deploy-gate-open
+
+# start-period 는 1GB E2 의 느린 JVM 기동(1~2분)을 감안한 값이고, start-interval 은 그 구간을 2초마다 본다.
+# healthy = 프로세스와 의존성(DB)이 정상이다. 게이트와 무관하다 — 루트 status 가 UP 또는 OUT_OF_SERVICE(게이트만
+# 닫힘)면 healthy 라, 게이트 닫힌 새 색도 healthy 가 되어 에이전트가 스모크로 넘어간다. Supabase 가 끊기면 DOWN 이라
+# 지금처럼 unhealthy 로 떨어진다. OUT_OF_SERVICE 는 503 이라 본문으로 판정한다(curl -f 를 쓰지 않는다).
 # 컨테이너 내부에서 도는 검사라 내부 전용 management 포트를 그대로 쓴다.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
-    CMD curl -fsS http://localhost:9091/actuator/health | grep -q '"status":"UP"' || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --start-interval=2s --retries=3 \
+    CMD curl -sS http://localhost:9091/actuator/health | grep -qE '"status":"(UP|OUT_OF_SERVICE)"' || exit 1
 
 ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar app.jar"]

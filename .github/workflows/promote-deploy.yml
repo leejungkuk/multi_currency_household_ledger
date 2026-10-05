@@ -5,6 +5,9 @@ name: promote-deploy
 # 트리거가 workflow_dispatch 뿐인 이유(D11): 배포와 롤백이 워크플로 하나로 끝난다 — 이전 sha 를 넣으면
 # 그것이 곧 롤백이다. push·schedule 을 얹으면 사람 승인이 우회되고, Environments + required reviewers 는
 # 승인이 머지 커밋에 묶여 임의의 과거 sha 를 승격할 수단이 없어진다.
+# 두 색 배포에서는 옛 버전이 새 스키마 위에서 수십 초 서비스하므로, 옛 버전과 공존하지 못할 수 있는 새 마이그레이션은
+# 감지기(tools/migration-ddl-guard.py)가 destructive_migrations 확인 입력을 따로 요구한다. 감지는 정규식 휴리스틱이라
+# 최종 판단은 여전히 사람이다.
 
 on:
   workflow_dispatch:
@@ -15,9 +18,19 @@ on:
       migrations_reviewed:
         description: '요약의 마이그레이션 목록을 확인했다면 reviewed 를 그대로 입력'
         required: true
+      destructive_migrations:
+        description: '감지된 파괴적 마이그레이션 버전을 쉼표로(예: V15,V16). 없으면 비운다'
+        required: false
+        default: ''
 
 env:
   IMAGE: ghcr.io/${{ github.repository }}
+
+# 승격은 한 번에 하나만 돈다. 겹치면 한쪽이 검사한 :deploy 기준을 다른 쪽 승격(예: 롤백)이 먼저 바꿔, 실제로 건너뛰는
+# 마이그레이션이 파괴적 변경 확인에서 빠진다. 진행 중인 승격은 취소하지 않는다(대기 중인 실행은 새 실행이 오면 GitHub 가 취소한다).
+concurrency:
+  group: promote-deploy
+  cancel-in-progress: false
 
 defaults:
   run:
@@ -36,7 +49,7 @@ jobs:
       packages: write
 
     steps:
-      # checkout 하지 않는다 — 조상 판정은 API 로, 승격은 레지스트리에서만 일어난다.
+      # 조상 판정에 checkout 을 쓰지 않는다 — 조상 판정은 API 로, 승격은 레지스트리에서만 일어난다.
       # git merge-base 는 쓸 수 없다: actions/checkout 기본 fetch-depth: 1 에서는 항상 실패해
       # 이전 sha 를 되돌리는 롤백 승격(S7)이 통째로 막힌다.
       #
@@ -59,9 +72,10 @@ jobs:
             *) echo "::error::main 의 조상이 아니다 (status=$status)"; exit 1 ;;
           esac
 
-      # ⚠️ 이것은 게이트가 아니라 정보 제공이다. compare API 는 three-dot diff 라 위에서 승인되는 두 status
-      # 모두 files 가 항상 0건이어서(실측) "이 승격으로 무엇이 새로 적용되는지"를 워크플로가 계산할 수 없다.
-      # 그래서 대상 sha 의 마이그레이션 목록을 그대로 보여주고 판단은 사람이 한다(플랜 §8).
+      # ⚠️ 이것은 게이트가 아니라 사람이 읽는 전체 목록이다. compare API 는 three-dot diff 라 위에서 승인되는 두 status
+      # 모두 files 가 항상 0건이어서(실측) 조상 판정 호출로는 "이 승격으로 무엇이 새로 적용되는지"를 알 수 없다.
+      # 새로 적용될 것 중 옛 버전과 공존하지 못할 수 있는 후보는 아래 Check destructive migrations 가 지금 :deploy 를
+      # 기준으로 계산해 버전 확인을 받는다. 그래도 판단은 사람이 한다(플랜 §8).
       - name: List migrations at target sha
         env:
           GH_TOKEN: ${{ github.token }}
@@ -95,9 +109,11 @@ jobs:
             || { echo "::error::monitoring 트리 sha가 올바른 40자 hex가 아니다"; exit 1; }
           echo "tree_sha=$tree" >> "$GITHUB_OUTPUT"
 
-      # 위 목록을 실제로 읽었다는 확인. 워크플로가 새 마이그레이션을 계산할 수 없으므로 이 입력이 대신하는 것은
-      # "구 이미지와 호환되는 additive 변경이라 무인 배포·자동 롤백이 성립하는가" 라는 사람의 판단이다(Step 0 규칙).
+      # 위 전체 목록을 실제로 읽었다는 확인. 이 입력이 대신하는 것은 "구 이미지와 호환되는 additive 변경이라
+      # 무인 배포·자동 롤백이 성립하는가" 라는 사람의 판단이다(Step 0 규칙).
       # 목록 출력보다 뒤에 두는 이유: 문구를 틀려 실패해도 요약에 목록이 남아 그대로 보고 다시 실행할 수 있다.
+      # 옛 버전과 공존하지 못할 수 있는 변경은 아래 Check destructive migrations 가 :deploy 기준으로 새 마이그레이션을
+      # 계산해 버전을 적은 확인을 따로 요구한다(정규식 휴리스틱이라 이 판단을 대신하지 않는다).
       - name: Confirm migrations reviewed
         env:
           CONFIRM: ${{ inputs.migrations_reviewed }}
@@ -111,6 +127,52 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      # 감지기 스크립트를 얻기 위한 checkout 이다 — 조상 판정에는 쓰지 않는다(맨 위 merge-base 주석과 무관).
+      # 대상 sha 가 아니라 이 워크플로를 실행한 ref 의 스크립트를 쓴다: 롤백 대상 sha 에는 스크립트가 없을 수 있다.
+      # packages: write 토큰을 .git/config 에 남기지 않는다 — 이후 git 인증이 필요한 스텝이 없다.
+      - name: Checkout guard script
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      # 새 마이그레이션 = (파일명, blob sha) 쌍이 지금 :deploy 이미지의 revision 에는 없고 대상 sha 에만 있는 파일.
+      # 이름만 같고 내용이 다른 파일도 넣는다 — Flyway 전에 죽은 이미지가 :deploy 에 남아 있으면 그 이미지의 미적용 V19 를
+      # 대상이 고쳐도 이름 비교로는 빠진다. 감지된 버전 집합이 destructive_migrations 와 정확히 같아야 승격한다.
+      # 롤백 승격(대상이 현재보다 뒤)은 새 파일이 없어 빈 입력으로 통과한다.
+      - name: Check destructive migrations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ inputs.sha }}
+          ACK: ${{ inputs.destructive_migrations }}
+        run: |
+          # '{{json .Image}}' + jq 인 이유는 아래 .Manifest 와 같다. 이미지가 단일 플랫폼(publish-image.yml linux/arm64)이라
+          # .Image 가 설정 객체 하나다(실측) — 멀티 플랫폼이 되면 플랫폼별 맵이라 값이 비고 아래 검사에서 막힌다.
+          current=$(docker buildx imagetools inspect --format '{{json .Image}}' "$IMAGE:deploy" \
+            | jq -r '.config.Labels["org.opencontainers.image.revision"] // empty') \
+            || { echo "::error::현재 :deploy 이미지 조회 실패 — 비교 기준 없이는 승격하지 않는다"; exit 1; }
+          [[ "$current" =~ ^[0-9a-f]{40}$ ]] \
+            || { echo "::error::현재 :deploy 의 revision 라벨이 40자 hex 가 아니다 — 비교 기준 없이는 승격하지 않는다"; exit 1; }
+
+          # 조회 실패는 위 목록 스텝과 같은 이유로 fail-closed — 빈 목록이 "새 마이그레이션 없음" 과 구분되지 않는다.
+          dir=module-api/src/main/resources/db/migration
+          # 한 줄 = "<blob sha> <파일명>" — sha 를 앞에 둬 read 의 마지막 변수가 파일명 전체를 받는다.
+          deployed=$(gh api "repos/$GITHUB_REPOSITORY/contents/$dir?ref=$current" --jq '.[] | "\(.sha) \(.name)"') \
+            || { echo "::error::현재 배포본 $current 의 마이그레이션 목록 조회 실패 — 승격하지 않는다"; exit 1; }
+          target=$(gh api "repos/$GITHUB_REPOSITORY/contents/$dir?ref=$SHA" --jq '.[] | "\(.sha) \(.name)"') \
+            || { echo "::error::대상 $SHA 의 마이그레이션 목록 조회 실패 — 승격하지 않는다"; exit 1; }
+
+          tmp=$(mktemp -d)
+          files=()
+          while IFS=' ' read -r _ name; do
+            [ -n "$name" ] || continue
+            gh api -H 'Accept: application/vnd.github.raw' "repos/$GITHUB_REPOSITORY/contents/$dir/$name?ref=$SHA" > "$tmp/$name" \
+              || { echo "::error::$name 본문 조회 실패 — 승격하지 않는다"; exit 1; }
+            files+=("$tmp/$name")
+          done < <(comm -13 <(sort <<< "$deployed") <(sort <<< "$target"))
+
+          # pipefail 이라 감지기의 종료 코드가 스텝 결과가 되고, tee 덕에 실패해도 요약에 감지 목록이 남는다.
+          python3 tools/migration-ddl-guard.py --expect "$ACK" "${files[@]}" | tee -a "$GITHUB_STEP_SUMMARY"
 
       # imagetools create 는 원본 매니페스트를 다시 태그하는 명령이라 digest 가 보존되는 것이 정상이지만,
       # 소스가 여럿이면 새 index 를 조립하는 명령이기도 하므로 보존을 가정하지 않고 실측한다. digest 가 바뀌면
