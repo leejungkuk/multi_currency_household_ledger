@@ -288,6 +288,51 @@ class BudgetRepositoryTest {
         assertThat(allocationCount()).isEqualTo(1);
     }
 
+    @Test
+    @DisplayName("회원의 모든 행 조회는 그 회원의 행만 달 순으로 몫과 함께 읽는다")
+    void find_all_with_allocations_by_member_id_returns_only_that_members_rows_with_lines() {
+        budgetRepository.save(budget(MEMBER_A, SEPTEMBER.plusMonths(1), List.of(), 3L));
+        budgetRepository.save(budget(MEMBER_A, SEPTEMBER, List.of(), 1L, 2L));
+        budgetRepository.save(budget(MEMBER_B, SEPTEMBER, List.of(), 9L));
+        entityManager.flush();
+        entityManager.clear();
+
+        List<Budget> loaded = budgetRepository.findAllWithAllocationsByMemberId(MEMBER_A);
+
+        assertThat(loaded).extracting(Budget::getMemberId).containsOnly(MEMBER_A);
+        assertThat(loaded)
+                .extracting(Budget::getMonth)
+                .containsExactly(SEPTEMBER.atDay(1), SEPTEMBER.plusMonths(1).atDay(1));
+        assertThat(loaded.get(0).amounts().categoryAmounts().keySet()).containsExactly(1L, 2L);
+        assertThat(loaded.get(1).amounts().categoryAmounts().keySet()).containsExactly(3L);
+    }
+
+    @Test
+    @DisplayName("회원의 전체 행 조회는 몫까지 한 쿼리로 읽어, 영속성 컨텍스트를 비운 뒤에도 몫을 지연 로딩 없이 읽는다")
+    void find_all_with_allocations_by_member_id_fetches_lines_without_lazy_loading() {
+        budgetRepository.save(budget(MEMBER_A, SEPTEMBER, List.of(), 1L, 2L));
+        entityManager.flush();
+        entityManager.clear();
+
+        List<Budget> loaded = budgetRepository.findAllWithAllocationsByMemberId(MEMBER_A);
+        entityManager.clear();
+
+        assertThat(loaded.get(0).amounts().categoryAmounts().keySet()).containsExactly(1L, 2L);
+    }
+
+    @Test
+    @DisplayName("회원의 달 조회는 그 회원의 달만 읽는다")
+    void find_months_by_member_id_returns_only_that_members_months() {
+        budgetRepository.save(budget(MEMBER_A, SEPTEMBER, List.of()));
+        budgetRepository.save(budget(MEMBER_A, SEPTEMBER.plusMonths(2), List.of()));
+        budgetRepository.save(budget(MEMBER_B, SEPTEMBER.plusMonths(1), List.of()));
+        entityManager.flush();
+
+        assertThat(budgetRepository.findMonthsByMemberId(MEMBER_A))
+                .containsExactlyInAnyOrder(
+                        SEPTEMBER.atDay(1), SEPTEMBER.plusMonths(2).atDay(1));
+    }
+
     private static Budget budget(UUID memberId, YearMonth month, List<GroupAmount> groups, long... categoryIds) {
         Budget budget = new Budget(memberId, month);
         budget.replaceAmounts(

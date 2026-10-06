@@ -18,6 +18,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.function.Executable;
+import org.springframework.test.util.ReflectionTestUtils;
 
 class BudgetTest {
 
@@ -256,6 +257,73 @@ class BudgetTest {
                         List.of(),
                         List.of(new CategoryAmount(3L, won("100")), new CategoryAmount(3L, won("100")))),
                 BudgetErrorCode.BUDGET_INVALID_ALLOCATION);
+    }
+
+    @Test
+    @DisplayName("복사는 통화·전체·결제수단 몫을 옮기고 줄 순서를 지키며 대응 없는 줄은 뺀다 — 원본은 그대로다")
+    void copy_to_keeps_amounts_and_relative_line_order_and_drops_unmapped_lines() {
+        Budget source = emptyBudget();
+        source.replaceAmounts(
+                CurrencyCode.USD,
+                won("1000"),
+                List.of(new GroupAmount(PaymentGroup.CREDIT_CARD, won("300"))),
+                List.of(
+                        new CategoryAmount(3L, won("100")),
+                        new CategoryAmount(1L, won("200")),
+                        new CategoryAmount(2L, won("50"))));
+        BudgetAmounts before = source.amounts();
+        UUID member = UUID.randomUUID();
+
+        Budget copy = source.copyTo(
+                member, Map.of(3L, category(13L, TransactionType.EXPENSE), 2L, category(12L, TransactionType.EXPENSE)));
+
+        assertThat(copy.getMemberId()).isEqualTo(member);
+        assertThat(copy.getMonth()).isEqualTo(SEPTEMBER.atDay(1));
+        BudgetAmounts amounts = copy.amounts();
+        assertThat(amounts.currency()).isEqualTo(CurrencyCode.USD);
+        assertThat(amounts.total()).isEqualByComparingTo("1000");
+        assertThat(amounts.paymentGroupAmounts()).containsOnlyKeys(PaymentGroup.CREDIT_CARD);
+        assertThat(amounts.paymentGroupAmounts().get(PaymentGroup.CREDIT_CARD)).isEqualByComparingTo("300");
+        assertThat(amounts.categoryAmounts().keySet()).containsExactly(13L, 12L);
+        assertThat(amounts.categoryAmounts().get(13L)).isEqualByComparingTo("100");
+        assertThat(amounts.categoryAmounts().get(12L)).isEqualByComparingTo("50");
+        assertThat(copy.getCategoryAmounts().get(13L).sortOrder()).isZero();
+        assertThat(copy.getCategoryAmounts().get(12L).sortOrder()).isEqualTo(1);
+        assertThat(source.amounts()).isEqualTo(before);
+        assertThat(source.amounts().categoryAmounts().keySet()).containsExactly(3L, 1L, 2L);
+    }
+
+    @Test
+    @DisplayName("복사에서 두 줄이 같은 카테고리로 모이면 BUDGET_INVALID_ALLOCATION")
+    void copy_to_rejects_two_lines_landing_on_same_category() {
+        Budget source = emptyBudget();
+        source.replaceAmounts(
+                CurrencyCode.KRW,
+                won("1000"),
+                List.of(),
+                List.of(new CategoryAmount(1L, won("100")), new CategoryAmount(2L, won("100"))));
+        Category target = category(11L, TransactionType.EXPENSE);
+
+        assertCode(
+                () -> source.copyTo(UUID.randomUUID(), Map.of(1L, target, 2L, target)),
+                BudgetErrorCode.BUDGET_INVALID_ALLOCATION);
+    }
+
+    @Test
+    @DisplayName("복사 대상이 수입 카테고리면 BUDGET_INVALID_ALLOCATION")
+    void copy_to_rejects_line_moved_to_income_category() {
+        Budget source = emptyBudget();
+        source.replaceAmounts(CurrencyCode.KRW, won("1000"), List.of(), List.of(new CategoryAmount(1L, won("100"))));
+
+        assertCode(
+                () -> source.copyTo(UUID.randomUUID(), Map.of(1L, category(11L, TransactionType.INCOME))),
+                BudgetErrorCode.BUDGET_INVALID_ALLOCATION);
+    }
+
+    private static Category category(long id, TransactionType type) {
+        Category category = Category.custom(UUID.randomUUID(), type, "c" + id, null);
+        ReflectionTestUtils.setField(category, "id", id);
+        return category;
     }
 
     @Test
