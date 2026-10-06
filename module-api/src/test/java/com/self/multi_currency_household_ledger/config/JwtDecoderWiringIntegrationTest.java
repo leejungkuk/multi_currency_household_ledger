@@ -2,7 +2,10 @@ package com.self.multi_currency_household_ledger.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -15,8 +18,11 @@ import com.nimbusds.jose.jwk.ECKey;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
+import com.self.multi_currency_household_ledger.guest.controller.GuestBudgetImportController;
 import com.self.multi_currency_household_ledger.ledger.controller.CatalogController;
 import com.self.multi_currency_household_ledger.ledger.dto.AssetResponse;
+import com.self.multi_currency_household_ledger.ledger.dto.GuestBudgetImportResponse;
+import com.self.multi_currency_household_ledger.ledger.service.BudgetService;
 import com.self.multi_currency_household_ledger.ledger.service.CatalogService;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -35,6 +41,8 @@ import java.security.spec.ECGenParameterSpec;
 import java.time.Instant;
 import java.util.Date;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -43,12 +51,14 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.data.jpa.mapping.JpaMetamodelMappingContext;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 
 /**
  * 프로덕션 {@code jwtDecoder()} 빈을 실제로 생성해 배선까지 검증한다 — 다른 모든 통합 테스트는
@@ -71,7 +81,7 @@ import org.springframework.test.web.servlet.MockMvc;
  * 서명하면 {@code withJwkSetUri} 의 기본값(RS256 전용)과 우연히 맞아떨어져 "실토큰 전면 거부"를 이 테스트가
  * 가려버린다.
  */
-@WebMvcTest(controllers = CatalogController.class)
+@WebMvcTest(controllers = {CatalogController.class, GuestBudgetImportController.class})
 @Import(SecurityConfig.class)
 @TestPropertySource(
         properties = {
@@ -83,6 +93,7 @@ class JwtDecoderWiringIntegrationTest {
     private static final String AUDIENCE = "authenticated";
     private static final String AUTHENTICATED_ROLE = "authenticated";
     private static final String SUBJECT = "00000000-0000-0000-0000-000000000001";
+    private static final String GUEST_SUBJECT = "00000000-0000-0000-0000-0000000000a1";
     private static final String KEY_ID = "test-key";
 
     private static final KeyPair KEY_PAIR = generateKeyPair();
@@ -97,6 +108,9 @@ class JwtDecoderWiringIntegrationTest {
 
     @MockitoBean
     private CatalogService catalogService;
+
+    @MockitoBean
+    private BudgetService budgetService;
 
     @DynamicPropertySource
     static void issuerUri(DynamicPropertyRegistry registry) {
@@ -153,6 +167,70 @@ class JwtDecoderWiringIntegrationTest {
         assertThat(noRole.getHeader(HttpHeaders.WWW_AUTHENTICATE)).contains("The role claim is not valid");
     }
 
+    @Test
+    @DisplayName("같은 키로 서명했지만 만료된 익명 비회원 토큰은 403 BUDGET_GUEST_TOKEN_INVALID 이고 가져오기를 부르지 않는다")
+    void expired_anonymous_guest_token_signed_by_real_key_is_rejected_with_403() throws Exception {
+        String expired =
+                guestToken(GUEST_SUBJECT, true, List.of(AUDIENCE), Instant.now().minusSeconds(600), KEY_ID);
+
+        importWith(expired)
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("BUDGET_GUEST_TOKEN_INVALID"));
+
+        verifyNoInteractions(budgetService);
+    }
+
+    @Test
+    @DisplayName("유효한 익명 비회원 토큰은 호출 회원·비회원 subject·대응표 그대로 가져오기에 닿는다")
+    void valid_anonymous_guest_token_signed_by_real_key_reaches_import() throws Exception {
+        given(budgetService.importFromGuest(UUID.fromString(SUBJECT), UUID.fromString(GUEST_SUBJECT), Map.of(1L, 2L)))
+                .willReturn(new GuestBudgetImportResponse(1, 0));
+
+        importWith(guestToken(
+                        GUEST_SUBJECT, true, List.of(AUDIENCE), Instant.now().plusSeconds(300), KEY_ID))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.importedMonthCount").value(1));
+
+        verify(budgetService).importFromGuest(UUID.fromString(SUBJECT), UUID.fromString(GUEST_SUBJECT), Map.of(1L, 2L));
+    }
+
+    @Test
+    @DisplayName("audience 가 다른 익명 비회원 토큰은 서명이 맞아도 403 이다")
+    void guest_token_with_wrong_audience_is_rejected_with_403() throws Exception {
+        String wrongAudience = guestToken(
+                GUEST_SUBJECT, true, List.of("service_role"), Instant.now().plusSeconds(300), KEY_ID);
+
+        importWith(wrongAudience)
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("BUDGET_GUEST_TOKEN_INVALID"));
+
+        verifyNoInteractions(budgetService);
+    }
+
+    @Test
+    @DisplayName("JWKS 에 없는 kid 의 비회원 토큰을 연달아 보내도 두 번 모두 403 이다 — 두 번째는 키 조회 제한 예외 경로")
+    void repeated_unknown_kid_guest_tokens_are_rejected_with_403_not_500() throws Exception {
+        for (int i = 0; i < 2; i++) {
+            String unknownKid = guestToken(
+                    GUEST_SUBJECT, true, List.of(AUDIENCE), Instant.now().plusSeconds(300), "unknown-kid");
+
+            importWith(unknownKid)
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.code").value("BUDGET_GUEST_TOKEN_INVALID"));
+        }
+        verifyNoInteractions(budgetService);
+    }
+
+    private ResultActions importWith(String guestToken) throws Exception {
+        String body =
+                "{\"guestAccessToken\":\"%s\",\"categoryMappings\":[{\"guestCategoryId\":1,\"memberCategoryId\":2}]}"
+                        .formatted(guestToken);
+        return mockMvc.perform(post("/api/v1/budgets/import-from-guest")
+                .header("Authorization", "Bearer " + token(List.of(AUDIENCE)))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(body));
+    }
+
     /**
      * {@code WWW-Authenticate} 에서 {@code error_description} 만 지운다. 그 값은 <b>어느 검증기가 실패했는지</b>를
      * 담으므로 이 변경 전에도 만료·issuer·audience 실패끼리 서로 달랐다 — 고정할 것은 문구가 아니라 나머지 전부
@@ -170,18 +248,32 @@ class JwtDecoderWiringIntegrationTest {
 
     /** @param role {@code null} 이면 role 클레임을 싣지 않는다. */
     private static String token(List<String> audience, String role) throws JOSEException {
+        return token(SUBJECT, audience, role, null, Instant.now().plusSeconds(300), KEY_ID);
+    }
+
+    private static String guestToken(
+            String subject, boolean anonymous, List<String> audience, Instant expiresAt, String keyId)
+            throws JOSEException {
+        return token(subject, audience, AUTHENTICATED_ROLE, anonymous, expiresAt, keyId);
+    }
+
+    /** @param anonymous {@code null} 이면 is_anonymous 클레임을 싣지 않는다. */
+    private static String token(
+            String subject, List<String> audience, String role, Boolean anonymous, Instant expiresAt, String keyId)
+            throws JOSEException {
         JWTClaimsSet.Builder claims = new JWTClaimsSet.Builder()
-                .subject(SUBJECT)
+                .subject(subject)
                 .issuer(issuer())
-                .issueTime(Date.from(Instant.now().minusSeconds(60)))
-                .expirationTime(Date.from(Instant.now().plusSeconds(300)))
-                .claim("role", role); // null 을 주면 Nimbus 가 그 클레임을 담지 않는다
+                .issueTime(Date.from(Instant.now().minusSeconds(3600)))
+                .expirationTime(Date.from(expiresAt))
+                .claim("role", role) // null 을 주면 Nimbus 가 그 클레임을 담지 않는다
+                .claim("is_anonymous", anonymous);
         if (!audience.isEmpty()) {
             claims.audience(audience); // 빈 리스트를 넣으면 aud 가 빈 배열로 실려 "클레임 없음"이 아니게 된다
         }
 
         SignedJWT signedJwt = new SignedJWT(
-                new JWSHeader.Builder(JWSAlgorithm.ES256).keyID(KEY_ID).build(), claims.build());
+                new JWSHeader.Builder(JWSAlgorithm.ES256).keyID(keyId).build(), claims.build());
         signedJwt.sign(new ECDSASigner((ECPrivateKey) KEY_PAIR.getPrivate()));
         return signedJwt.serialize();
     }

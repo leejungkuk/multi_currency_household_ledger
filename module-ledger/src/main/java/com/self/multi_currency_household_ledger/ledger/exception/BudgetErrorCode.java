@@ -14,7 +14,8 @@ public enum BudgetErrorCode implements ErrorCode {
             "BUDGET_INVALID_AMOUNT", "예산 금액은 0 이상 99,999,999 이하, 통화 자릿수 이내여야 합니다.", HttpStatus.BAD_REQUEST),
     BUDGET_TOTAL_REQUIRED("BUDGET_TOTAL_REQUIRED", "전체 예산 금액이 필요합니다.", HttpStatus.BAD_REQUEST),
     BUDGET_INVALID_ALLOCATION("BUDGET_INVALID_ALLOCATION", "예산 몫 구성이 올바르지 않습니다.", HttpStatus.BAD_REQUEST),
-    BUDGET_ALLOCATION_EXCEEDS_TOTAL("BUDGET_ALLOCATION_EXCEEDS_TOTAL", "예산 몫의 합이 전체 예산보다 큽니다.", HttpStatus.BAD_REQUEST);
+    BUDGET_ALLOCATION_EXCEEDS_TOTAL("BUDGET_ALLOCATION_EXCEEDS_TOTAL", "예산 몫의 합이 전체 예산보다 큽니다.", HttpStatus.BAD_REQUEST),
+    BUDGET_GUEST_TOKEN_INVALID("BUDGET_GUEST_TOKEN_INVALID", "비회원 계정을 확인할 수 없습니다.", HttpStatus.FORBIDDEN);
 
     private final String code;
     private final String message;

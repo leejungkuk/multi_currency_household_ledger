@@ -12,17 +12,23 @@ import com.self.multi_currency_household_ledger.ledger.domain.Category;
 import com.self.multi_currency_household_ledger.ledger.domain.CategoryRepository;
 import com.self.multi_currency_household_ledger.ledger.domain.LedgerEntryRepository;
 import com.self.multi_currency_household_ledger.ledger.domain.TransactionType;
+import com.self.multi_currency_household_ledger.ledger.dto.GuestBudgetImportResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.MonthlyBudgetResponse;
 import com.self.multi_currency_household_ledger.ledger.dto.SaveBudgetRequest;
 import com.self.multi_currency_household_ledger.ledger.exception.LedgerErrorCode;
 import java.time.Clock;
+import java.time.LocalDate;
 import java.time.YearMonth;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -93,6 +99,50 @@ public class BudgetService {
         budgetRepository.findByMemberIdAndMonth(memberId, month.atDay(1)).ifPresent(budgetRepository::delete);
         budgetRepository.flush();
         return read(memberId, month);
+    }
+
+    /**
+     * 비회원 계정의 예산을 회원 계정으로 복사한다. 회원에게 이미 있는 달은 건너뛴다(비회원 행은 읽기만 한다). 한 트랜잭션이라 어느 달에서 실패하면
+     * 아무 달도 옮겨지지 않는다. 줄 대상은 회원에게 보이는 카테고리만 받는다 — 보이지 않는 id 의 줄은 빠진다(IDOR).
+     */
+    @Transactional
+    public GuestBudgetImportResponse importFromGuest(UUID memberId, UUID guestMemberId, Map<Long, Long> categoryIdMap) {
+        // 락을 잡은 뒤에 읽어야 같은 회원의 동시 요청이 앞 커밋을 보고 건너뛴다.
+        budgetRepository.lockMember(memberId);
+        Set<LocalDate> memberMonths = new HashSet<>(budgetRepository.findMonthsByMemberId(memberId));
+        List<Budget> guestBudgets = budgetRepository.findAllWithAllocationsByMemberId(guestMemberId);
+        List<Budget> toImport = guestBudgets.stream()
+                .filter(budget -> !memberMonths.contains(budget.getMonth()))
+                .toList();
+
+        Set<Long> targetIds = new HashSet<>(categoryIdMap.values());
+        toImport.forEach(budget ->
+                budget.allocatedCategoryIds().forEach(id -> targetIds.add(categoryIdMap.getOrDefault(id, id))));
+        Map<Long, Category> visible = targetIds.isEmpty()
+                ? Map.of()
+                : categoryRepository.findVisibleByIds(memberId, targetIds).stream()
+                        .collect(Collectors.toMap(Category::getId, Function.identity()));
+        // findVisibleByIds 는 기본 카테고리(owner null)도 돌려주므로 대응표 값은 회원 소유만 센다.
+        boolean allOwned = categoryIdMap.values().stream()
+                .allMatch(id -> visible.get(id) != null
+                        && memberId.equals(visible.get(id).getOwnerMemberId()));
+        if (!allOwned) {
+            throw new BusinessException(LedgerErrorCode.CATEGORY_NOT_FOUND);
+        }
+
+        for (Budget guestBudget : toImport) {
+            Map<Long, Category> lineTargets = new HashMap<>();
+            for (Long id : guestBudget.allocatedCategoryIds()) {
+                Category target = visible.get(categoryIdMap.getOrDefault(id, id));
+                if (target != null) {
+                    lineTargets.put(id, target);
+                }
+            }
+            budgetRepository.save(guestBudget.copyTo(memberId, lineTargets));
+        }
+        // 제약 위반을 커밋이 아니라 여기서 드러낸다(save 와 같은 이유).
+        budgetRepository.flush();
+        return new GuestBudgetImportResponse(toImport.size(), guestBudgets.size() - toImport.size());
     }
 
     private List<Category> findAddableCategories(UUID memberId, YearMonth month, Set<Long> ids) {

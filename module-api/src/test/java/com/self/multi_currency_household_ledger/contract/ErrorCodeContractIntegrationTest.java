@@ -147,6 +147,7 @@ class ErrorCodeContractIntegrationTest {
                         "get /api/v1/budgets",
                         "put /api/v1/budgets",
                         "delete /api/v1/budgets",
+                        "post /api/v1/budgets/import-from-guest",
                         "get /api/v1/exchange-rates",
                         "get /api/v1/exchange-rates/range",
                         "get /api/v1/exchange-rates/snapshot",

@@ -20,6 +20,7 @@ import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.YearMonth;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -109,6 +110,32 @@ public class Budget extends BaseEntity {
                 totalAmount,
                 Collections.unmodifiableMap(groups),
                 Collections.unmodifiableMap(categories));
+    }
+
+    /**
+     * 이 행을 {@code memberId} 회원의 같은 달 새 행으로 복사한다({@code this} 는 바뀌지 않는다). 카테고리 몫은 줄 순서대로 돌며 {@code lineTargets}
+     * 의 키인 줄만 그 값(회원 쪽 카테고리)으로 옮기고, 아닌 줄은 뺀다. 남은 줄의 상대 순서는 지키고 줄 순서는 0 부터 다시 매긴다. 월 범위·삭제 카테고리는
+     * 검증하지 않는다 — 이미 저장 검증을 통과한 행의 복사다.
+     */
+    public Budget copyTo(UUID memberId, Map<Long, Category> lineTargets) {
+        lineTargets.values().forEach(target -> requireAllocatable(List.of(target)));
+        List<GroupAmount> groups = new ArrayList<>();
+        for (PaymentGroup group : PaymentGroup.values()) {
+            BigDecimal amount = groupAmount(group, UnaryOperator.identity());
+            if (amount != null) {
+                groups.add(new GroupAmount(group, amount));
+            }
+        }
+        List<CategoryAmount> lines = categoryAmounts.entrySet().stream()
+                .sorted(LINE_ORDER)
+                .filter(entry -> lineTargets.containsKey(entry.getKey()))
+                .map(entry -> new CategoryAmount(
+                        lineTargets.get(entry.getKey()).getId(),
+                        entry.getValue().amount()))
+                .toList();
+        Budget copy = new Budget(memberId, YearMonth.from(month));
+        copy.replaceAmounts(currencyCode, totalAmount, groups, lines);
+        return copy;
     }
 
     /** 카테고리 몫의 카테고리 id 들. */

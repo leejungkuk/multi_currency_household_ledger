@@ -1,6 +1,7 @@
 package com.self.multi_currency_household_ledger.ledger.domain;
 
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -17,6 +18,17 @@ public interface BudgetRepository extends JpaRepository<Budget, Long> {
             where b.memberId = :memberId and b.month = :month
             """)
     Optional<Budget> findByMemberIdAndMonth(@Param("memberId") UUID memberId, @Param("month") LocalDate month);
+
+    // 그 회원의 모든 행을 카테고리 몫과 함께 SQL 한 번에 읽는다. 회원 술어는 필수다.
+    @Query(
+            """
+            select distinct b from Budget b left join fetch b.categoryAmounts
+            where b.memberId = :memberId order by b.month
+            """)
+    List<Budget> findAllWithAllocationsByMemberId(@Param("memberId") UUID memberId);
+
+    @Query("select b.month from Budget b where b.memberId = :memberId")
+    List<LocalDate> findMonthsByMemberId(@Param("memberId") UUID memberId);
 
     boolean existsByMemberId(UUID memberId);
 
