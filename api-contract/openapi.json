@@ -64,6 +64,27 @@
                 },
                 "type": "object"
             },
+            "ApiResponseGuestBudgetImportResponse": {
+                "properties": {
+                    "code": {
+                        "type": "string"
+                    },
+                    "data": {
+                        "$ref": "#/components/schemas/GuestBudgetImportResponse"
+                    },
+                    "message": {
+                        "type": "string"
+                    },
+                    "success": {
+                        "type": "boolean"
+                    },
+                    "timestamp": {
+                        "format": "date-time",
+                        "type": "string"
+                    }
+                },
+                "type": "object"
+            },
             "ApiResponseImportLedgerEntriesResponse": {
                 "properties": {
                     "code": {
@@ -497,6 +518,23 @@
                 ],
                 "type": "object"
             },
+            "CategoryMapping": {
+                "properties": {
+                    "guestCategoryId": {
+                        "format": "int64",
+                        "type": "integer"
+                    },
+                    "memberCategoryId": {
+                        "format": "int64",
+                        "type": "integer"
+                    }
+                },
+                "required": [
+                    "guestCategoryId",
+                    "memberCategoryId"
+                ],
+                "type": "object"
+            },
             "CategoryResponse": {
                 "properties": {
                     "code": {
@@ -842,6 +880,38 @@
                             "$ref": "#/components/schemas/CurrencyRateStatus"
                         },
                         "type": "array"
+                    }
+                },
+                "type": "object"
+            },
+            "GuestBudgetImportRequest": {
+                "properties": {
+                    "categoryMappings": {
+                        "items": {
+                            "$ref": "#/components/schemas/CategoryMapping"
+                        },
+                        "type": "array"
+                    },
+                    "guestAccessToken": {
+                        "minLength": 1,
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "categoryMappings",
+                    "guestAccessToken"
+                ],
+                "type": "object"
+            },
+            "GuestBudgetImportResponse": {
+                "properties": {
+                    "importedMonthCount": {
+                        "format": "int32",
+                        "type": "integer"
+                    },
+                    "skippedMonthCount": {
+                        "format": "int32",
+                        "type": "integer"
                     }
                 },
                 "type": "object"
@@ -1710,6 +1780,84 @@
                     "BUDGET_TOTAL_REQUIRED",
                     "CATEGORY_NOT_FOUND",
                     "CONCURRENT_MODIFICATION",
+                    "INTERNAL_ERROR",
+                    "INVALID_PARAMETER",
+                    "MALFORMED_REQUEST",
+                    "REQUEST_BODY_TOO_LARGE",
+                    "TOO_MANY_REQUESTS",
+                    "UNAUTHORIZED",
+                    "VALIDATION_ERROR"
+                ]
+            }
+        },
+        "/api/v1/budgets/import-from-guest": {
+            "post": {
+                "description": "\ub85c\uadf8\uc778 \uc804 \ube44\ud68c\uc6d0 \uacc4\uc815\uc758 \uc608\uc0b0\uc744 \uc9c0\uae08 \ud68c\uc6d0 \uacc4\uc815\uc73c\ub85c \ubcf5\uc0ac\ud55c\ub2e4. \ud68c\uc6d0\uc5d0\uac8c \uc774\ubbf8 \uc788\ub294 \ub2ec\uc740 \uac74\ub108\ub6f0\ubbc0\ub85c \uac19\uc740 \uc694\uccad\uc744 \ub2e4\uc2dc \ubcf4\ub0b4\ub3c4 \uacb0\uacfc\uac00 \uac19\ub2e4. \ub300\uc751\uc774 \uc5c6\ub294 \uc0ac\uc6a9\uc790 \uce74\ud14c\uace0\ub9ac \ubaab\uc740 \ube7c\uace0 \uc62e\uae34\ub2e4(\uadf8 \ub3c8\uc740 \uadf8 \uc678 \uce74\ud14c\uace0\ub9ac\uac00 \ub41c\ub2e4). guestAccessToken \uc774 \ub9cc\ub8cc\u00b7\ubb34\ud6a8\uc774\uac70\ub098 \uc775\uba85 \uacc4\uc815\uc774 \uc544\ub2c8\uac70\ub098 \ud638\ucd9c \ud68c\uc6d0 \uc790\uc2e0\uc774\uba74 403 BUDGET_GUEST_TOKEN_INVALID \u2014 \ube44\ud68c\uc6d0 refresh token \uc73c\ub85c \ube44\ud68c\uc6d0 \uc138\uc158\ub9cc \uac31\uc2e0\ud574 \ub2e4\uc2dc \ubcf4\ub0b8\ub2e4. \ube44\ud68c\uc6d0 \uc608\uc0b0\uc740 \uc9c0\uc6b0\uc9c0 \uc54a\ub294\ub2e4.",
+                "operationId": "importFromGuest",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/GuestBudgetImportRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "content": {
+                            "*/*": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ApiResponseGuestBudgetImportResponse"
+                                }
+                            }
+                        },
+                        "description": "OK"
+                    },
+                    "413": {
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "code": "REQUEST_BODY_TOO_LARGE",
+                                    "message": "\uc694\uccad \ubcf8\ubb38\uc774 \ub108\ubb34 \ud07d\ub2c8\ub2e4. \ub098\ub220\uc11c \ubcf4\ub0b4 \uc8fc\uc138\uc694.",
+                                    "success": false,
+                                    "timestamp": "2026-01-01T00:00:00"
+                                },
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Content Too Large"
+                    },
+                    "429": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ErrorResponse"
+                                }
+                            }
+                        },
+                        "description": "Too Many Requests",
+                        "headers": {
+                            "Retry-After": {
+                                "description": "Seconds to wait before retrying.",
+                                "schema": {
+                                    "format": "int32",
+                                    "type": "integer"
+                                }
+                            }
+                        }
+                    }
+                },
+                "tags": [
+                    "guest-budget-import-controller"
+                ],
+                "x-error-codes": [
+                    "BUDGET_GUEST_TOKEN_INVALID",
+                    "BUDGET_INVALID_ALLOCATION",
+                    "CATEGORY_NOT_FOUND",
                     "INTERNAL_ERROR",
                     "INVALID_PARAMETER",
                     "MALFORMED_REQUEST",
