@@ -50,6 +50,11 @@ class ErrorCodeContractIntegrationTest {
             "VALIDATION_ERROR");
 
     private static final String BUDGETS = "$.paths['/api/v1/budgets']";
+    private static final String CATEGORIES = "$.paths['/api/v1/categories']";
+    private static final String CUSTOM_CATEGORIES = "$.paths['/api/v1/categories/custom']";
+    private static final String CUSTOM_CATEGORY = "$.paths['/api/v1/categories/custom/{id}']";
+    private static final String CUSTOM_CATEGORY_ORDER = "$.paths['/api/v1/categories/custom/order']";
+    private static final String ASSETS = "$.paths['/api/v1/assets']";
 
     @Autowired
     private MockMvc mockMvc;
@@ -95,7 +100,28 @@ class ErrorCodeContractIntegrationTest {
                 .andExpect(jsonPath(exchangeRateGetCodes("/status"), equalTo(withCommon())));
     }
 
-    // 키 = 전부 선언됨. 예산 밖에 키가 생기면(롤아웃 순서 위반) 여기서 빨개진다 — 다음 PR 이 선언하면 이 집합을 같이 늘린다.
+    @Test
+    void catalogOperationsDeclareTheirErrorCodes() throws Exception {
+        mockMvc.perform(get("/v3/api-docs").with(jwt()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(CATEGORIES + ".get['x-error-codes']", equalTo(withCommon())))
+                .andExpect(jsonPath(CUSTOM_CATEGORIES + ".get['x-error-codes']", equalTo(withCommon())))
+                .andExpect(jsonPath(
+                        CUSTOM_CATEGORIES + ".post['x-error-codes']",
+                        equalTo(withCommon("REQUEST_BODY_TOO_LARGE", "CUSTOM_CATEGORY_LIMIT_EXCEEDED"))))
+                .andExpect(jsonPath(
+                        CUSTOM_CATEGORY + ".put['x-error-codes']",
+                        equalTo(withCommon("REQUEST_BODY_TOO_LARGE", "CATEGORY_NOT_FOUND", "CONCURRENT_MODIFICATION"))))
+                .andExpect(jsonPath(
+                        CUSTOM_CATEGORY_ORDER + ".put['x-error-codes']",
+                        equalTo(withCommon("REQUEST_BODY_TOO_LARGE", "CATEGORY_NOT_FOUND", "CONCURRENT_MODIFICATION"))))
+                .andExpect(jsonPath(
+                        CUSTOM_CATEGORY + ".delete['x-error-codes']",
+                        equalTo(withCommon("CATEGORY_NOT_FOUND", "CONCURRENT_MODIFICATION"))))
+                .andExpect(jsonPath(ASSETS + ".get['x-error-codes']", equalTo(withCommon())));
+    }
+
+    // 키 = 전부 선언됨. 선언된 오퍼레이션 밖에 키가 생기면(롤아웃 순서 위반) 여기서 빨개진다 — 다음 PR 이 선언하면 이 집합을 같이 늘린다.
     @Test
     void undeclaredOperationHasNoErrorCodesKey() throws Exception {
         JsonNode paths = objectMapper
@@ -106,10 +132,10 @@ class ErrorCodeContractIntegrationTest {
                         .getContentAsString())
                 .path("paths");
 
-        // 예산 밖 오퍼레이션이 있는 것을 먼저 단언한다 — 경로가 사라지면 집합 비교가 공짜로 통과한다.
-        JsonNode categories = paths.path("/api/v1/categories").path("get");
-        assertThat(categories.isObject()).isTrue();
-        assertThat(categories.has("x-error-codes")).isFalse();
+        // 선언된 오퍼레이션 밖 오퍼레이션이 있는 것을 먼저 단언한다 — 경로가 사라지면 집합 비교가 공짜로 통과한다.
+        JsonNode ledgers = paths.path("/api/v1/ledgers").path("get");
+        assertThat(ledgers.isObject()).isTrue();
+        assertThat(ledgers.has("x-error-codes")).isFalse();
 
         List<String> keyed = paths.properties().stream()
                 .flatMap(path -> path.getValue().properties().stream()
@@ -125,7 +151,14 @@ class ErrorCodeContractIntegrationTest {
                         "get /api/v1/exchange-rates/range",
                         "get /api/v1/exchange-rates/snapshot",
                         "get /api/v1/exchange-rates/{currencyCode}",
-                        "get /api/v1/exchange-rates/status");
+                        "get /api/v1/exchange-rates/status",
+                        "get /api/v1/categories",
+                        "get /api/v1/categories/custom",
+                        "post /api/v1/categories/custom",
+                        "put /api/v1/categories/custom/{id}",
+                        "put /api/v1/categories/custom/order",
+                        "delete /api/v1/categories/custom/{id}",
+                        "get /api/v1/assets");
     }
 
     // value(List) 는 JSONArray 를 기대값 타입(불변 List)으로 다시 매핑하다 null 이 된다 — 원시 값을 equalTo 로 비교한다.

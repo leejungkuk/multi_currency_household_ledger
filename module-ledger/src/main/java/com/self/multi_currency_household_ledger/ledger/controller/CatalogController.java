@@ -2,6 +2,7 @@ package com.self.multi_currency_household_ledger.ledger.controller;
 
 import com.self.multi_currency_household_ledger.common.annotation.CurrentMemberId;
 import com.self.multi_currency_household_ledger.common.dto.ApiResponse;
+import com.self.multi_currency_household_ledger.common.exception.ApiErrorCodes;
 import com.self.multi_currency_household_ledger.common.web.CacheControlHeaders;
 import com.self.multi_currency_household_ledger.ledger.domain.TransactionType;
 import com.self.multi_currency_household_ledger.ledger.dto.AssetResponse;
@@ -34,24 +35,28 @@ public class CatalogController {
     private final CatalogService catalogService;
 
     @GetMapping("/categories")
+    @ApiErrorCodes({})
     public ResponseEntity<ApiResponse<List<CategoryResponse>>> getCategories(
             @RequestParam("transactionType") TransactionType transactionType) {
         return publicRead(catalogService.getCategories(transactionType));
     }
 
     @GetMapping("/categories/custom")
+    @ApiErrorCodes({})
     public ApiResponse<List<CategoryResponse>> getCustomCategories(
             @CurrentMemberId UUID memberId, @RequestParam("transactionType") TransactionType transactionType) {
         return ApiResponse.success(catalogService.getCustomCategories(memberId, transactionType));
     }
 
     @PostMapping("/categories/custom")
+    @ApiErrorCodes({"CUSTOM_CATEGORY_LIMIT_EXCEEDED"})
     public ApiResponse<CategoryResponse> createCustomCategory(
             @CurrentMemberId UUID memberId, @Valid @RequestBody CreateCustomCategoryRequest request) {
         return ApiResponse.success(catalogService.createCustomCategory(memberId, request));
     }
 
     @PutMapping("/categories/custom/{id}")
+    @ApiErrorCodes({"CATEGORY_NOT_FOUND", "CONCURRENT_MODIFICATION"})
     public ApiResponse<CategoryResponse> updateCustomCategory(
             @CurrentMemberId UUID memberId,
             @PathVariable("id") Long categoryId,
@@ -60,18 +65,21 @@ public class CatalogController {
     }
 
     @PutMapping("/categories/custom/order")
+    @ApiErrorCodes({"CATEGORY_NOT_FOUND", "CONCURRENT_MODIFICATION"})
     public ApiResponse<List<CategoryResponse>> reorderCustomCategories(
             @CurrentMemberId UUID memberId, @Valid @RequestBody ReorderCustomCategoriesRequest request) {
         return ApiResponse.success(catalogService.reorderCustomCategories(memberId, request));
     }
 
     @DeleteMapping("/categories/custom/{id}")
+    @ApiErrorCodes({"CATEGORY_NOT_FOUND", "CONCURRENT_MODIFICATION"})
     public ApiResponse<Void> deleteCustomCategory(@CurrentMemberId UUID memberId, @PathVariable("id") Long categoryId) {
         catalogService.deleteCustomCategory(memberId, categoryId);
         return ApiResponse.success(null);
     }
 
     @GetMapping("/assets")
+    @ApiErrorCodes({})
     public ResponseEntity<ApiResponse<List<AssetResponse>>> getAssets() {
         return publicRead(catalogService.getAssets());
     }
